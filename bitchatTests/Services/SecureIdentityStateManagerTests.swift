@@ -568,6 +568,165 @@ final class SecureIdentityStateManagerTests: XCTestCase {
         XCTAssertTrue(cleared)
     }
 
+    func test_persistVerifiedIdentity_writesCryptoAndSocialStateAcrossReinit() {
+        let keychain = MockKeychain()
+        let manager = SecureIdentityStateManager(keychain)
+        let noisePublicKey = Data(repeating: 0x51, count: 32)
+        let signingPublicKey = Data(repeating: 0x52, count: 32)
+        let fingerprint = noisePublicKey.sha256Fingerprint()
+        manager.updateSocialIdentity(
+            SocialIdentity(
+                fingerprint: fingerprint,
+                localPetname: nil,
+                claimedNickname: "Old Name",
+                trustLevel: .unknown,
+                isFavorite: false,
+                isBlocked: false,
+                notes: nil
+            )
+        )
+        let socialIdentity = SocialIdentity(
+            fingerprint: fingerprint,
+            localPetname: "Bestie",
+            claimedNickname: "Alice",
+            trustLevel: .verified,
+            isFavorite: true,
+            isBlocked: false,
+            notes: nil
+        )
+
+        XCTAssertTrue(
+            manager.persistVerifiedIdentity(
+                fingerprint: fingerprint,
+                noisePublicKey: noisePublicKey,
+                signingPublicKey: signingPublicKey,
+                socialIdentity: socialIdentity
+            )
+        )
+
+        let reloaded = SecureIdentityStateManager(keychain)
+        XCTAssertEqual(reloaded.signingPublicKey(forFingerprint: fingerprint), signingPublicKey)
+        XCTAssertEqual(reloaded.getSocialIdentity(for: fingerprint)?.localPetname, "Bestie")
+        XCTAssertEqual(reloaded.getSocialIdentity(for: fingerprint)?.claimedNickname, "Alice")
+        XCTAssertTrue(reloaded.getSocialIdentity(for: fingerprint)?.isFavorite == true)
+        XCTAssertFalse(reloaded.debugNicknameIndex["Old Name"]?.contains(fingerprint) == true)
+        XCTAssertTrue(reloaded.debugNicknameIndex["Alice"]?.contains(fingerprint) == true)
+    }
+
+    func test_persistVerifiedIdentity_rollsBackMemoryWhenKeychainWriteFails() {
+        let keychain = FailingCacheSaveKeychain()
+        let manager = SecureIdentityStateManager(keychain)
+        let noisePublicKey = Data(repeating: 0x61, count: 32)
+        let signingPublicKey = Data(repeating: 0x62, count: 32)
+        let fingerprint = noisePublicKey.sha256Fingerprint()
+
+        XCTAssertFalse(
+            manager.persistVerifiedIdentity(
+                fingerprint: fingerprint,
+                noisePublicKey: noisePublicKey,
+                signingPublicKey: signingPublicKey,
+                socialIdentity: SocialIdentity(
+                    fingerprint: fingerprint,
+                    localPetname: "Bestie",
+                    claimedNickname: "Alice",
+                    trustLevel: .verified,
+                    isFavorite: true,
+                    isBlocked: false,
+                    notes: nil
+                )
+            )
+        )
+
+        XCTAssertNil(manager.signingPublicKey(forFingerprint: fingerprint))
+        XCTAssertNil(manager.getSocialIdentity(for: fingerprint))
+        XCTAssertTrue(
+            manager.getCryptoIdentitiesByPeerIDPrefix(PeerID(publicKey: noisePublicKey)).isEmpty
+        )
+
+        let reloaded = SecureIdentityStateManager(keychain)
+        XCTAssertNil(reloaded.signingPublicKey(forFingerprint: fingerprint))
+        XCTAssertNil(reloaded.getSocialIdentity(for: fingerprint))
+    }
+
+    func test_persistSocialIdentity_isDurableAndRollsBackOnFailure() {
+        let fingerprint = Data(repeating: 0x67, count: 32).sha256Fingerprint()
+        let socialIdentity = SocialIdentity(
+            fingerprint: fingerprint,
+            localPetname: "Neighbor",
+            claimedNickname: "Alice",
+            trustLevel: .unknown,
+            isFavorite: false,
+            isBlocked: false,
+            notes: nil
+        )
+
+        let keychain = MockKeychain()
+        let manager = SecureIdentityStateManager(keychain)
+        XCTAssertTrue(manager.persistSocialIdentity(socialIdentity))
+        XCTAssertEqual(
+            SecureIdentityStateManager(keychain)
+                .getSocialIdentity(for: fingerprint)?.localPetname,
+            "Neighbor"
+        )
+
+        let failingManager = SecureIdentityStateManager(FailingCacheSaveKeychain())
+        XCTAssertFalse(failingManager.persistSocialIdentity(socialIdentity))
+        XCTAssertNil(failingManager.getSocialIdentity(for: fingerprint))
+    }
+
+    func test_persistVerifiedIdentity_rejectsMalformedOrConflictingBoundaryState() {
+        let manager = SecureIdentityStateManager(MockKeychain())
+        let noisePublicKey = Data(repeating: 0x71, count: 32)
+        let fingerprint = noisePublicKey.sha256Fingerprint()
+        let authenticatedSigningKey = Data(repeating: 0x72, count: 32)
+        let conflictingSigningKey = Data(repeating: 0x73, count: 32)
+        let socialIdentity = SocialIdentity(
+            fingerprint: fingerprint,
+            localPetname: nil,
+            claimedNickname: "Alice",
+            trustLevel: .unknown,
+            isFavorite: true,
+            isBlocked: false,
+            notes: nil
+        )
+
+        XCTAssertFalse(
+            manager.persistVerifiedIdentity(
+                fingerprint: fingerprint,
+                noisePublicKey: noisePublicKey,
+                signingPublicKey: Data(repeating: 0x72, count: 31),
+                socialIdentity: socialIdentity
+            )
+        )
+        XCTAssertFalse(
+            manager.persistVerifiedIdentity(
+                fingerprint: String(repeating: "ff", count: 32),
+                noisePublicKey: noisePublicKey,
+                signingPublicKey: authenticatedSigningKey,
+                socialIdentity: socialIdentity
+            )
+        )
+
+        manager.bindAuthenticatedSigningPublicKey(
+            authenticatedSigningKey,
+            fingerprint: fingerprint
+        )
+        XCTAssertFalse(
+            manager.persistVerifiedIdentity(
+                fingerprint: fingerprint,
+                noisePublicKey: noisePublicKey,
+                signingPublicKey: conflictingSigningKey,
+                socialIdentity: socialIdentity
+            )
+        )
+        XCTAssertNil(manager.signingPublicKey(forFingerprint: fingerprint))
+        XCTAssertEqual(
+            manager.authenticatedSigningPublicKey(forFingerprint: fingerprint),
+            authenticatedSigningKey
+        )
+        XCTAssertNil(manager.getSocialIdentity(for: fingerprint))
+    }
+
     func test_forceSave_withFailingCacheWriteDoesNotPersistCache() async {
         let keychain = FailingCacheSaveKeychain()
         let manager = SecureIdentityStateManager(keychain)

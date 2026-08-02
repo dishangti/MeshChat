@@ -88,6 +88,11 @@ struct NostrRelayManagerDependencies {
     /// for someone who denied location and has no mutual favorites.
     var isInLocationChannel: () -> Bool = { false }
     var selectedChannelPublisher: AnyPublisher<ChannelID, Never> = Empty().eraseToAnyPublisher()
+    /// Bridge Courier parks sealed private drops on the standing DM relay
+    /// set. Its demand is separate from the public Bridge's scoped geo-relay
+    /// subscription, which connects its explicit targets directly.
+    var hasBridgeCourierDemand: () -> Bool = { false }
+    var bridgeCourierDemandPublisher: AnyPublisher<Bool, Never> = Empty().eraseToAnyPublisher()
 }
 
 private extension NostrRelayManagerDependencies {
@@ -121,7 +126,16 @@ private extension NostrRelayManagerDependencies {
                 if case .location = LocationChannelManager.shared.selectedChannel { return true }
                 return false
             },
-            selectedChannelPublisher: LocationChannelManager.shared.$selectedChannel.eraseToAnyPublisher()
+            selectedChannelPublisher: LocationChannelManager.shared.$selectedChannel.eraseToAnyPublisher(),
+            hasBridgeCourierDemand: {
+                BridgeService.shared.isEnabled && BridgeService.shared.activeCell != nil
+            },
+            bridgeCourierDemandPublisher: Publishers.CombineLatest(
+                BridgeService.shared.$isEnabled,
+                BridgeService.shared.$activeCell
+            )
+            .map { enabled, cell in enabled && cell != nil }
+            .eraseToAnyPublisher()
         )
     }
 }
@@ -197,6 +211,7 @@ final class NostrRelayManager: ObservableObject {
     private var allowDefaultRelays: Bool = false
     private var hasMutualFavorites: Bool = false
     private var hasLocationPermission: Bool = false
+    private var hasBridgeCourierDemand: Bool = false
     private var connections: [String: NostrRelayConnectionProtocol] = [:]
     private var subscriptions: [String: Set<String>] = [:] // relay URL -> active subscription IDs
     // Not-yet-flushed REQs per relay, bounded by a per-relay cap (oldest by
@@ -326,6 +341,7 @@ final class NostrRelayManager: ObservableObject {
         self.dependencies = dependencies
         hasMutualFavorites = dependencies.hasMutualFavorites()
         hasLocationPermission = dependencies.hasLocationPermission()
+        hasBridgeCourierDemand = dependencies.hasBridgeCourierDemand()
         reloadDefaultRelays()
         applyDefaultRelayPolicy(force: true)
         // Deterministic JSON shape for outbound requests
@@ -352,6 +368,14 @@ final class NostrRelayManager: ObservableObject {
             .receive(on: DispatchQueue.main)
             .sink { [weak self] _ in
                 self?.applyDefaultRelayPolicy()
+            }
+            .store(in: &cancellables)
+        dependencies.bridgeCourierDemandPublisher
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] demand in
+                guard let self, demand != self.hasBridgeCourierDemand else { return }
+                self.hasBridgeCourierDemand = demand
+                self.applyDefaultRelayPolicy()
             }
             .store(in: &cancellables)
         // Adding or removing a relay by hand changes the target set, so
@@ -807,7 +831,10 @@ final class NostrRelayManager: ObservableObject {
     }
 
     private func applyDefaultRelayPolicy(force: Bool = false) {
-        let shouldAllow = hasMutualFavorites || hasLocationPermission || dependencies.isInLocationChannel()
+        let shouldAllow = hasMutualFavorites
+            || hasLocationPermission
+            || dependencies.isInLocationChannel()
+            || hasBridgeCourierDemand
         if !force && shouldAllow == allowDefaultRelays { return }
         allowDefaultRelays = shouldAllow
         if shouldAllow {

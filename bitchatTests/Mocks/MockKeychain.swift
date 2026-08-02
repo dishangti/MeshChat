@@ -17,6 +17,8 @@ final class MockKeychain: KeychainManagerProtocol {
     var simulatedReadError: KeychainReadResult?
     var simulatedSaveError: KeychainSaveResult?
     var simulatedGenericReadError: KeychainReadResult?
+    var simulatedGenericSaveError: KeychainSaveResult?
+    var shouldFailGenericSave = false
     var simulatedDeleteAllResult = true
     private(set) var deleteAllCallCount = 0
 
@@ -76,10 +78,31 @@ final class MockKeychain: KeychainManagerProtocol {
     // MARK: - Generic Data Storage (consolidated from KeychainHelper)
 
     func save(key: String, data: Data, service: String, accessible: CFString?) {
+        _ = saveWithResult(
+            key: key,
+            data: data,
+            service: service,
+            accessible: accessible
+        )
+    }
+
+    func saveWithResult(
+        key: String,
+        data: Data,
+        service: String,
+        accessible: CFString?
+    ) -> KeychainSaveResult {
+        if let simulatedGenericSaveError {
+            return simulatedGenericSaveError
+        }
+        guard !shouldFailGenericSave else {
+            return .otherError(OSStatus(-1))
+        }
         if serviceStorage[service] == nil {
             serviceStorage[service] = [:]
         }
         serviceStorage[service]?[key] = data
+        return .success
     }
 
     func load(key: String, service: String) -> Data? {
@@ -203,10 +226,25 @@ final class TrackingMockKeychain: KeychainManagerProtocol {
     }
 
     func save(key: String, data: Data, service: String, accessible: CFString?) {
+        _ = saveWithResult(
+            key: key,
+            data: data,
+            service: service,
+            accessible: accessible
+        )
+    }
+
+    func saveWithResult(
+        key: String,
+        data: Data,
+        service: String,
+        accessible: CFString?
+    ) -> KeychainSaveResult {
         if serviceStorage[service] == nil {
             serviceStorage[service] = [:]
         }
         serviceStorage[service]?[key] = data
+        return .success
     }
 
     func load(key: String, service: String) -> Data? {

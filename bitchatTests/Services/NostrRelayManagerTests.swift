@@ -44,6 +44,23 @@ final class NostrRelayManagerTests: XCTestCase {
         XCTAssertTrue(context.sessionFactory.allConnections.allSatisfy { $0.cancelCallCount >= 1 })
     }
 
+    func test_bridgeCourierDemand_addsAndRemovesStandingDMRelays() async {
+        let context = makeContext(permission: .denied, favorites: [])
+
+        XCTAssertTrue(context.manager.getRelayStatuses().isEmpty)
+
+        context.bridgeCourierDemandSubject.send(true)
+        let connected = await waitUntil {
+            context.manager.getRelayStatuses().count == self.expectedDefaultRelayCount &&
+            context.manager.relays.allSatisfy(\.isConnected)
+        }
+        XCTAssertTrue(connected)
+
+        context.bridgeCourierDemandSubject.send(false)
+        let removed = await waitUntil { context.manager.getRelayStatuses().isEmpty }
+        XCTAssertTrue(removed)
+    }
+
     /// A relay removed while its connection is queued behind Tor bootstrap
     /// must stay removed: draining the pending set used to resurrect it,
     /// because `dropRelays` never touched `pendingTorConnectionURLs` and a
@@ -1841,6 +1858,7 @@ final class NostrRelayManagerTests: XCTestCase {
     ) -> RelayManagerTestContext {
         let permissionSubject = CurrentValueSubject<LocationChannelManager.PermissionState, Never>(permission)
         let favoritesSubject = CurrentValueSubject<Set<Data>, Never>(favorites)
+        let bridgeCourierDemandSubject = CurrentValueSubject<Bool, Never>(false)
         let sessionFactory = MockRelaySessionFactory()
         let scheduler = MockRelayScheduler()
         let clock = MutableClock(now: Date(timeIntervalSince1970: 1_700_000_000))
@@ -1866,12 +1884,15 @@ final class NostrRelayManagerTests: XCTestCase {
                 now: { clock.now },
                 jitterUnit: jitterUnit,
                 notificationCenter: notificationCenter,
-                customRelays: { customRelays.urls }
+                customRelays: { customRelays.urls },
+                hasBridgeCourierDemand: { bridgeCourierDemandSubject.value },
+                bridgeCourierDemandPublisher: bridgeCourierDemandSubject.eraseToAnyPublisher()
             )
         )
         return RelayManagerTestContext(
             manager: manager,
             permissionSubject: permissionSubject,
+            bridgeCourierDemandSubject: bridgeCourierDemandSubject,
             sessionFactory: sessionFactory,
             scheduler: scheduler,
             clock: clock,
@@ -1925,6 +1946,7 @@ final class NostrRelayManagerTests: XCTestCase {
 private struct RelayManagerTestContext {
     let manager: NostrRelayManager
     let permissionSubject: CurrentValueSubject<LocationChannelManager.PermissionState, Never>
+    let bridgeCourierDemandSubject: CurrentValueSubject<Bool, Never>
     let sessionFactory: MockRelaySessionFactory
     let scheduler: MockRelayScheduler
     let clock: MutableClock

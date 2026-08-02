@@ -130,6 +130,7 @@ struct ContentPeopleSheetView: View {
                     #if os(iOS)
                     ContentPrivateChatSheetView(
                         showSidebar: $showSidebar,
+                        showVerifySheet: $showVerifySheet,
                         messageText: $messageText,
                         selectedMessageSender: $selectedMessageSender,
                         selectedMessageSenderID: $selectedMessageSenderID,
@@ -148,6 +149,7 @@ struct ContentPeopleSheetView: View {
                     #else
                     ContentPrivateChatSheetView(
                         showSidebar: $showSidebar,
+                        showVerifySheet: $showVerifySheet,
                         messageText: $messageText,
                         selectedMessageSender: $selectedMessageSender,
                         selectedMessageSenderID: $selectedMessageSenderID,
@@ -183,9 +185,29 @@ struct ContentPeopleSheetView: View {
                         .environmentObject(verificationModel)
                 }
             }
+            .navigationDestination(isPresented: Binding(
+                get: {
+                    appChromeModel.showingNicknameFor != nil
+                        && (showSidebar || privateConversationModel.selectedPeerID != nil)
+                },
+                set: { isPresented in
+                    if !isPresented {
+                        appChromeModel.clearNicknameEditor()
+                    }
+                }
+            )) {
+                if let peerID = appChromeModel.showingNicknameFor {
+                    LocalNicknameSheetView(peerID: peerID)
+                        .environmentObject(verificationModel)
+                }
+            }
         }
         .themedSheetBackground()
         .foregroundColor(palette.primary)
+        .sheet(isPresented: $showVerifySheet) {
+            VerificationSheetView(isPresented: $showVerifySheet)
+                .environmentObject(verificationModel)
+        }
         .confirmationDialog(
             String(
                 localized: "content.private_media.legacy_warning.title",
@@ -297,7 +319,6 @@ struct ContentPeopleSheetView: View {
 private struct ContentPeopleListView: View {
     @EnvironmentObject private var appChromeModel: AppChromeModel
     @EnvironmentObject private var privateConversationModel: PrivateConversationModel
-    @EnvironmentObject private var verificationModel: VerificationModel
     @EnvironmentObject private var conversationUIModel: ConversationUIModel
     @EnvironmentObject private var locationChannelsModel: LocationChannelsModel
     @EnvironmentObject private var peerListModel: PeerListModel
@@ -317,17 +338,17 @@ private struct ContentPeopleListView: View {
                     Spacer()
                     if case .mesh = locationChannelsModel.selectedChannel {
                         Button(action: { showVerifySheet = true }) {
-                            Image(systemName: "qrcode")
+                            Image(systemName: "qrcode.viewfinder")
                                 .font(.bitchatSystem(size: 14))
                         }
                         .buttonStyle(.plain)
                         // .help maps to the accessibility *hint* on iOS, so the
                         // button still needs a spoken name.
                         .accessibilityLabel(
-                            String(localized: "content.accessibility.verification", comment: "Accessibility label for the verification QR button")
+                            String(localized: "verification.sheet.title", comment: "Accessibility label for the global QR scanner")
                         )
                         .help(
-                            String(localized: "content.help.verification", comment: "Help text for verification button")
+                            String(localized: "verification.scan.prompt_friend", comment: "Help text for the global QR scanner")
                         )
                     }
                     SheetCloseButton {
@@ -376,11 +397,17 @@ private struct ContentPeopleListView: View {
                                 peerListModel.startConversation(with: peerID)
                                 showSidebar = true
                             },
-                            onToggleFavorite: { peerID in
-                                peerListModel.toggleFavorite(peerID: peerID)
+                            onRemoveFriend: { peerID in
+                                peerListModel.removeFriend(peerID: peerID)
                             },
                             onShowFingerprint: { peerID in
                                 appChromeModel.showFingerprint(for: peerID)
+                            },
+                            onAddFriend: { peerID in
+                                _ = peerListModel.addFriend(peerID: peerID)
+                            },
+                            onSetNickname: { peerID in
+                                appChromeModel.showNicknameEditor(for: peerID)
                             },
                             onToggleBlock: { peer in
                                 if peer.isBlocked {
@@ -411,10 +438,6 @@ private struct ContentPeopleListView: View {
                 .id(peerListModel.renderID)
             }
         }
-        .sheet(isPresented: $showVerifySheet) {
-            VerificationSheetView(isPresented: $showVerifySheet)
-                .environmentObject(verificationModel)
-        }
     }
 }
 
@@ -429,6 +452,7 @@ private struct ContentPrivateChatSheetView: View {
     @EnvironmentObject private var privateConversationModel: PrivateConversationModel
 
     @Binding var showSidebar: Bool
+    @Binding var showVerifySheet: Bool
     @Binding var messageText: String
     @Binding var selectedMessageSender: String?
     @Binding var selectedMessageSenderID: PeerID?
@@ -480,11 +504,19 @@ private struct ContentPrivateChatSheetView: View {
                             headerHeight: headerHeight
                         )
 
-                        if headerState.supportsFavoriteToggle {
+                        if headerState.supportsFriendAction {
                             Button(action: {
-                                privateConversationModel.toggleFavoriteForSelectedConversation()
+                                if headerState.isFavorite {
+                                    privateConversationModel.removeFriendForSelectedConversation()
+                                } else {
+                                    _ = privateConversationModel.addFriendForSelectedConversation()
+                                }
                             }) {
-                                Image(systemName: headerState.isFavorite ? "star.fill" : "star")
+                                Image(
+                                    systemName: headerState.isFavorite
+                                        ? "star.fill"
+                                        : "person.badge.plus"
+                                )
                                     .font(.bitchatSystem(size: 14))
                                     .foregroundColor(headerState.isFavorite ? Color.yellow : palette.primary)
                                     // Same visual box + 44pt hit target as SheetCloseButton.
@@ -719,9 +751,9 @@ private struct ContentPrivateHeaderInfoButton: View {
                         // and needs no lift.
                         .offset(y: icon.hasPrefix("lock") ? -1 : 0)
                         .foregroundColor(
-                            encryptionStatus == .noiseVerified || encryptionStatus == .noiseSecured
-                            ? palette.primary
-                            : Color.red
+                            encryptionStatus == .noiseVerified
+                                ? Color.green
+                                : Color.red
                         )
                         .accessibilityLabel(
                             String(

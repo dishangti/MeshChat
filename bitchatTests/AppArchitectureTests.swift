@@ -194,6 +194,36 @@ struct AppArchitectureTests {
         #expect(Set([first, second]).count == 1)
     }
 
+    @Test("Deleting Recent returns Home only for the active peer identity")
+    func recentDeletionNavigationMatchesStableAndShortPeerIDs() {
+        let deletedNoiseKey = Data(repeating: 0xA1, count: 32)
+        let deletedStablePeerID = PeerID(hexData: deletedNoiseKey)
+        let deletedShortPeerID = PeerID(publicKey: deletedNoiseKey)
+        let anotherPeerID = PeerID(str: "0011223344556677")
+
+        #expect(
+            MeshChatRecentDeletionNavigation.shouldShowHome(
+                afterDeleting: deletedStablePeerID,
+                activePeerID: deletedShortPeerID,
+                wasShowingConversation: true
+            )
+        )
+        #expect(
+            !MeshChatRecentDeletionNavigation.shouldShowHome(
+                afterDeleting: deletedStablePeerID,
+                activePeerID: anotherPeerID,
+                wasShowingConversation: true
+            )
+        )
+        #expect(
+            !MeshChatRecentDeletionNavigation.shouldShowHome(
+                afterDeleting: deletedStablePeerID,
+                activePeerID: deletedShortPeerID,
+                wasShowingConversation: false
+            )
+        )
+    }
+
     @Test("ConversationStore orders timelines and replaces duplicates by message ID")
     @MainActor
     func conversationStoreOrdersAndDedupsMessages() {
@@ -458,7 +488,7 @@ struct AppArchitectureTests {
         #expect(chromeModel.showingFingerprintFor == nil)
     }
 
-    @Test("Settings entry selects settings while the app logo selects info")
+    @Test("App information can open Help, Info, or Settings directly")
     @MainActor
     func appChromeModelSelectsRequestedInfoPane() {
         let defaults = UserDefaults.standard
@@ -481,6 +511,9 @@ struct AppArchitectureTests {
 
         chromeModel.presentAppInfo(pane: .info)
         #expect(defaults.string(forKey: AppInfoPane.storageKey) == AppInfoPane.info.rawValue)
+
+        chromeModel.presentAppInfo()
+        #expect(defaults.string(forKey: AppInfoPane.storageKey) == AppInfoPane.help.rawValue)
     }
 
     @Test("AppChromeModel closes every transient surface for panic")
@@ -705,6 +738,15 @@ struct AppArchitectureTests {
         #expect(!presentation.myFingerprint.isEmpty)
         #expect(!verificationModel.isVerified(peerID: peerID))
 
+        #expect(!verificationModel.setLocalPetname("bad\u{0007}name", for: peerID))
+        #expect(
+            verificationModel.fingerprintPresentation(for: peerID).localPetname == nil
+        )
+        #expect(verificationModel.setLocalPetname("  Buddy  ", for: peerID))
+        #expect(
+            verificationModel.fingerprintPresentation(for: peerID).localPetname == "Buddy"
+        )
+
         verificationModel.verifyFingerprint(for: peerID)
         await waitUntil {
             verificationModel.isVerified(peerID: peerID)
@@ -716,6 +758,128 @@ struct AppArchitectureTests {
             !verificationModel.isVerified(peerID: peerID)
         }
         #expect(!verificationModel.isVerified(peerID: peerID))
+    }
+
+    @Test("VerificationModel keeps QR nickname, friend, and verification actions separate")
+    @MainActor
+    func verificationModelPreviewsSignedFriendQRBeforeStartingTransport() throws {
+        let viewModel = makeArchitectureViewModel()
+        VerificationService.shared.configure(with: viewModel.meshService)
+
+        let privateConversationModel = PrivateConversationModel(
+            chatViewModel: viewModel,
+            conversations: viewModel.conversations,
+            locationChannelsModel: LocationChannelsModel(manager: makeArchitectureLocationManager())
+        )
+        let verificationModel = VerificationModel(
+            chatViewModel: viewModel,
+            privateConversationModel: privateConversationModel
+        )
+
+        let friendTransport = MockTransport()
+        let friendQRService = VerificationService()
+        friendQRService.configure(with: friendTransport)
+        let payload = try #require(
+            friendQRService.buildMyQRString(nickname: "Alice", npub: nil)
+        )
+
+        let outcome = verificationModel.verifyScannedPayload(payload)
+        guard case .candidate(let candidate) = outcome else {
+            Issue.record("Expected a signed QR to produce a confirmation candidate")
+            return
+        }
+
+        #expect(candidate.claimedNickname == "Alice")
+        #expect(candidate.fingerprint == friendTransport.mockNoiseService.getStaticPublicKeyData().sha256Fingerprint())
+        #expect(verificationModel.friendCandidate == candidate)
+        #expect(verificationModel.friendVerificationState == .ready)
+
+        #expect(!verificationModel.setLocalPetname("Alice\u{0007}", for: candidate))
+        #expect(verificationModel.friendVerificationState == .ready)
+
+        let noiseKey = friendTransport.mockNoiseService.getStaticPublicKeyData()
+        #expect(verificationModel.setLocalPetname("  Neighbor  ", for: candidate))
+        #expect(!verificationModel.isFriend(candidate))
+        #expect(!verificationModel.isVerified(peerID: PeerID(publicKey: noiseKey)))
+        let socialBeforeAdding = viewModel.identityManager.getSocialIdentity(
+            for: candidate.fingerprint
+        )
+        #expect(socialBeforeAdding?.localPetname == "Neighbor")
+        #expect(socialBeforeAdding?.isFavorite == false)
+        #expect(verificationModel.friendVerificationState == .ready)
+
+        defer {
+            FavoritesPersistenceService.shared.removeFavorite(peerNoisePublicKey: noiseKey)
+        }
+        #expect(verificationModel.addFriendFromCandidate())
+        #expect(verificationModel.isFriend(candidate))
+        #expect(!verificationModel.isVerified(peerID: PeerID(publicKey: noiseKey)))
+        #expect(
+            viewModel.identityManager
+                .getSocialIdentity(for: candidate.fingerprint)?.localPetname == "Neighbor"
+        )
+        #expect(verificationModel.friendVerificationState == .ready)
+    }
+
+    @Test("QR friend addition rechecks a newly pinned signing key")
+    @MainActor
+    func verificationModelRejectsCandidateWhenSigningPinChangesBeforeAdd() throws {
+        let viewModel = makeArchitectureViewModel()
+        VerificationService.shared.configure(with: viewModel.meshService)
+        let verificationModel = VerificationModel(
+            chatViewModel: viewModel,
+            privateConversationModel: PrivateConversationModel(
+                chatViewModel: viewModel,
+                conversations: viewModel.conversations,
+                locationChannelsModel: LocationChannelsModel(
+                    manager: makeArchitectureLocationManager()
+                )
+            )
+        )
+
+        let friendTransport = MockTransport()
+        let friendQRService = VerificationService()
+        friendQRService.configure(with: friendTransport)
+        let payload = try #require(
+            friendQRService.buildMyQRString(nickname: "Alice", npub: nil)
+        )
+        guard case .candidate(let candidate) = verificationModel.verifyScannedPayload(payload) else {
+            Issue.record("Expected a signed QR to produce a confirmation candidate")
+            return
+        }
+
+        let noiseKey = friendTransport.mockNoiseService.getStaticPublicKeyData()
+        viewModel.identityManager.bindAuthenticatedSigningPublicKey(
+            Data(repeating: 0xA5, count: 32),
+            fingerprint: candidate.fingerprint
+        )
+
+        #expect(!verificationModel.addFriendFromCandidate())
+        #expect(verificationModel.friendVerificationState == .failed(.signingKeyMismatch))
+        #expect(!FavoritesPersistenceService.shared.isFavorite(noiseKey))
+    }
+
+    @Test("VerificationModel rejects scanning this device's own QR")
+    @MainActor
+    func verificationModelRejectsOwnQR() throws {
+        let viewModel = makeArchitectureViewModel()
+        VerificationService.shared.configure(with: viewModel.meshService)
+        let privateConversationModel = PrivateConversationModel(
+            chatViewModel: viewModel,
+            conversations: viewModel.conversations,
+            locationChannelsModel: LocationChannelsModel(manager: makeArchitectureLocationManager())
+        )
+        let verificationModel = VerificationModel(
+            chatViewModel: viewModel,
+            privateConversationModel: privateConversationModel
+        )
+        let payload = try #require(
+            VerificationService.shared.buildMyQRString(nickname: "Me", npub: nil)
+        )
+
+        #expect(verificationModel.verifyScannedPayload(payload) == .rejected(.selfIdentity))
+        #expect(verificationModel.friendCandidate == nil)
+        #expect(verificationModel.friendVerificationState == .failed(.selfIdentity))
     }
 
     @Test("VerificationModel refreshes when peer trust changes (vouch accepted)")
@@ -845,5 +1009,226 @@ struct AppArchitectureTests {
             }
             return false
         }
+    }
+
+    @Test("PeerListModel publishes deduplicated offline non-friend recents by last message")
+    @MainActor
+    func peerListModelPublishesOfflineRecentConversations() async {
+        let viewModel = makeArchitectureViewModel()
+        guard let transport = viewModel.meshService as? MockTransport else {
+            Issue.record("Expected ChatViewModel meshService to be a MockTransport in architecture tests")
+            return
+        }
+        let locationChannelsModel = LocationChannelsModel(manager: makeArchitectureLocationManager())
+        let model = PeerListModel(
+            chatViewModel: viewModel,
+            conversations: viewModel.conversations,
+            locationChannelsModel: locationChannelsModel
+        )
+        let aliceNoiseKey = Data(repeating: 0xA1, count: 32)
+        let bobNoiseKey = Data(repeating: 0xB2, count: 32)
+        let aliceShortID = PeerID(publicKey: aliceNoiseKey)
+        let aliceStableID = PeerID(hexData: aliceNoiseKey)
+        let bobStableID = PeerID(hexData: bobNoiseKey)
+        let aliceFingerprint = aliceNoiseKey.sha256Fingerprint()
+        let bobFingerprint = bobNoiseKey.sha256Fingerprint()
+
+        viewModel.identityManager.upsertCryptographicIdentity(
+            fingerprint: aliceFingerprint,
+            noisePublicKey: aliceNoiseKey,
+            signingPublicKey: nil,
+            claimedNickname: "Alice"
+        )
+        viewModel.identityManager.upsertCryptographicIdentity(
+            fingerprint: bobFingerprint,
+            noisePublicKey: bobNoiseKey,
+            signingPublicKey: nil,
+            claimedNickname: "Bob"
+        )
+        viewModel.peerIdentityStore.setStablePeerID(
+            aliceStableID,
+            forShortID: aliceShortID
+        )
+        #expect(viewModel.getFingerprint(for: aliceStableID) == aliceFingerprint)
+        #expect(viewModel.getFingerprint(for: aliceShortID) == nil)
+        viewModel.identityManager.updateSocialIdentity(
+            SocialIdentity(
+                fingerprint: aliceFingerprint,
+                localPetname: "Neighbor",
+                claimedNickname: "Alice",
+                trustLevel: .unknown,
+                isFavorite: false,
+                isBlocked: false,
+                notes: nil
+            )
+        )
+
+        viewModel.conversations.append(
+            makeArchitectureMessage(
+                id: "alice-short",
+                timestamp: 10,
+                isPrivate: true,
+                senderPeerID: aliceShortID
+            ),
+            to: .directPeer(aliceShortID)
+        )
+        viewModel.conversations.append(
+            makeArchitectureMessage(
+                id: "alice-short-older-alias-extra",
+                timestamp: 11,
+                isPrivate: true,
+                senderPeerID: aliceShortID
+            ),
+            to: .directPeer(aliceShortID)
+        )
+        viewModel.conversations.append(
+            makeArchitectureMessage(
+                id: "bob-stable",
+                timestamp: 20,
+                isPrivate: true,
+                senderPeerID: bobStableID
+            ),
+            to: .directPeer(bobStableID)
+        )
+        viewModel.conversations.append(
+            makeArchitectureMessage(
+                id: "alice-stable",
+                timestamp: 30,
+                isPrivate: true,
+                senderPeerID: aliceStableID
+            ),
+            to: .directPeer(aliceStableID)
+        )
+        viewModel.conversations.markUnread(.directPeer(aliceStableID))
+
+        // Empty selections and non-mesh direct timelines never become Recents.
+        viewModel.conversations.setSelectedPrivatePeer(PeerID(publicKey: Data(repeating: 0xC3, count: 32)))
+        let groupID = PeerID(groupID: Data(repeating: 0xD4, count: 16))
+        viewModel.conversations.append(
+            makeArchitectureMessage(id: "group", timestamp: 40, isPrivate: true, senderPeerID: groupID),
+            to: .directPeer(groupID)
+        )
+        let geoID = PeerID(nostr_: String(repeating: "e", count: 64))
+        viewModel.conversations.append(
+            makeArchitectureMessage(id: "geo", timestamp: 50, isPrivate: true, senderPeerID: geoID),
+            to: .directPeer(geoID)
+        )
+        let selfStableID = PeerID(hexData: transport.noiseStaticPublicKeyData())
+        viewModel.conversations.append(
+            makeArchitectureMessage(id: "self", timestamp: 60, isPrivate: true, senderPeerID: transport.myPeerID),
+            to: .directPeer(selfStableID)
+        )
+        let systemOnlyPeer = PeerID(hexData: Data(repeating: 0xE5, count: 32))
+        viewModel.conversations.append(
+            BitchatMessage(
+                id: "system-only",
+                sender: "system",
+                content: "local status",
+                timestamp: Date(timeIntervalSince1970: 70),
+                isRelay: false,
+                originalSender: nil,
+                isPrivate: true,
+                recipientNickname: nil,
+                senderPeerID: systemOnlyPeer
+            ),
+            to: .directPeer(systemOnlyPeer)
+        )
+
+        await waitUntil {
+            model.recentMeshRows.count == 2
+                && model.recentMeshRows.first?.lastMessageAt
+                    == Date(timeIntervalSince1970: 30)
+                && model.recentMeshRows.first?.hasUnread == true
+        }
+
+        #expect(model.recentMeshRows.map(\.fingerprint) == [aliceFingerprint, bobFingerprint])
+        #expect(model.recentMeshRows.map(\.lastMessageAt) == [
+            Date(timeIntervalSince1970: 30),
+            Date(timeIntervalSince1970: 20)
+        ])
+        #expect(model.recentMeshRows.first?.displayName == "Neighbor")
+        #expect(model.recentMeshRows.first?.claimedNickname == "Alice")
+        #expect(model.recentMeshRows.first?.conversationPeerID == aliceStableID)
+        #expect(Set(model.recentMeshRows.first?.conversationPeerIDs ?? []) == [
+            aliceShortID,
+            aliceStableID
+        ])
+        #expect(model.recentMeshRows.first?.hasUnread == true)
+
+        if let aliceRecent = model.recentMeshRows.first {
+            #expect(model.prepareRecentConversationForOpening(aliceRecent) == aliceStableID)
+        }
+        await waitUntil {
+            viewModel.conversations.conversationsByID[.directPeer(aliceShortID)] == nil
+                && viewModel.conversations.conversationsByID[.directPeer(aliceStableID)]?
+                    .messages.count == 3
+        }
+        #expect(
+            viewModel.conversations.conversationsByID[.directPeer(aliceStableID)]?
+                .messages.map(\.id) == [
+                    "alice-short",
+                    "alice-short-older-alias-extra",
+                    "alice-stable"
+                ]
+        )
+        viewModel.conversations.markRead(.directPeer(aliceStableID))
+        await waitUntil { model.recentMeshRows.first?.hasUnread == false }
+        #expect(model.recentMeshRows.first?.hasUnread == false)
+
+        transport.updatePeerSnapshots([
+            makeArchitectureSnapshot(
+                peerID: PeerID(publicKey: bobNoiseKey),
+                nickname: "Bob",
+                connected: true,
+                noisePublicKey: bobNoiseKey
+            )
+        ])
+        await waitUntil { model.recentMeshRows.map(\.fingerprint) == [aliceFingerprint] }
+        #expect(model.recentMeshRows.map(\.fingerprint) == [aliceFingerprint])
+    }
+
+    @Test("An offline Recent can be added as a friend without a live peer row")
+    @MainActor
+    func peerListModelAddsOfflineRecentAsFriend() async throws {
+        let viewModel = makeArchitectureViewModel()
+        let model = PeerListModel(
+            chatViewModel: viewModel,
+            conversations: viewModel.conversations,
+            locationChannelsModel: LocationChannelsModel(manager: makeArchitectureLocationManager())
+        )
+        let noiseKey = Data(repeating: 0xC7, count: 32)
+        let stablePeerID = PeerID(hexData: noiseKey)
+        let fingerprint = noiseKey.sha256Fingerprint()
+        defer {
+            _ = FavoritesPersistenceService.shared.removeFavorite(
+                peerNoisePublicKey: noiseKey
+            )
+        }
+
+        viewModel.identityManager.upsertCryptographicIdentity(
+            fingerprint: fingerprint,
+            noisePublicKey: noiseKey,
+            signingPublicKey: nil,
+            claimedNickname: "Casey"
+        )
+        viewModel.conversations.append(
+            makeArchitectureMessage(
+                id: "casey-dm",
+                timestamp: 100,
+                isPrivate: true,
+                senderPeerID: stablePeerID
+            ),
+            to: .directPeer(stablePeerID)
+        )
+        await waitUntil { model.recentMeshRows.count == 1 }
+        let recent = try #require(model.recentMeshRows.first)
+
+        #expect(model.addFriend(recentPeer: recent))
+        await waitUntil { model.recentMeshRows.isEmpty }
+
+        #expect(FavoritesPersistenceService.shared.isFavorite(noiseKey))
+        #expect(model.recentMeshRows.isEmpty)
+        #expect(viewModel.identityManager.getSocialIdentity(for: fingerprint)?.isFavorite == true)
+        #expect(!viewModel.peerIdentityStore.isVerified(fingerprint))
     }
 }

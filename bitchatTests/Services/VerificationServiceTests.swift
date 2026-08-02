@@ -5,7 +5,7 @@ final class VerificationServiceTests: XCTestCase {
     func test_buildMyQRString_roundTripsSuccessfully() throws {
         let (service, noise) = makeService()
         let nickname = "alice-\(UUID().uuidString)"
-        let npub = "npub1testvalue"
+        let npub = try makeValidNpub()
 
         let qrString = try XCTUnwrap(service.buildMyQRString(nickname: nickname, npub: npub))
         let parsed = try XCTUnwrap(service.verifyScannedQR(qrString))
@@ -24,6 +24,44 @@ final class VerificationServiceTests: XCTestCase {
         let second = try XCTUnwrap(service.buildMyQRString(nickname: nickname, npub: nil))
 
         XCTAssertEqual(first, second)
+    }
+
+    func test_buildMyQRString_cacheIsScopedToTheCurrentIdentity() throws {
+        let service = VerificationService()
+        let firstTransport = MockTransport()
+        service.configure(with: firstTransport)
+
+        let nickname = "id-cache-\(UUID().uuidString)"
+        let first = try XCTUnwrap(service.buildMyQRString(nickname: nickname, npub: nil))
+        let firstQR = try XCTUnwrap(VerificationService.VerificationQR.fromURL(XCTUnwrap(URL(string: first))))
+
+        let secondTransport = MockTransport()
+        service.configure(with: secondTransport)
+        let second = try XCTUnwrap(service.buildMyQRString(nickname: nickname, npub: nil))
+        let secondQR = try XCTUnwrap(VerificationService.VerificationQR.fromURL(XCTUnwrap(URL(string: second))))
+
+        XCTAssertNotEqual(first, second)
+        XCTAssertNotEqual(firstQR.noiseKeyHex, secondQR.noiseKeyHex)
+        XCTAssertNotEqual(firstQR.signKeyHex, secondQR.signKeyHex)
+    }
+
+    func test_buildMyQRString_acceptsBitchatWireNicknameAndRejectsOversizeOrInvalidNpub() throws {
+        let (service, _) = makeService()
+
+        XCTAssertNil(service.buildMyQRString(nickname: " ", npub: nil))
+        XCTAssertNotNil(
+            service.buildMyQRString(
+                nickname: String(repeating: "a", count: InputValidator.Limits.maxNicknameLength + 1),
+                npub: nil
+            )
+        )
+        XCTAssertNil(
+            service.buildMyQRString(
+                nickname: String(repeating: "a", count: 256),
+                npub: nil
+            )
+        )
+        XCTAssertNil(service.buildMyQRString(nickname: "alice", npub: "npub1not-valid"))
     }
 
     func test_verificationQR_keepsCanonicalSchemeAndAcceptsMeshChatAlias() throws {
@@ -60,6 +98,69 @@ final class VerificationServiceTests: XCTestCase {
         XCTAssertNil(service.verifyScannedQR(qrString, maxAge: 60))
     }
 
+    func test_verifyScannedQR_capsCallerSuppliedMaximumAge() throws {
+        let (service, noise) = makeService()
+        let oldTimestamp = Int64(
+            Date()
+                .addingTimeInterval(-(TransportConfig.verificationQRMaxAgeSeconds + 60))
+                .timeIntervalSince1970
+        )
+        let qrString = try makeSignedQR(
+            noise: noise,
+            nickname: "bounded-age-\(UUID().uuidString)",
+            npub: nil,
+            ts: oldTimestamp
+        )
+
+        XCTAssertNil(service.verifyScannedQR(qrString, maxAge: 3_600))
+    }
+
+    func test_verifyScannedQR_rejectsExcessiveFutureTimestampButAllowsClockSkew() throws {
+        let (service, noise) = makeService()
+        let nearFuture = try makeSignedQR(
+            noise: noise,
+            nickname: "near-future-\(UUID().uuidString)",
+            npub: nil,
+            ts: Int64(Date().addingTimeInterval(30).timeIntervalSince1970)
+        )
+        let farFuture = try makeSignedQR(
+            noise: noise,
+            nickname: "far-future-\(UUID().uuidString)",
+            npub: nil,
+            ts: Int64(Date().addingTimeInterval(120).timeIntervalSince1970)
+        )
+
+        XCTAssertNotNil(service.verifyScannedQR(nearFuture))
+        XCTAssertNil(service.verifyScannedQR(farFuture))
+    }
+
+    func test_verifyScannedQR_rejectsInvalidMaximumAge() throws {
+        let (service, noise) = makeService()
+        let qrString = try makeSignedQR(
+            noise: noise,
+            nickname: "bad-age-\(UUID().uuidString)",
+            npub: nil,
+            ts: Int64(Date().timeIntervalSince1970)
+        )
+
+        XCTAssertNil(service.verifyScannedQR(qrString, maxAge: -1))
+        XCTAssertNil(service.verifyScannedQR(qrString, maxAge: .infinity))
+    }
+
+    func test_verifyScannedQR_rejectsOversizedRawURLBeforeParsing() throws {
+        let (service, noise) = makeService()
+        let qrString = try makeSignedQR(
+            noise: noise,
+            nickname: "url-size-\(UUID().uuidString)",
+            npub: nil,
+            ts: Int64(Date().timeIntervalSince1970)
+        )
+        let oversized = qrString + "&ignored=" + String(repeating: "a", count: 2_048)
+
+        XCTAssertGreaterThan(oversized.utf8.count, 2_048)
+        XCTAssertNil(service.verifyScannedQR(oversized))
+    }
+
     func test_verifyScannedQR_rejectsTamperedSignature() throws {
         let (service, noise) = makeService()
         let badSignature = Data(repeating: 0xAA, count: 64)
@@ -72,6 +173,184 @@ final class VerificationServiceTests: XCTestCase {
         )
 
         XCTAssertNil(service.verifyScannedQR(qrString))
+    }
+
+    func test_verificationQR_rejectsUnsupportedVersionAndDuplicateQueryNames() throws {
+        let (service, noise) = makeService()
+        let unsupported = try makeSignedQR(
+            noise: noise,
+            version: 2,
+            nickname: "v2-\(UUID().uuidString)",
+            npub: nil,
+            ts: Int64(Date().timeIntervalSince1970)
+        )
+
+        XCTAssertNil(service.verifyScannedQR(unsupported))
+        XCTAssertNil(
+            VerificationService.VerificationQR.fromURL(
+                try XCTUnwrap(URL(string: unsupported))
+            )
+        )
+
+        let valid = try makeSignedQR(
+            noise: noise,
+            nickname: "duplicate-\(UUID().uuidString)",
+            npub: nil,
+            ts: Int64(Date().timeIntervalSince1970)
+        )
+        var components = try XCTUnwrap(
+            URLComponents(string: valid)
+        )
+        components.queryItems?.append(URLQueryItem(name: "nick", value: "mallory"))
+        let duplicate = try XCTUnwrap(components.string)
+
+        XCTAssertNil(service.verifyScannedQR(duplicate))
+        XCTAssertNil(
+            VerificationService.VerificationQR.fromURL(
+                try XCTUnwrap(URL(string: duplicate))
+            )
+        )
+    }
+
+    func test_verificationQR_rejectsNoncanonicalNumericRepresentations() throws {
+        let (service, noise) = makeService()
+        let valid = try makeSignedQR(
+            noise: noise,
+            nickname: "numeric-\(UUID().uuidString)",
+            npub: nil,
+            ts: Int64(Date().timeIntervalSince1970)
+        )
+        var components = try XCTUnwrap(URLComponents(string: valid))
+
+        components.queryItems = components.queryItems?.map { item in
+            guard item.name == "ts", let value = item.value else { return item }
+            return URLQueryItem(name: item.name, value: "0" + value)
+        }
+        let leadingZeroTimestamp = try XCTUnwrap(components.string)
+        XCTAssertNil(service.verifyScannedQR(leadingZeroTimestamp))
+
+        components = try XCTUnwrap(URLComponents(string: valid))
+        components.queryItems = components.queryItems?.map { item in
+            item.name == "v" ? URLQueryItem(name: item.name, value: "01") : item
+        }
+        let leadingZeroVersion = try XCTUnwrap(components.string)
+        XCTAssertNil(service.verifyScannedQR(leadingZeroVersion))
+    }
+
+    func test_verifyScannedQR_rejectsMalformedExactLengthFields() throws {
+        let (service, noise) = makeService()
+        let timestamp = Int64(Date().timeIntervalSince1970)
+        let nickname = "malformed-\(UUID().uuidString)"
+
+        let shortNoiseKey = try makeSignedQR(
+            noise: noise,
+            noiseKeyHex: String(repeating: "a", count: 62),
+            nickname: nickname,
+            npub: nil,
+            ts: timestamp
+        )
+        let nonHexNoiseKey = try makeSignedQR(
+            noise: noise,
+            noiseKeyHex: String(repeating: "z", count: 64),
+            nickname: nickname,
+            npub: nil,
+            ts: timestamp
+        )
+        let shortSigningKey = try makeSignedQR(
+            noise: noise,
+            signKeyHex: String(repeating: "b", count: 62),
+            nickname: nickname,
+            npub: nil,
+            ts: timestamp
+        )
+        let shortSignature = try makeSignedQR(
+            noise: noise,
+            nickname: nickname,
+            npub: nil,
+            ts: timestamp,
+            signatureOverride: Data(repeating: 0x01, count: 63)
+        )
+
+        XCTAssertNil(service.verifyScannedQR(shortNoiseKey))
+        XCTAssertNil(service.verifyScannedQR(nonHexNoiseKey))
+        XCTAssertNil(service.verifyScannedQR(shortSigningKey))
+        XCTAssertNil(service.verifyScannedQR(shortSignature))
+    }
+
+    func test_verifyScannedQR_rejectsMalformedOrWrongLengthNonce() throws {
+        let (service, noise) = makeService()
+        let timestamp = Int64(Date().timeIntervalSince1970)
+        let malformed = try makeSignedQR(
+            noise: noise,
+            nickname: "bad-nonce-\(UUID().uuidString)",
+            npub: nil,
+            ts: timestamp,
+            nonceB64: "not base64!"
+        )
+        let wrongLength = try makeSignedQR(
+            noise: noise,
+            nickname: "short-nonce-\(UUID().uuidString)",
+            npub: nil,
+            ts: timestamp,
+            nonceB64: Data(repeating: 0x01, count: 15).base64EncodedString()
+        )
+
+        XCTAssertNil(service.verifyScannedQR(malformed))
+        XCTAssertNil(service.verifyScannedQR(wrongLength))
+    }
+
+    func test_verifyScannedQR_rejectsInvalidNickname() throws {
+        let (service, noise) = makeService()
+        let timestamp = Int64(Date().timeIntervalSince1970)
+        let invalidNicknames = [
+            "",
+            " alice ",
+            "alice\u{0007}",
+            String(repeating: "a", count: 256),
+            String(repeating: "🇨🇳", count: 32)
+        ]
+
+        for nickname in invalidNicknames {
+            let qrString = try makeSignedQR(
+                noise: noise,
+                nickname: nickname,
+                npub: nil,
+                ts: timestamp
+            )
+            XCTAssertNil(service.verifyScannedQR(qrString), "Accepted invalid nickname: \(nickname.debugDescription)")
+        }
+
+        let compatibleLongNickname = String(
+            repeating: "a",
+            count: InputValidator.Limits.maxNicknameLength + 1
+        )
+        let compatibleQR = try makeSignedQR(
+            noise: noise,
+            nickname: compatibleLongNickname,
+            npub: nil,
+            ts: timestamp
+        )
+        XCTAssertEqual(
+            service.verifyScannedQR(compatibleQR)?.nickname,
+            compatibleLongNickname
+        )
+    }
+
+    func test_verifyScannedQR_requiresCanonicalNpubWhenPresent() throws {
+        let (service, noise) = makeService()
+        let timestamp = Int64(Date().timeIntervalSince1970)
+        let wrongHRP = try Bech32.encode(hrp: "nsec", data: Data(repeating: 0x22, count: 32))
+        let wrongLength = try Bech32.encode(hrp: "npub", data: Data(repeating: 0x33, count: 31))
+
+        for npub in ["npub1not-valid", wrongHRP, wrongLength] {
+            let qrString = try makeSignedQR(
+                noise: noise,
+                nickname: "invalid-npub-\(UUID().uuidString)",
+                npub: npub,
+                ts: timestamp
+            )
+            XCTAssertNil(service.verifyScannedQR(qrString), "Accepted invalid npub: \(npub)")
+        }
     }
 
     func test_buildVerifyChallenge_roundTripsThroughNoisePayload() throws {
@@ -130,23 +409,31 @@ final class VerificationServiceTests: XCTestCase {
 
     private func makeSignedQR(
         noise: NoiseEncryptionService,
+        version: Int = 1,
+        noiseKeyHex: String? = nil,
+        signKeyHex: String? = nil,
         nickname: String,
         npub: String?,
         ts: Int64,
+        nonceB64: String = Data((0..<16).map(UInt8.init)).base64EncodedString(),
         signatureOverride: Data? = nil
     ) throws -> String {
         var payload = VerificationService.VerificationQR(
-            v: 1,
-            noiseKeyHex: noise.getStaticPublicKeyData().hexEncodedString(),
-            signKeyHex: noise.getSigningPublicKeyData().hexEncodedString(),
+            v: version,
+            noiseKeyHex: noiseKeyHex ?? noise.getStaticPublicKeyData().hexEncodedString(),
+            signKeyHex: signKeyHex ?? noise.getSigningPublicKeyData().hexEncodedString(),
             npub: npub,
             nickname: nickname,
             ts: ts,
-            nonceB64: Data((0..<16).map(UInt8.init)).base64EncodedString(),
+            nonceB64: nonceB64,
             sigHex: ""
         )
         let signature = try XCTUnwrap(signatureOverride ?? noise.signData(payload.canonicalBytes()))
         payload.sigHex = signature.hexEncodedString()
         return payload.toURLString()
+    }
+
+    private func makeValidNpub() throws -> String {
+        try Bech32.encode(hrp: "npub", data: Data((0..<32).map(UInt8.init)))
     }
 }

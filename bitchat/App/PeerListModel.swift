@@ -1,5 +1,6 @@
 import BitFoundation
 import Combine
+import Foundation
 import SwiftUI
 
 struct MeshPeerRow: Identifiable, Equatable {
@@ -39,10 +40,43 @@ struct GroupChatRow: Identifiable, Equatable {
     var id: String { peerID.id }
 }
 
+/// A direct-message counterpart that remains visible after a non-friend leaves
+/// the mesh. `id` is the full Noise fingerprint; every observed routing alias
+/// is retained so the complete timeline can be consolidated before opening.
+struct RecentMeshPeerRow: Identifiable, Equatable {
+    let stablePeerID: PeerID
+    let conversationPeerIDs: [PeerID]
+    let noisePublicKey: Data
+    let fingerprint: String
+    let displayName: String
+    let claimedNickname: String
+    let lastMessageAt: Date
+    let hasUnread: Bool
+    let isBlocked: Bool
+
+    var id: String { fingerprint }
+    var conversationPeerID: PeerID { stablePeerID }
+}
+
+private struct ResolvedRecentMeshIdentity {
+    let stablePeerID: PeerID
+    let noisePublicKey: Data
+    let fingerprint: String
+}
+
+private struct RecentMeshConversationAccumulator {
+    let identity: ResolvedRecentMeshIdentity
+    var conversationPeerIDs: Set<PeerID>
+    var lastMessageAt: Date
+    var claimedNicknameFromMessages: String?
+    var hasUnread: Bool
+}
+
 @MainActor
 final class PeerListModel: ObservableObject {
     @Published private(set) var allPeers: [BitchatPeer] = []
     @Published private(set) var meshRows: [MeshPeerRow] = []
+    @Published private(set) var recentMeshRows: [RecentMeshPeerRow] = []
     @Published private(set) var geohashPeople: [GeohashPersonRow] = []
     @Published private(set) var groupRows: [GroupChatRow] = []
     @Published private(set) var reachableMeshPeerCount = 0
@@ -91,8 +125,91 @@ final class PeerListModel: ObservableObject {
         chatViewModel.startPrivateChat(with: peerID)
     }
 
-    func toggleFavorite(peerID: PeerID) {
-        chatViewModel.toggleFavorite(peerID: peerID)
+    /// Consolidates every known short/full routing alias before navigation so
+    /// the opened timeline and unread state both represent the whole identity.
+    @discardableResult
+    func prepareRecentConversationForOpening(
+        _ recentPeer: RecentMeshPeerRow
+    ) -> PeerID {
+        let destination = ConversationID.directPeer(recentPeer.stablePeerID)
+        for peerID in recentPeer.conversationPeerIDs where peerID != recentPeer.stablePeerID {
+            conversations.migrateConversation(
+                from: .directPeer(peerID),
+                to: destination
+            )
+        }
+        return recentPeer.stablePeerID
+    }
+
+    /// Deletes every message that belonged to this Recent identity when the
+    /// user confirmed the action. The fingerprint remains stable while a
+    /// confirmation dialog is open, whereas its row and routing aliases may
+    /// change. Resolve the current store again before merging aliases and
+    /// using the private-chat deletion transaction; that transaction owns
+    /// media tombstones, transfer cancellation, file cleanup, and final
+    /// conversation removal.
+    @discardableResult
+    func deleteRecentChat(fingerprint: String) -> PeerID? {
+        let currentMatches = conversations.conversationIDs.compactMap {
+            conversationID -> (peerID: PeerID, identity: ResolvedRecentMeshIdentity)? in
+            guard case .direct(let handle) = conversationID else { return nil }
+            let peerID = handle.routingPeerID
+            guard isEligibleRecentMeshPeerID(peerID),
+                  let identity = resolveRecentMeshIdentity(for: peerID),
+                  identity.fingerprint == fingerprint else {
+                return nil
+            }
+            return (peerID, identity)
+        }
+
+        guard let stablePeerID = recentMeshRows.first(where: {
+            $0.fingerprint == fingerprint
+        })?.stablePeerID ?? currentMatches.first?.identity.stablePeerID else {
+            return nil
+        }
+
+        let destination = ConversationID.directPeer(stablePeerID)
+        let currentPeerIDs = Set(currentMatches.map(\.peerID)).sorted {
+            $0.id < $1.id
+        }
+        for peerID in currentPeerIDs where peerID != stablePeerID {
+            conversations.migrateConversation(
+                from: .directPeer(peerID),
+                to: destination
+            )
+        }
+
+        chatViewModel.deletePrivateChat(stablePeerID)
+        return stablePeerID
+    }
+
+    @discardableResult
+    func deleteRecentConversation(
+        _ recentPeer: RecentMeshPeerRow
+    ) -> PeerID? {
+        deleteRecentChat(fingerprint: recentPeer.fingerprint)
+    }
+
+    @discardableResult
+    func addFriend(peerID: PeerID) -> Bool {
+        chatViewModel.addFriend(peerID: peerID)
+    }
+
+    /// Adds an offline recent by its persisted Noise identity instead of
+    /// requiring a live UnifiedPeerService row.
+    @discardableResult
+    func addFriend(recentPeer: RecentMeshPeerRow) -> Bool {
+        chatViewModel.addFriend(
+            noisePublicKey: recentPeer.noisePublicKey,
+            nostrPublicKey: chatViewModel.idBridge.getNostrPublicKey(
+                for: recentPeer.noisePublicKey
+            ),
+            claimedNickname: recentPeer.claimedNickname
+        ) != nil
+    }
+
+    func removeFriend(peerID: PeerID) {
+        chatViewModel.removeFriend(peerID: peerID)
     }
 
     func openGeohashDirectMessage(with pubkeyHex: String) {
@@ -151,6 +268,17 @@ final class PeerListModel: ObservableObject {
         conversations.$unreadConversations
             .receive(on: DispatchQueue.main)
             .sink { [weak self] _ in
+                self?.refresh()
+            }
+            .store(in: &cancellables)
+
+        // ConversationStore emits this stream after each mutation is
+        // consistent. Listening here keeps Recents current for background DMs
+        // without weakening PrivateInboxModel's selected-chat isolation.
+        conversations.changes
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] change in
+                guard Self.affectsRecentMeshRows(change) else { return }
                 self?.refresh()
             }
             .store(in: &cancellables)
@@ -251,8 +379,10 @@ final class PeerListModel: ObservableObject {
 
         let geohashPeople = buildGeohashPeople()
         let groupRows = buildGroupRows()
+        let recentMeshRows = buildRecentMeshRows()
 
         self.meshRows = meshRows
+        self.recentMeshRows = recentMeshRows
         reachableMeshPeerCount = meshCounts.reachable
         connectedMeshPeerCount = meshCounts.connected
         self.geohashPeople = geohashPeople
@@ -267,8 +397,200 @@ final class PeerListModel: ObservableObject {
             } +
             groupRows.map {
                 "group:\($0.id)-\($0.name)-\($0.memberCount)-\($0.hasUnread)"
+            } +
+            recentMeshRows.map {
+                let aliases = $0.conversationPeerIDs.map(\.id).joined(separator: ",")
+                return "recent:\($0.id)-\(aliases)-\($0.displayName)-\($0.lastMessageAt.timeIntervalSince1970)-\($0.hasUnread)-\($0.isBlocked)"
             }
         ).joined(separator: "|")
+    }
+
+    private static func affectsRecentMeshRows(_ change: ConversationChange) -> Bool {
+        switch change {
+        case .appended(let id, _),
+             .updated(let id, _),
+             .messageRemoved(let id, _),
+             .cleared(let id),
+             .removed(let id),
+             .unreadChanged(let id, _):
+            if case .direct = id { return true }
+            return false
+        case .migrated(let source, let destination):
+            if case .direct = source { return true }
+            if case .direct = destination { return true }
+            return false
+        case .statusChanged:
+            return false
+        }
+    }
+
+    private func buildRecentMeshRows() -> [RecentMeshPeerRow] {
+        let onlineFingerprints = Set(
+            allPeers.compactMap { peer -> String? in
+                guard peer.isConnected || peer.isReachable,
+                      peer.noisePublicKey.count == 32 else { return nil }
+                return peer.noisePublicKey.sha256Fingerprint()
+            }
+        )
+        var accumulated: [String: RecentMeshConversationAccumulator] = [:]
+
+        for conversationID in conversations.conversationIDs {
+            guard case .direct(let handle) = conversationID else { continue }
+            let routingPeerID = handle.routingPeerID
+            guard let conversation = conversations.conversationsByID[conversationID] else {
+                continue
+            }
+            // Local status rows use the private timeline for presentation, but
+            // they do not establish that the user actually chatted with this
+            // identity and therefore must not create or rank a Recent entry.
+            let userMessages = conversation.messages.filter {
+                $0.isPrivate && $0.sender != "system"
+            }
+            guard isEligibleRecentMeshPeerID(routingPeerID),
+                  let lastMessage = userMessages.last,
+                  let identity = resolveRecentMeshIdentity(for: routingPeerID),
+                  identity.noisePublicKey != chatViewModel.meshService.noiseStaticPublicKeyData(),
+                  !onlineFingerprints.contains(identity.fingerprint),
+                  !chatViewModel.isFavorite(peerID: identity.stablePeerID) else {
+                continue
+            }
+
+            let messageNickname = recentClaimedNickname(
+                in: userMessages,
+                localPeerID: chatViewModel.meshService.myPeerID
+            )
+            let unread = conversations.unreadConversations.contains(conversationID)
+
+            if var existing = accumulated[identity.fingerprint] {
+                existing.hasUnread = existing.hasUnread || unread
+                existing.conversationPeerIDs.insert(routingPeerID)
+                if lastMessage.timestamp > existing.lastMessageAt {
+                    existing.lastMessageAt = lastMessage.timestamp
+                    if let messageNickname {
+                        existing.claimedNicknameFromMessages = messageNickname
+                    }
+                }
+                accumulated[identity.fingerprint] = existing
+            } else {
+                accumulated[identity.fingerprint] = RecentMeshConversationAccumulator(
+                    identity: identity,
+                    conversationPeerIDs: [routingPeerID],
+                    lastMessageAt: lastMessage.timestamp,
+                    claimedNicknameFromMessages: messageNickname,
+                    hasUnread: unread
+                )
+            }
+        }
+
+        return accumulated.values.map { item in
+            let social = chatViewModel.identityManager.getSocialIdentity(
+                for: item.identity.fingerprint
+            )
+            let livePeer = allPeers.first {
+                $0.noisePublicKey == item.identity.noisePublicKey
+            }
+            let claimedNickname = social?.claimedNickname.trimmedOrNilIfEmpty
+                ?? livePeer?.nickname.trimmedOrNilIfEmpty
+                ?? item.claimedNicknameFromMessages?.trimmedOrNilIfEmpty
+                ?? "anon\(item.identity.fingerprint.prefix(4))"
+            let displayName = social?.localPetname?.trimmedOrNilIfEmpty
+                ?? livePeer?.localPetname?.trimmedOrNilIfEmpty
+                ?? claimedNickname
+
+            return RecentMeshPeerRow(
+                stablePeerID: item.identity.stablePeerID,
+                conversationPeerIDs: item.conversationPeerIDs.sorted {
+                    $0.id < $1.id
+                },
+                noisePublicKey: item.identity.noisePublicKey,
+                fingerprint: item.identity.fingerprint,
+                displayName: displayName,
+                claimedNickname: claimedNickname,
+                lastMessageAt: item.lastMessageAt,
+                hasUnread: item.hasUnread,
+                isBlocked: social?.isBlocked == true
+                    || chatViewModel.identityManager.isBlocked(
+                        fingerprint: item.identity.fingerprint
+                    )
+            )
+        }
+        .sorted { lhs, rhs in
+            if lhs.lastMessageAt != rhs.lastMessageAt {
+                return lhs.lastMessageAt > rhs.lastMessageAt
+            }
+            return lhs.fingerprint < rhs.fingerprint
+        }
+    }
+
+    private func isEligibleRecentMeshPeerID(_ peerID: PeerID) -> Bool {
+        guard peerID != chatViewModel.meshService.myPeerID,
+              !peerID.isGroup,
+              !peerID.isGeoChat,
+              !peerID.isGeoDM,
+              !peerID.isBridge else {
+            return false
+        }
+        return peerID.isShort || peerID.noiseKey != nil
+    }
+
+    private func resolveRecentMeshIdentity(
+        for peerID: PeerID
+    ) -> ResolvedRecentMeshIdentity? {
+        if let noisePublicKey = peerID.noiseKey {
+            return makeRecentMeshIdentity(noisePublicKey: noisePublicKey)
+        }
+        guard peerID.isShort else { return nil }
+
+        if let livePeer = allPeers.first(where: {
+            $0.peerID == peerID && $0.noisePublicKey.count == 32
+        }) {
+            return makeRecentMeshIdentity(noisePublicKey: livePeer.noisePublicKey)
+        }
+        if let stablePeerID = peerIdentityStore.stablePeerID(forShortID: peerID),
+           let noisePublicKey = stablePeerID.noiseKey,
+           PeerID(publicKey: noisePublicKey) == peerID {
+            return makeRecentMeshIdentity(noisePublicKey: noisePublicKey)
+        }
+
+        let candidates = chatViewModel.identityManager
+            .getCryptoIdentitiesByPeerIDPrefix(peerID)
+            .filter {
+                $0.publicKey.count == 32
+                    && PeerID(publicKey: $0.publicKey) == peerID
+                    && $0.fingerprint == $0.publicKey.sha256Fingerprint()
+            }
+        guard candidates.count == 1, let identity = candidates.first else {
+            return nil
+        }
+        return makeRecentMeshIdentity(noisePublicKey: identity.publicKey)
+    }
+
+    private func makeRecentMeshIdentity(
+        noisePublicKey: Data
+    ) -> ResolvedRecentMeshIdentity? {
+        guard noisePublicKey.count == 32 else { return nil }
+        return ResolvedRecentMeshIdentity(
+            stablePeerID: PeerID(hexData: noisePublicKey),
+            noisePublicKey: noisePublicKey,
+            fingerprint: noisePublicKey.sha256Fingerprint()
+        )
+    }
+
+    private func recentClaimedNickname(
+        in messages: [BitchatMessage],
+        localPeerID: PeerID
+    ) -> String? {
+        for message in messages.reversed() {
+            let sentLocally = message.senderPeerID == localPeerID
+            if sentLocally {
+                if let recipient = message.recipientNickname?.trimmedOrNilIfEmpty {
+                    return recipient
+                }
+            } else if let sender = message.sender.trimmedOrNilIfEmpty {
+                return sender
+            }
+        }
+        return nil
     }
 
     private func buildGroupRows() -> [GroupChatRow] {

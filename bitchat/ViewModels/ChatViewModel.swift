@@ -108,6 +108,11 @@ struct PanicNetworkLifecycle {
     }
 }
 
+private enum PrivateChatClearDisposition {
+    case keepConversation
+    case removeWhenEmpty
+}
+
 private struct PendingPrivateChatClear {
     let peerID: PeerID
     let sourceConversationID: ConversationID
@@ -116,6 +121,7 @@ private struct PendingPrivateChatClear {
     let localPeerID: PeerID
     let nickname: String
     let outgoingMedia: [BitchatMessage]
+    let disposition: PrivateChatClearDisposition
 }
 
 /// Manages the application state and business logic for BitChat.
@@ -662,6 +668,28 @@ final class ChatViewModel: ObservableObject, BitchatDelegate, SynchronousMessage
     /// Empties the peer's chat but keeps the conversation alive (`/clear`).
     @MainActor
     func clearPrivateChat(_ peerID: PeerID) {
+        enqueuePrivateChatClear(
+            peerID,
+            disposition: .keepConversation
+        )
+    }
+
+    /// Deletes a peer's local conversation after the same durable media
+    /// cleanup used by `/clear`. A conversation that receives a new message
+    /// while cleanup is in flight remains alive with its unread state intact.
+    @MainActor
+    func deletePrivateChat(_ peerID: PeerID) {
+        enqueuePrivateChatClear(
+            peerID,
+            disposition: .removeWhenEmpty
+        )
+    }
+
+    @MainActor
+    private func enqueuePrivateChatClear(
+        _ peerID: PeerID,
+        disposition: PrivateChatClearDisposition
+    ) {
         let sourceConversationID = ConversationID.directPeer(peerID)
         // An active live-voice row owns an open FileHandle and may be
         // republished as frames/final media arrive. Treat it like an in-flight
@@ -710,7 +738,8 @@ final class ChatViewModel: ObservableObject, BitchatDelegate, SynchronousMessage
             ),
             localPeerID: localPeerID,
             nickname: currentNickname,
-            outgoingMedia: outgoingMedia
+            outgoingMedia: outgoingMedia,
+            disposition: disposition
         ))
         startNextPrivateChatClearIfNeeded()
     }
@@ -750,7 +779,37 @@ final class ChatViewModel: ObservableObject, BitchatDelegate, SynchronousMessage
         let peerID = request.peerID
         let selectedConversationID = request.sourceConversationID
         let messagesToClear = request.messages
+        var affectedConversationIDs: Set<ConversationID> = [
+            selectedConversationID
+        ]
+
+        func finalizeEmptyAffectedConversations() {
+            for conversationID in affectedConversationIDs {
+                guard let conversation = conversations
+                    .conversationsByID[conversationID],
+                      conversation.messages.isEmpty else {
+                    continue
+                }
+                switch request.disposition {
+                case .keepConversation:
+                    conversations.markRead(conversationID)
+                case .removeWhenEmpty:
+                    if case .direct(let handle) = conversationID,
+                       conversations.selectedPrivatePeerID
+                        == handle.routingPeerID {
+                        // Keep the private-selection axis and its derived
+                        // conversation selection consistent. Returning to the
+                        // active public channel must be part of the successful
+                        // delete transaction, not a best-effort UI callback.
+                        conversations.setSelectedPrivatePeer(nil)
+                    }
+                    conversations.removeConversation(conversationID)
+                }
+            }
+        }
+
         guard !messagesToClear.isEmpty else {
+            finalizeEmptyAffectedConversations()
             completion()
             return
         }
@@ -875,6 +934,14 @@ final class ChatViewModel: ObservableObject, BitchatDelegate, SynchronousMessage
                         return false
                     }
                 for conversationID in directConversationIDs {
+                    guard let conversation = conversations
+                        .conversationsByID[conversationID],
+                          conversation.messages.contains(where: {
+                              durableStableIDs.contains($0.id)
+                          }) else {
+                        continue
+                    }
+                    affectedConversationIDs.insert(conversationID)
                     conversations.removeMessages(from: conversationID) {
                         durableStableIDs.contains($0.id)
                     }
@@ -905,6 +972,14 @@ final class ChatViewModel: ObservableObject, BitchatDelegate, SynchronousMessage
                         return false
                     }
                 for conversationID in directConversationIDs {
+                    guard let conversation = conversations
+                        .conversationsByID[conversationID],
+                          conversation.messages.contains(where: {
+                              removableOutgoingIDs.contains($0.id)
+                          }) else {
+                        continue
+                    }
+                    affectedConversationIDs.insert(conversationID)
                     conversations.removeMessages(from: conversationID) {
                         removableOutgoingIDs.contains($0.id)
                     }
@@ -919,11 +994,13 @@ final class ChatViewModel: ObservableObject, BitchatDelegate, SynchronousMessage
             let finalPlan = currentRemovalPlan()
 
             for (conversationID, messageIDs) in finalPlan {
+                affectedConversationIDs.insert(conversationID)
                 conversations.removeMessages(from: conversationID) {
                     messageIDs.contains($0.id)
                 }
             }
             cleanupLegacyIncomingMediaPayloads(for: capturedIncomingMedia)
+            finalizeEmptyAffectedConversations()
             completion()
         }
 
@@ -1025,6 +1102,12 @@ final class ChatViewModel: ObservableObject, BitchatDelegate, SynchronousMessage
         conversations.conversation(for: ConversationID(channelID: channel)).messages
     }
 
+    /// One exact public timeline without creating it as a read side effect.
+    @MainActor
+    func publicMessages(in conversationID: ConversationID) -> [BitchatMessage] {
+        conversations.conversationsByID[conversationID]?.messages ?? []
+    }
+
     /// `true` when the conversation contains a message with `messageID`.
     @MainActor
     func publicConversationContainsMessage(withID messageID: String, in conversationID: ConversationID) -> Bool {
@@ -1062,6 +1145,23 @@ final class ChatViewModel: ObservableObject, BitchatDelegate, SynchronousMessage
     @MainActor
     func removePublicMessages(fromGeohash geohash: String, where predicate: (BitchatMessage) -> Bool) {
         conversations.removeMessages(from: .geohash(geohash.lowercased()), where: predicate)
+    }
+
+    /// Removes matching messages from one exact public conversation.
+    @MainActor
+    func removePublicMessages(
+        from conversationID: ConversationID,
+        where predicate: (BitchatMessage) -> Bool
+    ) {
+        switch conversationID {
+        case .mesh, .geohash:
+            conversations.removeMessages(
+                from: conversationID,
+                where: predicate
+            )
+        case .direct:
+            return
+        }
     }
 
     /// Empties a public conversation's timeline (`/clear`).
@@ -1284,6 +1384,28 @@ final class ChatViewModel: ObservableObject, BitchatDelegate, SynchronousMessage
 
     // MARK: - Blocked Users Management (Delegated to PeerStateManager)
 
+    /// Adds a known peer as a contact without changing verification state.
+    @MainActor
+    @discardableResult
+    func addFriend(peerID: PeerID) -> Bool {
+        unifiedPeerService.addFriend(peerID) != nil
+    }
+
+    /// Adds the identity carried by a validated QR without marking it verified.
+    @MainActor
+    @discardableResult
+    func addFriend(
+        noisePublicKey: Data,
+        nostrPublicKey: String?,
+        claimedNickname: String
+    ) -> FriendPersistenceOutcome? {
+        unifiedPeerService.addFriend(
+            noisePublicKey: noisePublicKey,
+            nostrPublicKey: nostrPublicKey,
+            claimedNickname: claimedNickname
+        )
+    }
+
     /// Check if a peer has unread messages, including messages stored under stable Noise keys and temporary Nostr peer IDs
     @MainActor
     func hasUnreadMessages(for peerID: PeerID) -> Bool {
@@ -1291,8 +1413,9 @@ final class ChatViewModel: ObservableObject, BitchatDelegate, SynchronousMessage
     }
 
     @MainActor
-    func toggleFavorite(peerID: PeerID) {
-        peerIdentityCoordinator.toggleFavorite(peerID: peerID)
+    @discardableResult
+    func removeFriend(peerID: PeerID) -> Bool {
+        peerIdentityCoordinator.removeFriend(peerID: peerID)
     }
 
     @MainActor
@@ -1601,6 +1724,10 @@ final class ChatViewModel: ObservableObject, BitchatDelegate, SynchronousMessage
         panicRecoveryBlocked = true
         isPanicResetting = true
         defer { isPanicResetting = false }
+
+        // A pre-wipe verification callback must never repopulate identity or
+        // friend state after the panic transaction replaces our keys.
+        verificationCoordinator.resetForPanic()
 
         // Stop internet and location-presence work before clearing identity or
         // state. These services cancel their subscriptions and delayed tasks,
@@ -1965,6 +2092,18 @@ final class ChatViewModel: ObservableObject, BitchatDelegate, SynchronousMessage
         publicConversationCoordinator.clearCurrentPublicTimeline()
     }
 
+    /// Clears the history captured by a confirmation dialog without reading
+    /// mutable UI selection again when the destructive action is confirmed.
+    @MainActor
+    func clearConversationHistory(_ conversationID: ConversationID) {
+        switch conversationID {
+        case .direct(let handle):
+            clearPrivateChat(handle.routingPeerID)
+        case .mesh, .geohash:
+            publicConversationCoordinator.clearPublicTimeline(conversationID)
+        }
+    }
+
     // MARK: - Peer Lookup Helpers
 
     func getPeer(byID peerID: PeerID) -> BitchatPeer? {
@@ -2203,6 +2342,23 @@ final class ChatViewModel: ObservableObject, BitchatDelegate, SynchronousMessage
     }
 
     // MARK: - QR Verification API
+    @MainActor
+    @discardableResult
+    func beginFriendVerification(
+        with qr: VerificationService.VerificationQR,
+        completion: @escaping (FriendVerificationCompletion) -> Void
+    ) -> FriendVerificationStartResult {
+        verificationCoordinator.beginFriendVerification(
+            with: qr,
+            completion: completion
+        )
+    }
+
+    @MainActor
+    func cancelFriendVerification(with qr: VerificationService.VerificationQR) {
+        verificationCoordinator.cancelFriendVerification(with: qr)
+    }
+
     @MainActor
     func beginQRVerification(with qr: VerificationService.VerificationQR) -> Bool {
         verificationCoordinator.beginQRVerification(with: qr)

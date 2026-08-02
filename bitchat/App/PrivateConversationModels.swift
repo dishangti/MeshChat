@@ -107,7 +107,7 @@ struct PrivateConversationHeaderState: Equatable {
     let isFavorite: Bool
     let encryptionStatus: EncryptionStatus?
 
-    var supportsFavoriteToggle: Bool {
+    var supportsFriendAction: Bool {
         !conversationPeerID.isGeoDM && !conversationPeerID.isGroup
     }
 
@@ -169,14 +169,18 @@ final class PrivateConversationModel: ObservableObject {
         refreshSelectedConversation()
     }
 
-    func toggleFavorite(peerID: PeerID) {
-        chatViewModel.toggleFavorite(peerID: peerID)
+    @discardableResult
+    func addFriendForSelectedConversation() -> Bool {
+        guard let headerPeerID = selectedHeaderState?.headerPeerID else { return false }
+        let added = chatViewModel.addFriend(peerID: headerPeerID)
         refreshSelectedConversation()
+        return added
     }
 
-    func toggleFavoriteForSelectedConversation() {
+    func removeFriendForSelectedConversation() {
         guard let headerPeerID = selectedHeaderState?.headerPeerID else { return }
-        toggleFavorite(peerID: headerPeerID)
+        chatViewModel.removeFriend(peerID: headerPeerID)
+        refreshSelectedConversation()
     }
 
     func markMessagesAsRead(from peerID: PeerID) {

@@ -67,6 +67,10 @@ final class ConversationUIModel: ObservableObject {
         chatViewModel.sendMessage("/clear")
     }
 
+    func clearConversationHistory(_ conversationID: ConversationID) {
+        chatViewModel.clearConversationHistory(conversationID)
+    }
+
     func sendHug(to sender: String) {
         chatViewModel.sendMessage("/hug @\(sender)")
     }

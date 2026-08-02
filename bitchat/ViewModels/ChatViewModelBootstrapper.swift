@@ -50,6 +50,49 @@ struct ChatViewModelServiceBundle {
     }
 }
 
+/// Pure relay-set selection shared by bridge wiring and its bound tests.
+enum BridgeRelayTargetSelector {
+    /// Deterministically covers every rendezvous cell without opening the
+    /// theoretical `cells × perCellCount` number of sockets. The first relay
+    /// for each cell guarantees overlap with that cell's publisher; remaining
+    /// redundancy is filled round-robin up to a small global cap.
+    static func targets(
+        cells: [String],
+        perCellCount: Int,
+        lookup: (String, Int) -> [String]
+    ) -> [String] {
+        guard perCellCount > 0 else { return [] }
+        var seenCells = Set<String>()
+        let uniqueCells = cells.filter { seenCells.insert($0).inserted }
+        let candidates = uniqueCells.map { lookup($0, perCellCount) }
+        let cap = max(uniqueCells.count, perCellCount * 2)
+        var seenRelays = Set<String>()
+        var result: [String] = []
+
+        for relays in candidates {
+            guard let first = relays.first,
+                  seenRelays.insert(first).inserted else { continue }
+            result.append(first)
+        }
+
+        var rank = 1
+        while result.count < cap {
+            var foundCandidate = false
+            for relays in candidates where rank < relays.count {
+                foundCandidate = true
+                let relay = relays[rank]
+                if seenRelays.insert(relay).inserted {
+                    result.append(relay)
+                    if result.count == cap { break }
+                }
+            }
+            guard foundCandidate else { break }
+            rank += 1
+        }
+        return result
+    }
+}
+
 @MainActor
 final class ChatViewModelBootstrapper {
     private unowned let viewModel: ChatViewModel
@@ -394,6 +437,10 @@ private extension ChatViewModelBootstrapper {
             .sink { connected in
                 if connected {
                     GatewayService.shared.flushQueuedUplinks()
+                    // The bootstrap-time REQ may have been rejected before
+                    // NetworkActivationService started. Reopen it now that a
+                    // relay socket proves the network gate is live.
+                    BridgeService.shared.refreshRendezvous(reopenSubscription: true)
                     BridgeService.shared.flushQueuedUplinks()
                     BridgeService.shared.publishPresence()
                 }
@@ -420,21 +467,39 @@ private extension ChatViewModelBootstrapper {
                 count: TransportConfig.nostrGeoRelayCount
             )
             guard !relays.isEmpty else {
-                SecureLogger.warning("🌉 Bridge: no geo relays for cell \(cell); not publishing", category: .session)
+                SecureLogger.warning(
+                    "🌉 Bridge: no reviewed geo relays for cell \(cell); keeping event queued",
+                    category: .session
+                )
                 return
             }
             NostrRelayManager.shared.sendEvent(event, to: relays)
         }
-        bridge.openSubscription = { cells in
-            guard let cell = cells.first else { return }
-            let relays = GeoRelayDirectory.shared.closestRelays(
+        bridge.hasRelayTargets = { cell in
+            !GeoRelayDirectory.shared.closestRelays(
                 toGeohash: cell,
                 count: TransportConfig.nostrGeoRelayCount
-            )
+            ).isEmpty
+        }
+        bridge.openSubscription = { cells in
+            guard !cells.isEmpty else { return }
+            // Subscribe to each cell's deterministic relay set. Selecting
+            // relays only for our own cell breaks the promised neighbor-ring
+            // rendezvous at a regional relay boundary.
+            let relays = BridgeRelayTargetSelector.targets(
+                cells: cells,
+                perCellCount: TransportConfig.nostrGeoRelayCount
+            ) { cell, count in
+                GeoRelayDirectory.shared.closestRelays(
+                    toGeohash: cell,
+                    count: count
+                )
+            }
+            guard !relays.isEmpty else { return }
             NostrRelayManager.shared.subscribe(
                 filter: .bridgeRendezvous(cells, since: Date().addingTimeInterval(-BridgeService.Limits.maxEventAgeSeconds)),
                 id: Self.bridgeSubscriptionID,
-                relayUrls: relays.isEmpty ? nil : relays,
+                relayUrls: relays,
                 handler: { event in
                     BridgeService.shared.handleRendezvousEvent(event)
                 }
@@ -445,7 +510,9 @@ private extension ChatViewModelBootstrapper {
         }
         bridge.relaysConnected = { NostrRelayManager.shared.isConnected }
         bridge.locationCell = { [weak viewModel] in
-            viewModel?.locationManager.availableChannels
+            guard let manager = viewModel?.locationManager,
+                  manager.permissionState == .authorized else { return nil }
+            return manager.availableChannels
                 .first { $0.level == .neighborhood }?
                 .geohash
         }
@@ -527,6 +594,31 @@ private extension ChatViewModelBootstrapper {
             .removeDuplicates()
             .receive(on: DispatchQueue.main)
             .sink { _ in BridgeService.shared.refreshRendezvous() }
+            .store(in: &viewModel.cancellables)
+
+        // Bridge wiring is installed before the global network gate starts.
+        // Replaying here on the policy transition preserves the subscription
+        // intent without relying on an unrelated default-relay connection to
+        // produce the first `isConnected` event.
+        NetworkActivationService.shared.$activationAllowed
+            .removeDuplicates()
+            .receive(on: DispatchQueue.main)
+            .sink { allowed in
+                guard allowed else { return }
+                BridgeService.shared.refreshRendezvous(reopenSubscription: true)
+            }
+            .store(in: &viewModel.cancellables)
+
+        // A fresh install can start before the reviewed geo-relay directory
+        // is available. Once it refreshes, reopen the fail-closed rendezvous
+        // and flush only to its cell-specific targets.
+        NotificationCenter.default.publisher(for: .geoRelayDirectoryDidRefresh)
+            .receive(on: DispatchQueue.main)
+            .sink { _ in
+                BridgeService.shared.refreshRendezvous(reopenSubscription: true)
+                BridgeService.shared.flushQueuedUplinks()
+                BridgeService.shared.publishPresence()
+            }
             .store(in: &viewModel.cancellables)
 
         // Apply the persisted toggle at launch.

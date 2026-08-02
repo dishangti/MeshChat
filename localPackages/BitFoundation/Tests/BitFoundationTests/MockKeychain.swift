@@ -71,10 +71,25 @@ final class MockKeychain: KeychainManagerProtocol {
     // MARK: - Generic Data Storage (consolidated from KeychainHelper)
 
     func save(key: String, data: Data, service: String, accessible: CFString?) {
+        _ = saveWithResult(
+            key: key,
+            data: data,
+            service: service,
+            accessible: accessible
+        )
+    }
+
+    func saveWithResult(
+        key: String,
+        data: Data,
+        service: String,
+        accessible: CFString?
+    ) -> KeychainSaveResult {
         if serviceStorage[service] == nil {
             serviceStorage[service] = [:]
         }
         serviceStorage[service]?[key] = data
+        return .success
     }
 
     func load(key: String, service: String) -> Data? {
@@ -188,10 +203,25 @@ final class TrackingMockKeychain: KeychainManagerProtocol {
     }
 
     func save(key: String, data: Data, service: String, accessible: CFString?) {
+        _ = saveWithResult(
+            key: key,
+            data: data,
+            service: service,
+            accessible: accessible
+        )
+    }
+
+    func saveWithResult(
+        key: String,
+        data: Data,
+        service: String,
+        accessible: CFString?
+    ) -> KeychainSaveResult {
         if serviceStorage[service] == nil {
             serviceStorage[service] = [:]
         }
         serviceStorage[service]?[key] = data
+        return .success
     }
 
     func load(key: String, service: String) -> Data? {

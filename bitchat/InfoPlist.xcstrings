@@ -572,7 +572,7 @@
       }
     },
     "NSCameraUsageDescription" : {
-      "comment" : "Explains camera use for peer-verification QR codes and user-initiated photo capture",
+      "comment" : "Explains camera use for adding and verifying friends by QR code and user-initiated photo capture",
       "extractionState" : "manual",
       "localizations" : {
         "ar" : {
@@ -596,7 +596,7 @@
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "MeshChat uses the camera to scan peer-verification QR codes and take photos you choose to share."
+            "value" : "MeshChat uses the camera to scan QR codes to add and verify friends and take photos you choose to share."
           }
         },
         "es" : {
@@ -746,13 +746,13 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "MeshChat 使用相机扫描联系人验证二维码，以及拍摄你选择分享的照片。"
+            "value" : "MeshChat 使用相机扫描二维码来添加并验证好友，以及拍摄你选择分享的照片。"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "MeshChat 使用相機掃描聯絡人驗證 QR Code，以及拍攝你選擇分享的照片。"
+            "value" : "MeshChat 使用相機掃描 QR Code 來新增並驗證好友，以及拍攝你選擇分享的照片。"
           }
         }
       }

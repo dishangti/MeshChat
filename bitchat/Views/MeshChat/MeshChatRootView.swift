@@ -126,6 +126,7 @@ struct MeshChatRootView: View {
     private var hasBlockingPresentation: Bool {
         appChromeModel.isAppInfoPresented
             || appChromeModel.showingFingerprintFor != nil
+            || appChromeModel.showingNicknameFor != nil
             || appChromeModel.isLocationChannelsSheetPresented
             || appChromeModel.isNoticesSheetPresented
             || appChromeModel.showScreenshotPrivacyWarning
@@ -262,6 +263,17 @@ struct MeshChatRootView: View {
             )) {
                 if let peerID = appChromeModel.showingFingerprintFor {
                     FingerprintView(peerID: peerID)
+                        .environmentObject(verificationModel)
+                }
+            }
+            .sheet(isPresented: Binding(
+                get: { appChromeModel.showingNicknameFor != nil },
+                set: { isPresented in
+                    if !isPresented { appChromeModel.clearNicknameEditor() }
+                }
+            )) {
+                if let peerID = appChromeModel.showingNicknameFor {
+                    LocalNicknameSheetView(peerID: peerID)
                         .environmentObject(verificationModel)
                 }
             }
@@ -459,10 +471,11 @@ struct MeshChatRootView: View {
             onOpenPeer: openPeer,
             onOpenLocations: { appChromeModel.isLocationChannelsSheetPresented = true },
             onOpenNotices: presentNotices,
-            onOpenAppInfo: { appChromeModel.presentAppInfo(pane: .info) },
+            onOpenAppInfo: { appChromeModel.presentAppInfo(pane: .help) },
             onOpenSettings: { appChromeModel.presentAppInfo(pane: .settings) },
             onOpenVerification: { showVerification = true },
-            onPanic: performPanicWipe
+            onPanic: performPanicWipe,
+            onDeleteActiveRecent: showHome
         )
     }
 

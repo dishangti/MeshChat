@@ -7,6 +7,7 @@ import SwiftUI
 /// distinct instead of flattening them into a generic online/offline dot.
 struct MeshChatConversationHeader: View {
     @EnvironmentObject private var appChromeModel: AppChromeModel
+    @EnvironmentObject private var conversationUIModel: ConversationUIModel
     @EnvironmentObject private var privateConversationModel: PrivateConversationModel
     @EnvironmentObject private var locationChannelsModel: LocationChannelsModel
     @EnvironmentObject private var peerListModel: PeerListModel
@@ -14,6 +15,8 @@ struct MeshChatConversationHeader: View {
     @ThemedPalette private var palette
 
     @State private var carriedMailCount = 0
+    @State private var pendingHistoryDeletion: ConversationID?
+    @State private var pendingFriendRemoval: HeaderFriendRemovalTarget?
 
     let onOpenHome: () -> Void
     let onOpenLocations: () -> Void
@@ -73,11 +76,21 @@ struct MeshChatConversationHeader: View {
 
             Spacer(minLength: 4)
 
-            if let privateHeader, privateHeader.supportsFavoriteToggle {
-                Button {
-                    privateConversationModel.toggleFavoriteForSelectedConversation()
+            if let privateHeader, privateHeader.supportsFriendAction {
+                Button(role: privateHeader.isFavorite ? .destructive : nil) {
+                    if privateHeader.isFavorite {
+                        pendingFriendRemoval = friendRemovalTarget(
+                            for: privateHeader
+                        )
+                    } else {
+                        _ = privateConversationModel.addFriendForSelectedConversation()
+                    }
                 } label: {
-                    Image(systemName: privateHeader.isFavorite ? "star.fill" : "star")
+                    Image(
+                        systemName: privateHeader.isFavorite
+                            ? "star.fill"
+                            : "person.badge.plus"
+                    )
                         .foregroundStyle(privateHeader.isFavorite ? Color.yellow : palette.secondary)
                         .frame(width: 36, height: 36)
                         .contentShape(Rectangle())
@@ -122,10 +135,8 @@ struct MeshChatConversationHeader: View {
             )
 
             Menu {
-                if privateHeader == nil, case .mesh = locationChannelsModel.selectedChannel {
-                    Button(action: onOpenVerification) {
-                        Label("verification.sheet.title", systemImage: "qrcode")
-                    }
+                Button(action: onOpenVerification) {
+                    Label("verification.sheet.title", systemImage: "qrcode.viewfinder")
                 }
 
                 if privateHeader == nil, case .location(let channel) = locationChannelsModel.selectedChannel {
@@ -151,10 +162,48 @@ struct MeshChatConversationHeader: View {
 
                 if let privateHeader, !privateHeader.isGroupConversation {
                     Button {
+                        appChromeModel.showNicknameEditor(for: privateHeader.headerPeerID)
+                    } label: {
+                        Label("fingerprint.local_alias.label", systemImage: "person.text.rectangle")
+                    }
+
+                    Button {
                         appChromeModel.showFingerprint(for: privateHeader.headerPeerID)
                     } label: {
                         Label("mesh_peers.action.fingerprint", systemImage: "checkmark.seal")
                     }
+
+                    if privateHeader.isFavorite {
+                        Button(role: .destructive) {
+                            pendingFriendRemoval = friendRemovalTarget(
+                                for: privateHeader
+                            )
+                        } label: {
+                            Label(
+                                String(
+                                    localized: "content.accessibility.remove_favorite",
+                                    defaultValue: "Remove Friend",
+                                    comment: "Conversation menu action that removes a friend"
+                                ),
+                                systemImage: "person.badge.minus"
+                            )
+                        }
+                    }
+                }
+
+                Divider()
+
+                Button(role: .destructive) {
+                    pendingHistoryDeletion = currentConversationID
+                } label: {
+                    Label(
+                        String(
+                            localized: "content.clear.confirm_action",
+                            defaultValue: "Delete Chat History",
+                            comment: "Conversation menu action that deletes the current chat history"
+                        ),
+                        systemImage: "trash"
+                    )
                 }
 
                 Divider()
@@ -170,7 +219,11 @@ struct MeshChatConversationHeader: View {
             }
             .menuStyle(.borderlessButton)
             .accessibilityLabel(
-                String(localized: "app_info.tab.settings", comment: "Label for conversation options")
+                String(
+                    localized: "content.actions.title",
+                    defaultValue: "Actions",
+                    comment: "Accessibility label for the conversation actions menu"
+                )
             )
         }
         .padding(.horizontal, 10)
@@ -187,10 +240,141 @@ struct MeshChatConversationHeader: View {
         .onReceive(CourierStore.shared.$carriedCount) { count in
             carriedMailCount = count
         }
+        .confirmationDialog(
+            String(
+                localized: "content.clear.confirm_title",
+                defaultValue: "Delete Chat History?",
+                comment: "Title confirming deletion of the current chat history"
+            ),
+            isPresented: historyDeletionConfirmationBinding,
+            titleVisibility: .visible
+        ) {
+            if let target = pendingHistoryDeletion {
+                Button(
+                    String(
+                        localized: "content.clear.confirm_action",
+                        defaultValue: "Delete Chat History",
+                        comment: "Destructive action that deletes the current chat history"
+                    ),
+                    role: .destructive
+                ) {
+                    conversationUIModel.clearConversationHistory(target)
+                    pendingHistoryDeletion = nil
+                }
+            }
+            Button("common.cancel", role: .cancel) {
+                pendingHistoryDeletion = nil
+            }
+        } message: {
+            Text(
+                String(
+                    localized: "content.clear.confirm_message",
+                    defaultValue: "This deletes the chat history stored on this device. Other participants keep their copies.",
+                    comment: "Explanation shown before deleting the current chat history"
+                )
+            )
+        }
+        .confirmationDialog(
+            friendRemovalConfirmationTitle,
+            isPresented: friendRemovalConfirmationBinding,
+            titleVisibility: .visible
+        ) {
+            if let target = pendingFriendRemoval {
+                Button(
+                    String(
+                        localized: "content.accessibility.remove_favorite",
+                        defaultValue: "Remove Friend",
+                        comment: "Destructive action that removes a friend"
+                    ),
+                    role: .destructive
+                ) {
+                    peerListModel.removeFriend(peerID: target.peerID)
+                    pendingFriendRemoval = nil
+                }
+            }
+            Button("common.cancel", role: .cancel) {
+                pendingFriendRemoval = nil
+            }
+        } message: {
+            Text(
+                String(
+                    localized: "friends.remove.confirm_message",
+                    defaultValue: "This only removes the friend relationship. Chat history, local nickname, block status, and verification are kept.",
+                    comment: "Explanation shown before removing a friend"
+                )
+            )
+        }
     }
 }
 
+private struct HeaderFriendRemovalTarget {
+    let peerID: PeerID
+    let displayName: String
+}
+
 private extension MeshChatConversationHeader {
+    var currentConversationID: ConversationID {
+        if let privateHeader {
+            return .directPeer(privateHeader.conversationPeerID)
+        }
+        return ConversationID(channelID: locationChannelsModel.selectedChannel)
+    }
+
+    var historyDeletionConfirmationBinding: Binding<Bool> {
+        Binding(
+            get: { pendingHistoryDeletion != nil },
+            set: { isPresented in
+                if !isPresented {
+                    pendingHistoryDeletion = nil
+                }
+            }
+        )
+    }
+
+    var friendRemovalConfirmationBinding: Binding<Bool> {
+        Binding(
+            get: { pendingFriendRemoval != nil },
+            set: { isPresented in
+                if !isPresented {
+                    pendingFriendRemoval = nil
+                }
+            }
+        )
+    }
+
+    var friendRemovalConfirmationTitle: String {
+        guard let target = pendingFriendRemoval else { return "" }
+        let format = String(
+            localized: "friends.remove.confirm_title",
+            defaultValue: "Remove %@ from Friends?",
+            comment: "Title confirming removal of a named friend"
+        )
+        return String(
+            format: format,
+            locale: .current,
+            target.displayName
+        )
+    }
+
+    func friendRemovalTarget(
+        for header: PrivateConversationHeaderState
+    ) -> HeaderFriendRemovalTarget {
+        let stablePeerID: PeerID
+        if header.conversationPeerID.noiseKey != nil {
+            stablePeerID = header.conversationPeerID
+        } else if let peer = peerListModel.allPeers.first(where: {
+            $0.peerID == header.headerPeerID && $0.noisePublicKey.count == 32
+        }) {
+            stablePeerID = PeerID(hexData: peer.noisePublicKey)
+        } else {
+            stablePeerID = header.headerPeerID
+        }
+        return HeaderFriendRemovalTarget(
+            peerID: stablePeerID,
+            displayName: header.displayName
+        )
+    }
+
     var conversationTitle: String {
         if let privateHeader { return privateHeader.displayName }
         switch locationChannelsModel.selectedChannel {

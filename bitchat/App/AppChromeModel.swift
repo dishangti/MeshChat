@@ -32,6 +32,7 @@ final class AppChromeModel: ObservableObject {
     @Published private(set) var hasUnreadPrivateMessages = false
     @Published var nickname: String
     @Published var showingFingerprintFor: PeerID?
+    @Published var showingNicknameFor: PeerID?
     @Published var isAppInfoPresented = false
     @Published var isLocationChannelsSheetPresented = false
     @Published var isNoticesSheetPresented = false
@@ -88,6 +89,7 @@ final class AppChromeModel: ObservableObject {
     }
 
     func showFingerprint(for peerID: PeerID) {
+        showingNicknameFor = nil
         showingFingerprintFor = peerID
     }
 
@@ -95,7 +97,16 @@ final class AppChromeModel: ObservableObject {
         showingFingerprintFor = nil
     }
 
-    func presentAppInfo(pane: AppInfoPane = .info) {
+    func showNicknameEditor(for peerID: PeerID) {
+        showingFingerprintFor = nil
+        showingNicknameFor = peerID
+    }
+
+    func clearNicknameEditor() {
+        showingNicknameFor = nil
+    }
+
+    func presentAppInfo(pane: AppInfoPane = .help) {
         UserDefaults.standard.set(pane.rawValue, forKey: AppInfoPane.storageKey)
         isAppInfoPresented = true
     }
@@ -176,6 +187,7 @@ final class AppChromeModel: ObservableObject {
     /// erased. Internal visibility keeps this behavior directly testable.
     func dismissTransientSurfacesForPanic() {
         showingFingerprintFor = nil
+        showingNicknameFor = nil
         isAppInfoPresented = false
         isLocationChannelsSheetPresented = false
         isNoticesSheetPresented = false

@@ -697,30 +697,54 @@ struct ChatViewModelFormattingTests {
 
 // MARK: - Verification Tests
 
+private struct SignedPeerVerificationFixture {
+    let transport: MockTransport
+    let service: VerificationService
+    let qr: VerificationService.VerificationQR
+}
+
+private func makeSignedPeerVerificationFixture(
+    nickname: String = "Alice"
+) throws -> SignedPeerVerificationFixture {
+    let transport = MockTransport()
+    let service = VerificationService()
+    service.configure(with: transport)
+    let url = try #require(
+        service.buildMyQRString(nickname: nickname, npub: nil)
+    )
+    let qr = try #require(service.verifyScannedQR(url))
+    return SignedPeerVerificationFixture(
+        transport: transport,
+        service: service,
+        qr: qr
+    )
+}
+
 struct ChatViewModelVerificationTests {
 
     @Test @MainActor
-    func beginQRVerification_unknownNoiseKeyReturnsFalse() async {
-        let (viewModel, _) = makeTestableViewModel()
-        let qr = VerificationService.VerificationQR(
-            v: 1,
-            noiseKeyHex: String(repeating: "a", count: 64),
-            signKeyHex: String(repeating: "b", count: 64),
-            npub: nil,
-            nickname: "Alice",
-            ts: 1_700_000_000,
-            nonceB64: "nonce",
-            sigHex: "sig"
+    func beginQRVerification_unknownNoiseKeyReturnsFalse() async throws {
+        let fixture = try makeSignedPeerVerificationFixture()
+        let (viewModel, transport) = makeTestableViewModel()
+        viewModel.verificationCoordinator = ChatVerificationCoordinator(
+            context: viewModel,
+            verificationService: fixture.service
         )
 
-        #expect(!viewModel.beginQRVerification(with: qr))
+        #expect(fixture.transport.noiseStaticPublicKeyData() != transport.noiseStaticPublicKeyData())
+        #expect(!viewModel.beginQRVerification(with: fixture.qr))
     }
 
     @Test @MainActor
-    func beginQRVerification_knownPeerTriggersHandshakeWhenSessionNotEstablished() async {
+    func beginQRVerification_knownPeerTriggersHandshakeWhenSessionNotEstablished() async throws {
+        let fixture = try makeSignedPeerVerificationFixture()
         let (viewModel, transport) = makeTestableViewModel()
+        viewModel.verificationCoordinator = ChatVerificationCoordinator(
+            context: viewModel,
+            verificationService: fixture.service
+        )
         let peerID = PeerID(str: "00000000000000c1")
-        let noiseKey = Data(repeating: 0xAB, count: 32)
+        let noiseKey = fixture.transport.noiseStaticPublicKeyData()
 
         transport.updatePeerSnapshots([
             TransportPeerSnapshot(
@@ -737,18 +761,7 @@ struct ChatViewModelVerificationTests {
         }, timeout: TestConstants.settleTimeout)
         #expect(bound)
 
-        let qr = VerificationService.VerificationQR(
-            v: 1,
-            noiseKeyHex: noiseKey.hexEncodedString(),
-            signKeyHex: String(repeating: "c", count: 64),
-            npub: nil,
-            nickname: "Alice",
-            ts: 1_700_000_000,
-            nonceB64: "nonce",
-            sigHex: "sig"
-        )
-
-        #expect(viewModel.beginQRVerification(with: qr))
+        #expect(viewModel.beginQRVerification(with: fixture.qr))
         #expect(transport.triggeredHandshakes == [peerID])
     }
 }

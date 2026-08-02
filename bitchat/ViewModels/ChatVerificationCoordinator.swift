@@ -3,6 +3,34 @@ import BitLogger
 import Foundation
 import Security
 
+enum FriendVerificationFailure: Equatable {
+    case invalidPayload
+    case invalidLocalPetname
+    case selfIdentity
+    case blocked
+    case signingKeyMismatch
+    case peerNotFound
+    case peerUnavailable
+    case activeSessionMismatch
+    case invalidResponse
+    case persistenceRejected
+    case timedOut
+}
+
+enum FriendVerificationStartResult: Equatable {
+    case started(peerID: PeerID, claimedNickname: String)
+    case alreadyPending(peerID: PeerID, claimedNickname: String)
+    case failed(FriendVerificationFailure)
+}
+
+enum FriendVerificationCompletion: Equatable {
+    case verified(
+        peerID: PeerID,
+        displayName: String
+    )
+    case failed(peerID: PeerID?, reason: FriendVerificationFailure)
+}
+
 /// The narrow surface `ChatVerificationCoordinator` needs from its owner.
 ///
 /// Follows the `ChatDeliveryContext` exemplar: the coordinator depends on the
@@ -23,6 +51,10 @@ protocol ChatVerificationContext: AnyObject {
     /// Updates the UI-facing verified flag in the peer identity store.
     func setStoredVerified(_ fingerprint: String, verified: Bool)
     func isVerifiedFingerprint(_ fingerprint: String) -> Bool
+    func isBlockedFingerprint(_ fingerprint: String) -> Bool
+    /// The strongest persisted Ed25519 key binding known for this Noise
+    /// fingerprint. A scanned QR may not replace it.
+    func pinnedSigningPublicKey(for fingerprint: String) -> Data?
     func saveIdentityState()
     /// After a fingerprint becomes verified, run a transitive-vouch pass over
     /// currently connected peers (so verifying a peer you're already connected
@@ -45,6 +77,15 @@ protocol ChatVerificationContext: AnyObject {
     func resolveNickname(for peerID: PeerID) -> String
     func cachedStablePeerID(for shortPeerID: PeerID) -> PeerID?
     func cacheStablePeerID(_ stablePeerID: PeerID, for shortPeerID: PeerID)
+    /// Persists the authenticated QR identity without changing the friend
+    /// relationship. Exact Noise-key and block/self checks are repeated at
+    /// this write boundary.
+    func persistVerifiedIdentity(
+        peerID: PeerID,
+        expectedNoisePublicKey: Data,
+        signingPublicKey: Data,
+        claimedNickname: String
+    ) -> String?
 
     // MARK: Noise sessions & verification transport
     /// Installs the Noise service's session callbacks (single registration point).
@@ -95,6 +136,15 @@ extension ChatViewModel: ChatVerificationContext {
         peerIdentityStore.setVerified(fingerprint, verified: verified)
     }
 
+    func isBlockedFingerprint(_ fingerprint: String) -> Bool {
+        identityManager.isBlocked(fingerprint: fingerprint)
+    }
+
+    func pinnedSigningPublicKey(for fingerprint: String) -> Data? {
+        identityManager.authenticatedSigningPublicKey(forFingerprint: fingerprint)
+            ?? identityManager.signingPublicKey(forFingerprint: fingerprint)
+    }
+
     func vouchToConnectedVerifiedPeers() {
         vouchCoordinator.vouchToConnectedVerifiedPeers()
     }
@@ -105,6 +155,20 @@ extension ChatViewModel: ChatVerificationContext {
 
     var unifiedFavorites: [BitchatPeer] {
         unifiedPeerService.favorites
+    }
+
+    func persistVerifiedIdentity(
+        peerID: PeerID,
+        expectedNoisePublicKey: Data,
+        signingPublicKey: Data,
+        claimedNickname: String
+    ) -> String? {
+        unifiedPeerService.persistVerifiedIdentity(
+            peerID: peerID,
+            expectedNoisePublicKey: expectedNoisePublicKey,
+            signingPublicKey: signingPublicKey,
+            claimedNickname: claimedNickname
+        )
     }
 
     func installNoiseSessionCallbacks(
@@ -156,10 +220,16 @@ extension ChatVerificationContext {
 @MainActor
 final class ChatVerificationCoordinator {
     struct PendingVerification {
-        let noiseKeyHex: String
-        let signKeyHex: String
+        let noisePublicKey: Data
+        let signingPublicKey: Data
+        let claimedNickname: String
         let nonceA: Data
+        let deadline: Date
         var sent: Bool
+        var completions: [(FriendVerificationCompletion) -> Void]
+
+        var noiseKeyHex: String { noisePublicKey.hexEncodedString() }
+        var signKeyHex: String { signingPublicKey.hexEncodedString() }
     }
 
     private enum NotificationCopy {
@@ -189,13 +259,25 @@ final class ChatVerificationCoordinator {
     }
 
     private unowned let context: any ChatVerificationContext
+    private let verificationService: VerificationService
+    private let verificationTimeout: TimeInterval
+    private let now: () -> Date
     private var pendingQRVerifications: [PeerID: PendingVerification] = [:]
+    private var timeoutTasks: [PeerID: Task<Void, Never>] = [:]
     private var lastVerifyNonceByPeer: [PeerID: Data] = [:]
     private var lastInboundVerifyChallengeAt: [String: Date] = [:]
     private var lastMutualToastAt: [String: Date] = [:]
 
-    init(context: any ChatVerificationContext) {
+    init(
+        context: any ChatVerificationContext,
+        verificationService: VerificationService = .shared,
+        verificationTimeout: TimeInterval = 30,
+        now: @escaping () -> Date = Date.init
+    ) {
         self.context = context
+        self.verificationService = verificationService
+        self.verificationTimeout = max(1, verificationTimeout)
+        self.now = now
     }
 
     func verifyFingerprint(for peerID: PeerID) {
@@ -289,6 +371,24 @@ final class ChatVerificationCoordinator {
                     self.context.retrySecurePrivateMessagesAfterAuthentication(for: peerIDAliases)
 
                     if var pending = self.pendingQRVerifications[peerID], pending.sent == false {
+                        guard let activeNoiseKey = self.context.noiseSessionPublicKeyData(for: peerID),
+                              activeNoiseKey == pending.noisePublicKey else {
+                            self.completePendingVerification(
+                                for: peerID,
+                                with: .failed(peerID: peerID, reason: .activeSessionMismatch)
+                            )
+                            return
+                        }
+                        let activeFingerprint = activeNoiseKey.sha256Fingerprint()
+                        if let pinnedSigningKey = self.context.pinnedSigningPublicKey(
+                            for: activeFingerprint
+                        ), pinnedSigningKey != pending.signingPublicKey {
+                            self.completePendingVerification(
+                                for: peerID,
+                                with: .failed(peerID: peerID, reason: .signingKeyMismatch)
+                            )
+                            return
+                        }
                         self.context.sendVerifyChallenge(
                             to: peerID,
                             noiseKeyHex: pending.noiseKeyHex,
@@ -310,42 +410,142 @@ final class ChatVerificationCoordinator {
         )
     }
 
-    func beginQRVerification(with qr: VerificationService.VerificationQR) -> Bool {
-        let targetNoise = qr.noiseKeyHex.lowercased()
+    @discardableResult
+    func beginFriendVerification(
+        with qr: VerificationService.VerificationQR,
+        completion: @escaping (FriendVerificationCompletion) -> Void
+    ) -> FriendVerificationStartResult {
+        expirePendingFriendVerifications()
+
+        // Revalidate the complete signed payload at the action boundary. The
+        // confirmation screen can remain open beyond the QR freshness window,
+        // and compatibility callers can construct `VerificationQR` directly;
+        // neither path may persist unverified nickname or Nostr metadata.
+        guard let validatedQR = verificationService.verifyScannedQR(qr.toURLString()),
+              let noisePublicKey = Data(hexString: validatedQR.noiseKeyHex),
+              noisePublicKey.count == 32,
+              let signingPublicKey = Data(hexString: validatedQR.signKeyHex),
+              signingPublicKey.count == 32 else {
+            return .failed(.invalidPayload)
+        }
+        let claimedNickname = validatedQR.nickname
+
+        guard noisePublicKey != context.noiseStaticPublicKeyData() else {
+            return .failed(.selfIdentity)
+        }
+
+        let fingerprint = noisePublicKey.sha256Fingerprint()
+        guard !context.isBlockedFingerprint(fingerprint) else {
+            return .failed(.blocked)
+        }
+        if let pinnedSigningKey = context.pinnedSigningPublicKey(for: fingerprint),
+           pinnedSigningKey != signingPublicKey {
+            return .failed(.signingKeyMismatch)
+        }
+
         guard let peer = context.unifiedPeers.first(where: {
-            $0.noisePublicKey.hexEncodedString().lowercased() == targetNoise
+            $0.noisePublicKey == noisePublicKey
         }) else {
-            return false
+            return .failed(.peerNotFound)
+        }
+        guard peer.isConnected || peer.isReachable else {
+            return .failed(.peerUnavailable)
         }
 
         let peerID = peer.peerID
-        if pendingQRVerifications[peerID] != nil {
-            return true
+        if var pending = pendingQRVerifications[peerID] {
+            guard pending.noisePublicKey == noisePublicKey,
+                  pending.signingPublicKey == signingPublicKey else {
+                return .failed(.signingKeyMismatch)
+            }
+            pending.completions.append(completion)
+            pendingQRVerifications[peerID] = pending
+            return .alreadyPending(
+                peerID: peerID,
+                claimedNickname: pending.claimedNickname
+            )
+        }
+
+        if context.hasEstablishedNoiseSession(with: peerID) {
+            guard context.noiseSessionPublicKeyData(for: peerID) == noisePublicKey else {
+                return .failed(.activeSessionMismatch)
+            }
         }
 
         var nonce = Data(count: 16)
-        _ = nonce.withUnsafeMutableBytes { SecRandomCopyBytes(kSecRandomDefault, 16, $0.baseAddress!) }
+        let randomStatus = nonce.withUnsafeMutableBytes {
+            SecRandomCopyBytes(kSecRandomDefault, 16, $0.baseAddress!)
+        }
+        guard randomStatus == errSecSuccess else {
+            return .failed(.invalidPayload)
+        }
+
         var pending = PendingVerification(
-            noiseKeyHex: qr.noiseKeyHex,
-            signKeyHex: qr.signKeyHex,
+            noisePublicKey: noisePublicKey,
+            signingPublicKey: signingPublicKey,
+            claimedNickname: claimedNickname,
             nonceA: nonce,
-            sent: false
+            deadline: now().addingTimeInterval(verificationTimeout),
+            sent: false,
+            completions: [completion]
         )
         pendingQRVerifications[peerID] = pending
+        scheduleTimeout(for: peerID)
 
         if context.hasEstablishedNoiseSession(with: peerID) {
-            context.sendVerifyChallenge(to: peerID, noiseKeyHex: qr.noiseKeyHex, nonceA: nonce)
+            context.sendVerifyChallenge(
+                to: peerID,
+                noiseKeyHex: pending.noiseKeyHex,
+                nonceA: nonce
+            )
             pending.sent = true
             pendingQRVerifications[peerID] = pending
         } else {
             context.triggerHandshake(with: peerID)
         }
 
-        return true
+        return .started(peerID: peerID, claimedNickname: claimedNickname)
+    }
+
+    /// Compatibility surface for older call sites. `true` means the proof was
+    /// started (or was already pending), not that verification has completed.
+    func beginQRVerification(with qr: VerificationService.VerificationQR) -> Bool {
+        switch beginFriendVerification(with: qr, completion: { _ in }) {
+        case .started, .alreadyPending:
+            return true
+        case .failed:
+            return false
+        }
+    }
+
+    /// Cancels one user-dismissed QR proof without touching any other
+    /// in-flight peer. No completion is delivered because the presenting flow
+    /// has explicitly discarded its state.
+    func cancelFriendVerification(with qr: VerificationService.VerificationQR) {
+        guard let noisePublicKey = Data(hexString: qr.noiseKeyHex),
+              let peerID = pendingQRVerifications.first(where: {
+                  $0.value.noisePublicKey == noisePublicKey
+              })?.key else {
+            return
+        }
+        discardPendingVerification(for: peerID)
+    }
+
+    /// Panic wipe must synchronously invalidate every pre-wipe nonce, callback,
+    /// and timeout before transport identity replacement or service restart.
+    func resetForPanic() {
+        for task in timeoutTasks.values {
+            task.cancel()
+        }
+        timeoutTasks.removeAll(keepingCapacity: false)
+        pendingQRVerifications.removeAll(keepingCapacity: false)
+        lastVerifyNonceByPeer.removeAll(keepingCapacity: false)
+        lastInboundVerifyChallengeAt.removeAll(keepingCapacity: false)
+        lastMutualToastAt.removeAll(keepingCapacity: false)
     }
 
     func handleVerifyChallengePayload(from peerID: PeerID, payload: Data) {
-        guard let challenge = VerificationService.shared.parseVerifyChallenge(payload) else { return }
+        guard let challenge = verificationService.parseVerifyChallenge(payload) else { return }
 
         let myNoiseHex = context.noiseStaticPublicKeyData()
             .hexEncodedString()
@@ -377,22 +577,92 @@ final class ChatVerificationCoordinator {
     }
 
     func handleVerifyResponsePayload(from peerID: PeerID, payload: Data) {
-        guard let response = VerificationService.shared.parseVerifyResponse(payload),
-              let pending = pendingQRVerifications[peerID],
-              response.noiseKeyHex.lowercased() == pending.noiseKeyHex.lowercased(),
-              response.nonceA == pending.nonceA else { return }
+        guard let pending = pendingQRVerifications[peerID] else { return }
+        guard now() <= pending.deadline else {
+            completePendingVerification(
+                for: peerID,
+                with: .failed(peerID: peerID, reason: .timedOut)
+            )
+            return
+        }
+        guard let response = verificationService.parseVerifyResponse(payload),
+              Data(hexString: response.noiseKeyHex) == pending.noisePublicKey,
+              response.nonceA == pending.nonceA else {
+            completePendingVerification(
+                for: peerID,
+                with: .failed(peerID: peerID, reason: .invalidResponse)
+            )
+            return
+        }
 
-        let isValid = VerificationService.shared.verifyResponseSignature(
+        // The response must arrive inside the exact authenticated Noise
+        // session named by the QR. A valid QR signing key alone is not enough:
+        // without this check a relayed/stale peer-ID binding could save the
+        // wrong live device as a friend.
+        guard context.hasEstablishedNoiseSession(with: peerID),
+              let activeNoisePublicKey = context.noiseSessionPublicKeyData(for: peerID),
+              activeNoisePublicKey == pending.noisePublicKey else {
+            completePendingVerification(
+                for: peerID,
+                with: .failed(peerID: peerID, reason: .activeSessionMismatch)
+            )
+            return
+        }
+
+        let fingerprint = activeNoisePublicKey.sha256Fingerprint()
+        guard context.getFingerprint(for: peerID).map({
+            $0.caseInsensitiveCompare(fingerprint) == .orderedSame
+        }) ?? true else {
+            completePendingVerification(
+                for: peerID,
+                with: .failed(peerID: peerID, reason: .activeSessionMismatch)
+            )
+            return
+        }
+        guard !context.isBlockedFingerprint(fingerprint) else {
+            completePendingVerification(
+                for: peerID,
+                with: .failed(peerID: peerID, reason: .blocked)
+            )
+            return
+        }
+        if let pinnedSigningKey = context.pinnedSigningPublicKey(for: fingerprint),
+           pinnedSigningKey != pending.signingPublicKey {
+            completePendingVerification(
+                for: peerID,
+                with: .failed(peerID: peerID, reason: .signingKeyMismatch)
+            )
+            return
+        }
+
+        let isValid = verificationService.verifyResponseSignature(
             noiseKeyHex: response.noiseKeyHex,
             nonceA: response.nonceA,
             signature: response.signature,
             signerPublicKeyHex: pending.signKeyHex
         )
-        guard isValid else { return }
+        guard isValid else {
+            completePendingVerification(
+                for: peerID,
+                with: .failed(peerID: peerID, reason: .invalidResponse)
+            )
+            return
+        }
 
-        pendingQRVerifications.removeValue(forKey: peerID)
-
-        guard let fingerprint = context.getFingerprint(for: peerID) else { return }
+        // Persist the proven key binding before publishing the verification
+        // badge. This intentionally leaves the friend relationship unchanged.
+        guard let peerName = context.persistVerifiedIdentity(
+            peerID: peerID,
+            expectedNoisePublicKey: activeNoisePublicKey,
+            signingPublicKey: pending.signingPublicKey,
+            claimedNickname: pending.claimedNickname
+        ) else {
+            completePendingVerification(
+                for: peerID,
+                with: .failed(peerID: peerID, reason: .persistenceRejected)
+            )
+            return
+        }
 
         let shortFingerprint = fingerprint.prefix(8)
         SecureLogger.info("🔐 Marking verified fingerprint: \(shortFingerprint)", category: .security)
@@ -400,8 +670,6 @@ final class ChatVerificationCoordinator {
         context.saveIdentityState()
         context.setStoredVerified(fingerprint, verified: true)
 
-        let peerName = context.unifiedPeer(for: peerID)?.nickname
-            ?? context.resolveNickname(for: peerID)
         context.postLocalNotification(
             title: NotificationCopy.successTitle,
             body: NotificationCopy.successBody(peerName: peerName),
@@ -421,10 +689,45 @@ final class ChatVerificationCoordinator {
         context.updateEncryptionStatus(for: peerID)
         // QR verification just completed — same vouch trigger as manual verify.
         context.vouchToConnectedVerifiedPeers()
+        completePendingVerification(
+            for: peerID,
+            with: .verified(
+                peerID: peerID,
+                displayName: peerName
+            )
+        )
     }
 }
 
 private extension ChatVerificationCoordinator {
+    func scheduleTimeout(for peerID: PeerID) {
+        timeoutTasks[peerID]?.cancel()
+        let nanoseconds = UInt64(verificationTimeout * 1_000_000_000)
+        timeoutTasks[peerID] = Task { @MainActor [weak self] in
+            try? await Task.sleep(nanoseconds: nanoseconds)
+            guard !Task.isCancelled else { return }
+            self?.expirePendingFriendVerifications()
+        }
+    }
+
+    func completePendingVerification(
+        for peerID: PeerID,
+        with completion: FriendVerificationCompletion
+    ) {
+        guard let pending = pendingQRVerifications.removeValue(forKey: peerID) else {
+            return
+        }
+        timeoutTasks.removeValue(forKey: peerID)?.cancel()
+        for handler in pending.completions {
+            handler(completion)
+        }
+    }
+
+    func discardPendingVerification(for peerID: PeerID) {
+        pendingQRVerifications.removeValue(forKey: peerID)
+        timeoutTasks.removeValue(forKey: peerID)?.cancel()
+    }
+
     func maybeSendMutualVerificationNotification(
         fingerprint: String,
         peerID: PeerID,
@@ -441,5 +744,23 @@ private extension ChatVerificationCoordinator {
             body: NotificationCopy.mutualBody(peerName: bodyName),
             identifier: "\(notificationPrefix)-\(peerID)-\(UUID().uuidString)"
         )
+    }
+}
+
+extension ChatVerificationCoordinator {
+    /// Expires pending QR proofs. The explicit `at` argument keeps timeout
+    /// behavior deterministic in focused tests and lifecycle callers; the
+    /// scheduled task uses the coordinator's injected clock.
+    func expirePendingFriendVerifications(at date: Date? = nil) {
+        let referenceDate = date ?? now()
+        let expiredPeerIDs = pendingQRVerifications.compactMap { peerID, pending in
+            pending.deadline <= referenceDate ? peerID : nil
+        }
+        for peerID in expiredPeerIDs {
+            completePendingVerification(
+                for: peerID,
+                with: .failed(peerID: peerID, reason: .timedOut)
+            )
+        }
     }
 }

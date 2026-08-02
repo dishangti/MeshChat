@@ -28,6 +28,26 @@ struct UnifiedPeerServiceTests {
     }
 
     @Test @MainActor
+    func fullNoiseFingerprintLookupDoesNotOverwriteAuthenticatedShortBinding() async {
+        let transport = MockTransport()
+        let identity = TestIdentityManager()
+        let service = UnifiedPeerService(
+            meshService: transport,
+            idBridge: NostrIdentityBridge(keychain: MockKeychainHelper()),
+            identityManager: identity
+        )
+        let noiseKey = Data(repeating: 0x6A, count: 32)
+        let shortPeerID = PeerID(publicKey: noiseKey)
+        let fullPeerID = PeerID(hexData: noiseKey)
+        let authenticatedShortFingerprint = "authenticated-short-binding"
+        transport.peerFingerprints[shortPeerID] = authenticatedShortFingerprint
+
+        #expect(service.getFingerprint(for: shortPeerID) == authenticatedShortFingerprint)
+        #expect(service.getFingerprint(for: fullPeerID) == noiseKey.sha256Fingerprint())
+        #expect(service.getFingerprint(for: shortPeerID) == authenticatedShortFingerprint)
+    }
+
+    @Test @MainActor
     func isBlocked_usesSocialIdentity() async {
         let transport = MockTransport()
         let identity = TestIdentityManager()
@@ -183,6 +203,347 @@ struct UnifiedPeerServiceTests {
     }
 
     @Test @MainActor
+    func updatePeers_offlineOneWayFriendRemainsVisible() async {
+        let favoritesService = FavoritesPersistenceService(keychain: MockKeychain())
+        let transport = MockTransport()
+        let identity = TestIdentityManager()
+        let service = UnifiedPeerService(
+            meshService: transport,
+            idBridge: NostrIdentityBridge(keychain: MockKeychainHelper()),
+            identityManager: identity,
+            favoritesService: favoritesService
+        )
+        let noiseKey = Data(repeating: 0xD1, count: 32)
+        favoritesService.addFavorite(
+            peerNoisePublicKey: noiseKey,
+            peerNickname: "One Way"
+        )
+
+        transport.updatePeerSnapshots([])
+        service.didUpdatePeerSnapshots([])
+
+        let row = service.peers.first { $0.noisePublicKey == noiseKey }
+        #expect(row?.peerID == PeerID(hexData: noiseKey))
+        #expect(row?.isFavorite == true)
+        #expect(row?.isMutualFavorite == false)
+        #expect(row?.connectionState == .offline)
+    }
+
+    @Test @MainActor
+    func addFriend_savesContactWithoutPinningOrVerifyingIdentity() async {
+        let favoritesService = FavoritesPersistenceService(keychain: MockKeychain())
+        let transport = MockTransport()
+        let identity = TestIdentityManager()
+        let service = UnifiedPeerService(
+            meshService: transport,
+            idBridge: NostrIdentityBridge(keychain: MockKeychainHelper()),
+            identityManager: identity,
+            favoritesService: favoritesService
+        )
+        let noiseKey = Data(repeating: 0xC4, count: 32)
+        let peerID = PeerID(publicKey: noiseKey)
+        let fingerprint = noiseKey.sha256Fingerprint()
+        identity.updateSocialIdentity(
+            SocialIdentity(
+                fingerprint: fingerprint,
+                localPetname: "Neighbor",
+                claimedNickname: "Alice",
+                trustLevel: .unknown,
+                isFavorite: false,
+                isBlocked: false,
+                notes: nil
+            )
+        )
+        let snapshots = [
+            TransportPeerSnapshot(
+                peerID: peerID,
+                nickname: "Alice",
+                isConnected: true,
+                noisePublicKey: noiseKey,
+                lastSeen: Date()
+            )
+        ]
+        transport.updatePeerSnapshots(snapshots)
+        service.didUpdatePeerSnapshots(snapshots)
+
+        let result = service.addFriend(peerID)
+
+        #expect(result == FriendPersistenceOutcome(displayName: "Neighbor", wasAdded: true))
+        #expect(favoritesService.isFavorite(noiseKey))
+        #expect(identity.getSocialIdentity(for: fingerprint)?.isFavorite == true)
+        #expect(identity.getSocialIdentity(for: fingerprint)?.localPetname == "Neighbor")
+        #expect(identity.signingPublicKey(forFingerprint: fingerprint) == nil)
+        #expect(!identity.isVerified(fingerprint: fingerprint))
+        #expect(transport.sentFavoriteNotifications.count == 1)
+    }
+
+    @Test @MainActor
+    func addFriend_isIdempotentAndKeepsLocalPetnameSeparate() async {
+        let favoritesService = FavoritesPersistenceService(keychain: MockKeychain())
+        let transport = MockTransport()
+        let identity = TestIdentityManager()
+        let service = UnifiedPeerService(
+            meshService: transport,
+            idBridge: NostrIdentityBridge(keychain: MockKeychainHelper()),
+            identityManager: identity,
+            favoritesService: favoritesService
+        )
+        let noiseKey = Data(repeating: 0xD2, count: 32)
+        let peerID = PeerID(publicKey: noiseKey)
+        let snapshots = [
+            TransportPeerSnapshot(
+                peerID: peerID,
+                nickname: "Alice",
+                isConnected: true,
+                noisePublicKey: noiseKey,
+                lastSeen: Date()
+            )
+        ]
+        transport.updatePeerSnapshots(snapshots)
+        service.didUpdatePeerSnapshots(snapshots)
+        identity.updateSocialIdentity(
+            SocialIdentity(
+                fingerprint: noiseKey.sha256Fingerprint(),
+                localPetname: "Bestie",
+                claimedNickname: "Alice",
+                trustLevel: .unknown,
+                isFavorite: false,
+                isBlocked: false,
+                notes: nil
+            )
+        )
+
+        let first = service.addFriend(
+            noisePublicKey: noiseKey,
+            nostrPublicKey: "npub1alice",
+            claimedNickname: "Alice"
+        )
+        let second = service.addFriend(
+            noisePublicKey: noiseKey,
+            nostrPublicKey: "npub1alice",
+            claimedNickname: "Alice"
+        )
+
+        #expect(first == FriendPersistenceOutcome(displayName: "Bestie", wasAdded: true))
+        #expect(second == FriendPersistenceOutcome(displayName: "Bestie", wasAdded: false))
+        #expect(favoritesService.isFavorite(noiseKey))
+        #expect(favoritesService.getFavoriteStatus(for: noiseKey)?.peerNickname == "Alice")
+        #expect(identity.getSocialIdentity(for: noiseKey.sha256Fingerprint())?.localPetname == "Bestie")
+        #expect(identity.pinnedSigningKey(for: noiseKey.sha256Fingerprint()) == nil)
+        #expect(identity.cryptoUpsertCount == 0)
+        #expect(transport.sentFavoriteNotifications.count == 1)
+        #expect(transport.sentFavoriteNotifications.first?.peerID == peerID)
+        #expect(transport.sentFavoriteNotifications.first?.isFavorite == true)
+    }
+
+    @Test @MainActor
+    func addFriend_acceptsBitchatWireNicknameBeyondLocalInputLimit() async {
+        let favoritesService = FavoritesPersistenceService(keychain: MockKeychain())
+        let transport = MockTransport()
+        let identity = TestIdentityManager()
+        let service = UnifiedPeerService(
+            meshService: transport,
+            idBridge: NostrIdentityBridge(keychain: MockKeychainHelper()),
+            identityManager: identity,
+            favoritesService: favoritesService
+        )
+        let noiseKey = Data(repeating: 0xB1, count: 32)
+        let peerID = PeerID(publicKey: noiseKey)
+        let protocolNickname = String(repeating: "n", count: InputValidator.Limits.maxNicknameLength + 1)
+        let snapshots = [
+            TransportPeerSnapshot(
+                peerID: peerID,
+                nickname: protocolNickname,
+                isConnected: true,
+                noisePublicKey: noiseKey,
+                lastSeen: Date()
+            )
+        ]
+        transport.updatePeerSnapshots(snapshots)
+        service.didUpdatePeerSnapshots(snapshots)
+
+        let result = service.addFriend(
+            noisePublicKey: noiseKey,
+            nostrPublicKey: nil,
+            claimedNickname: protocolNickname
+        )
+
+        #expect(result == FriendPersistenceOutcome(displayName: protocolNickname, wasAdded: true))
+        #expect(favoritesService.getFavoriteStatus(for: noiseKey)?.peerNickname == protocolNickname)
+        #expect(identity.getSocialIdentity(for: noiseKey.sha256Fingerprint())?.claimedNickname == protocolNickname)
+    }
+
+    @Test @MainActor
+    func addFriend_rejectsBlockedIdentity() async {
+        let favoritesService = FavoritesPersistenceService(keychain: MockKeychain())
+        let transport = MockTransport()
+        let identity = TestIdentityManager()
+        let service = UnifiedPeerService(
+            meshService: transport,
+            idBridge: NostrIdentityBridge(keychain: MockKeychainHelper()),
+            identityManager: identity,
+            favoritesService: favoritesService
+        )
+        let noiseKey = Data(repeating: 0xD4, count: 32)
+        let peerID = PeerID(publicKey: noiseKey)
+        let snapshots = [
+            TransportPeerSnapshot(
+                peerID: peerID,
+                nickname: "Mallory",
+                isConnected: true,
+                noisePublicKey: noiseKey,
+                lastSeen: Date()
+            )
+        ]
+        transport.updatePeerSnapshots(snapshots)
+        service.didUpdatePeerSnapshots(snapshots)
+
+        let fingerprint = noiseKey.sha256Fingerprint()
+        identity.setBlocked(fingerprint, isBlocked: true)
+        let blocked = service.addFriend(
+            noisePublicKey: noiseKey,
+            nostrPublicKey: nil,
+            claimedNickname: "Mallory"
+        )
+        #expect(blocked == nil)
+        #expect(!favoritesService.isFavorite(noiseKey))
+        #expect(transport.sentFavoriteNotifications.isEmpty)
+    }
+
+    @Test @MainActor
+    func addFriend_rejectsDurableFavoriteFailureBeforeIdentityOrNotification() async {
+        let keychain = MockKeychain()
+        keychain.shouldFailGenericSave = true
+        let favoritesService = FavoritesPersistenceService(keychain: keychain)
+        let transport = MockTransport()
+        let identity = TestIdentityManager()
+        let service = UnifiedPeerService(
+            meshService: transport,
+            idBridge: NostrIdentityBridge(keychain: MockKeychainHelper()),
+            identityManager: identity,
+            favoritesService: favoritesService
+        )
+        let noiseKey = Data(repeating: 0xD5, count: 32)
+        let peerID = PeerID(publicKey: noiseKey)
+        let snapshots = [
+            TransportPeerSnapshot(
+                peerID: peerID,
+                nickname: "Alice",
+                isConnected: true,
+                noisePublicKey: noiseKey,
+                lastSeen: Date()
+            )
+        ]
+        transport.updatePeerSnapshots(snapshots)
+        service.didUpdatePeerSnapshots(snapshots)
+
+        let result = service.addFriend(
+            noisePublicKey: noiseKey,
+            nostrPublicKey: nil,
+            claimedNickname: "Alice"
+        )
+
+        #expect(result == nil)
+        #expect(!favoritesService.isFavorite(noiseKey))
+        #expect(identity.cryptoUpsertCount == 0)
+        #expect(identity.getSocialIdentity(for: noiseKey.sha256Fingerprint()) == nil)
+        #expect(transport.sentFavoriteNotifications.isEmpty)
+    }
+
+    @Test @MainActor
+    func addFriend_rollsBackNewFavoriteWhenSocialPersistenceFails() async {
+        let favoritesService = FavoritesPersistenceService(keychain: MockKeychain())
+        let transport = MockTransport()
+        let identity = TestIdentityManager()
+        identity.shouldFailSocialPersistence = true
+        let service = UnifiedPeerService(
+            meshService: transport,
+            idBridge: NostrIdentityBridge(keychain: MockKeychainHelper()),
+            identityManager: identity,
+            favoritesService: favoritesService
+        )
+        let noiseKey = Data(repeating: 0xE1, count: 32)
+        let peerID = PeerID(publicKey: noiseKey)
+        let snapshots = [
+            TransportPeerSnapshot(
+                peerID: peerID,
+                nickname: "Alice",
+                isConnected: true,
+                noisePublicKey: noiseKey,
+                lastSeen: Date()
+            )
+        ]
+        transport.updatePeerSnapshots(snapshots)
+        service.didUpdatePeerSnapshots(snapshots)
+
+        let result = service.addFriend(
+            noisePublicKey: noiseKey,
+            nostrPublicKey: nil,
+            claimedNickname: "Alice"
+        )
+
+        #expect(result == nil)
+        #expect(!favoritesService.isFavorite(noiseKey))
+        #expect(identity.cryptoUpsertCount == 0)
+        #expect(identity.getSocialIdentity(for: noiseKey.sha256Fingerprint()) == nil)
+        #expect(transport.sentFavoriteNotifications.isEmpty)
+    }
+
+    @Test @MainActor
+    func removeFriend_isRemovalOnlyAndClearsLocalSocialState() async {
+        let favoritesService = FavoritesPersistenceService(keychain: MockKeychain())
+        let transport = MockTransport()
+        let identity = TestIdentityManager()
+        let service = UnifiedPeerService(
+            meshService: transport,
+            idBridge: NostrIdentityBridge(keychain: MockKeychainHelper()),
+            identityManager: identity,
+            favoritesService: favoritesService
+        )
+        let noiseKey = Data(repeating: 0xD7, count: 32)
+        let peerID = PeerID(publicKey: noiseKey)
+        let snapshots = [
+            TransportPeerSnapshot(
+                peerID: peerID,
+                nickname: "Alice",
+                isConnected: true,
+                noisePublicKey: noiseKey,
+                lastSeen: Date()
+            )
+        ]
+        transport.updatePeerSnapshots(snapshots)
+        service.didUpdatePeerSnapshots(snapshots)
+        favoritesService.addFavorite(
+            peerNoisePublicKey: noiseKey,
+            peerNickname: "Alice"
+        )
+        identity.updateSocialIdentity(
+            SocialIdentity(
+                fingerprint: noiseKey.sha256Fingerprint(),
+                localPetname: "Bestie",
+                claimedNickname: "Alice",
+                trustLevel: .unknown,
+                isFavorite: true,
+                isBlocked: false,
+                notes: nil
+            )
+        )
+
+        #expect(service.removeFriend(peerID))
+        #expect(service.removeFriend(peerID))
+        #expect(!favoritesService.isFavorite(noiseKey))
+        #expect(
+            identity.getSocialIdentity(for: noiseKey.sha256Fingerprint())?.isFavorite == false
+        )
+        #expect(
+            identity.getSocialIdentity(for: noiseKey.sha256Fingerprint())?.localPetname == "Bestie"
+        )
+        #expect(transport.sentFavoriteNotifications.count == 1)
+        #expect(transport.sentFavoriteNotifications.first?.peerID == peerID)
+        #expect(transport.sentFavoriteNotifications.first?.isFavorite == false)
+    }
+
+    @Test @MainActor
     func setBlocked_unknownIdentityReturnsNil() async {
         let transport = MockTransport()
         let identity = TestIdentityManager()
@@ -202,6 +563,9 @@ private final class TestIdentityManager: SecureIdentityStateManagerProtocol {
     private var favorites: Set<String> = []
     private var blockedNostr: Set<String> = []
     private var verified: Set<String> = []
+    private var pinnedSigningKeys: [String: Data] = [:]
+    private(set) var cryptoUpsertCount = 0
+    var shouldFailSocialPersistence = false
 
     func forceSave() {}
 
@@ -209,7 +573,22 @@ private final class TestIdentityManager: SecureIdentityStateManagerProtocol {
         socialIdentities[fingerprint]
     }
 
-    func upsertCryptographicIdentity(fingerprint: String, noisePublicKey: Data, signingPublicKey: Data?, claimedNickname: String?) {}
+    func upsertCryptographicIdentity(
+        fingerprint: String,
+        noisePublicKey: Data,
+        signingPublicKey: Data?,
+        claimedNickname: String?
+    ) {
+        if let existing = pinnedSigningKeys[fingerprint],
+           let signingPublicKey,
+           existing != signingPublicKey {
+            return
+        }
+        cryptoUpsertCount += 1
+        if let signingPublicKey {
+            pinnedSigningKeys[fingerprint] = signingPublicKey
+        }
+    }
 
     func getCryptoIdentitiesByPeerIDPrefix(_ peerID: PeerID) -> [CryptographicIdentity] {
         []
@@ -217,6 +596,12 @@ private final class TestIdentityManager: SecureIdentityStateManagerProtocol {
 
     func updateSocialIdentity(_ identity: SocialIdentity) {
         socialIdentities[identity.fingerprint] = identity
+    }
+
+    func persistSocialIdentity(_ identity: SocialIdentity) -> Bool {
+        guard !shouldFailSocialPersistence else { return false }
+        updateSocialIdentity(identity)
+        return true
     }
 
     func isFavorite(fingerprint: String) -> Bool {
@@ -268,12 +653,21 @@ private final class TestIdentityManager: SecureIdentityStateManagerProtocol {
         favorites.removeAll()
         blockedNostr.removeAll()
         verified.removeAll()
+        pinnedSigningKeys.removeAll()
     }
 
     func markPrivateMediaCapable(fingerprint: String) {}
     func hasObservedPrivateMediaCapability(fingerprint: String) -> Bool { false }
-    func bindAuthenticatedSigningPublicKey(_ signingPublicKey: Data, fingerprint: String) {}
-    func authenticatedSigningPublicKey(forFingerprint fingerprint: String) -> Data? { nil }
+    func bindAuthenticatedSigningPublicKey(_ signingPublicKey: Data, fingerprint: String) {
+        pinnedSigningKeys[fingerprint] = signingPublicKey
+    }
+    func authenticatedSigningPublicKey(forFingerprint fingerprint: String) -> Data? {
+        pinnedSigningKeys[fingerprint]
+    }
+
+    func pinnedSigningKey(for fingerprint: String) -> Data? {
+        pinnedSigningKeys[fingerprint]
+    }
 
     func removeEphemeralSession(peerID: PeerID) {}
 
@@ -315,7 +709,7 @@ private final class TestIdentityManager: SecureIdentityStateManagerProtocol {
     func markVouchBatchSent(to fingerprint: String, at date: Date) {}
 
     func signingPublicKey(forFingerprint fingerprint: String) -> Data? {
-        nil
+        pinnedSigningKeys[fingerprint]
     }
 
     func mostRecentlyVerifiedFingerprints(limit: Int, excluding fingerprint: String) -> [String] {

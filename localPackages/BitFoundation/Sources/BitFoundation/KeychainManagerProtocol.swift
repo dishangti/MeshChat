@@ -29,6 +29,14 @@ public protocol KeychainManagerProtocol {
     // MARK: - Generic Data Storage (consolidated from KeychainHelper)
     /// Save data with a custom service name
     func save(key: String, data: Data, service: String, accessible: CFString?)
+    /// Atomically update or add data with a custom service name.
+    /// A failed replacement must leave any previously stored value intact.
+    func saveWithResult(
+        key: String,
+        data: Data,
+        service: String,
+        accessible: CFString?
+    ) -> KeychainSaveResult
     /// Load data from a custom service
     func load(key: String, service: String) -> Data?
     /// Load data from a custom service while preserving Keychain status.
@@ -42,6 +50,35 @@ public protocol KeychainManagerProtocol {
 }
 
 public extension KeychainManagerProtocol {
+    /// Compatibility bridge for conformers that predate result-bearing generic
+    /// saves. Production implementations should override this method so a
+    /// failed replacement cannot destroy the previous value.
+    func saveWithResult(
+        key: String,
+        data: Data,
+        service: String,
+        accessible: CFString?
+    ) -> KeychainSaveResult {
+        save(
+            key: key,
+            data: data,
+            service: service,
+            accessible: accessible
+        )
+        switch loadWithResult(key: key, service: service) {
+        case .success(let storedData) where storedData == data:
+            return .success
+        case .accessDenied:
+            return .accessDenied
+        case .deviceLocked, .authenticationFailed:
+            return .deviceLocked
+        case .otherError(let status):
+            return .otherError(status)
+        case .success, .itemNotFound:
+            return .otherError(OSStatus(-1))
+        }
+    }
+
     /// Source-compatible fallback for lightweight/test implementations. The
     /// production manager overrides this with the underlying OSStatus.
     func loadWithResult(key: String, service: String) -> KeychainReadResult {

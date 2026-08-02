@@ -33,6 +33,35 @@ final class NetworkActivationServiceTests: XCTestCase {
         XCTAssertEqual(context.relayController.disconnectCallCount, 0)
     }
 
+    func test_start_enablesNetworkWhenMeshBridgeHasAnActiveCell() {
+        let context = makeService(
+            permission: .denied,
+            favorites: [],
+            bridgeActive: true
+        )
+
+        context.service.start()
+
+        XCTAssertTrue(context.service.activationAllowed)
+        XCTAssertEqual(context.torController.startIfNeededCallCount, 1)
+        XCTAssertEqual(context.relayController.connectCallCount, 1)
+    }
+
+    func test_bridgeActivePublisher_reactivatesAndDeactivatesNetwork() async {
+        let context = makeService(permission: .denied, favorites: [])
+
+        context.service.start()
+        XCTAssertFalse(context.service.activationAllowed)
+
+        context.bridgeSubject.send(true)
+        let activated = await waitUntil { context.service.activationAllowed }
+        XCTAssertTrue(activated)
+
+        context.bridgeSubject.send(false)
+        let deactivated = await waitUntil { !context.service.activationAllowed }
+        XCTAssertTrue(deactivated)
+    }
+
     func test_start_respectsStoredTorPreferenceForDirectMode() {
         let context = makeService(permission: .authorized, favorites: [])
         context.storage.set(false, forKey: torPreferenceKey)
@@ -198,7 +227,8 @@ final class NetworkActivationServiceTests: XCTestCase {
         permission: LocationChannelManager.PermissionState,
         favorites: Set<Data>,
         selectedChannel: ChannelID = .mesh,
-        selectedChannelSubject: CurrentValueSubject<ChannelID, Never>? = nil
+        selectedChannelSubject: CurrentValueSubject<ChannelID, Never>? = nil,
+        bridgeActive: Bool = false
     ) -> NetworkActivationTestContext {
         let suiteName = "NetworkActivationServiceTests-\(UUID().uuidString)"
         let storage = UserDefaults(suiteName: suiteName)!
@@ -208,6 +238,7 @@ final class NetworkActivationServiceTests: XCTestCase {
         let favoritesSubject = CurrentValueSubject<Set<Data>, Never>(favorites)
         let channelSubject = selectedChannelSubject
             ?? CurrentValueSubject<ChannelID, Never>(selectedChannel)
+        let bridgeSubject = CurrentValueSubject<Bool, Never>(bridgeActive)
         let torController = MockNetworkActivationTorController()
         let relayController = MockNetworkActivationRelayController()
         let proxyController = MockNetworkActivationProxyController()
@@ -224,6 +255,8 @@ final class NetworkActivationServiceTests: XCTestCase {
                 if case .location = channelSubject.value { return true }
                 return false
             },
+            bridgeActivePublisher: bridgeSubject.eraseToAnyPublisher(),
+            bridgeActiveProvider: { bridgeSubject.value },
             reachabilityMonitor: reachability,
             torController: torController,
             relayController: relayController,
@@ -234,6 +267,7 @@ final class NetworkActivationServiceTests: XCTestCase {
             service: service,
             storage: storage,
             favoritesSubject: favoritesSubject,
+            bridgeSubject: bridgeSubject,
             reachability: reachability,
             torController: torController,
             relayController: relayController,
@@ -262,6 +296,7 @@ private struct NetworkActivationTestContext {
     let service: NetworkActivationService
     let storage: UserDefaults
     let favoritesSubject: CurrentValueSubject<Set<Data>, Never>
+    let bridgeSubject: CurrentValueSubject<Bool, Never>
     let reachability: MockNetworkActivationReachability
     let torController: MockNetworkActivationTorController
     let relayController: MockNetworkActivationRelayController

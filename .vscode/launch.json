@@ -1,0 +1,44 @@
+{
+    "configurations": [
+        {
+            "type": "swift",
+            "request": "launch",
+            "args": [],
+            "cwd": "${workspaceFolder:bitchat}",
+            "name": "Debug bitchat",
+            "target": "bitchat",
+            "configuration": "debug",
+            "preLaunchTask": "swift: Build Debug bitchat"
+        },
+        {
+            "type": "swift",
+            "request": "launch",
+            "args": [],
+            "cwd": "${workspaceFolder:bitchat}",
+            "name": "Release bitchat",
+            "target": "bitchat",
+            "configuration": "release",
+            "preLaunchTask": "swift: Build Release bitchat"
+        },
+        {
+            "type": "swift",
+            "request": "launch",
+            "args": [],
+            "cwd": "${workspaceFolder:bitchat}",
+            "name": "Debug MeshChat",
+            "target": "MeshChat",
+            "configuration": "debug",
+            "preLaunchTask": "swift: Build Debug MeshChat"
+        },
+        {
+            "type": "swift",
+            "request": "launch",
+            "args": [],
+            "cwd": "${workspaceFolder:bitchat}",
+            "name": "Release MeshChat",
+            "target": "MeshChat",
+            "configuration": "release",
+            "preLaunchTask": "swift: Build Release MeshChat"
+        }
+    ]
+}

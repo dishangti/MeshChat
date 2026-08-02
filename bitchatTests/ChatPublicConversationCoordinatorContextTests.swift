@@ -82,6 +82,14 @@ private final class MockChatPublicConversationContext: ChatPublicConversationCon
     private(set) var clearedConversations: [ConversationID] = []
     private(set) var archivePurgeCount = 0
 
+    func removePublicMessages(
+        from conversationID: ConversationID,
+        where predicate: (BitchatMessage) -> Bool
+    ) {
+        clearedConversations.append(conversationID)
+        conversations[conversationID]?.removeAll(where: predicate)
+    }
+
     func clearPublicConversation(_ conversationID: ConversationID) {
         clearedConversations.append(conversationID)
         conversations[conversationID] = []
@@ -100,6 +108,10 @@ private final class MockChatPublicConversationContext: ChatPublicConversationCon
     var unreadPrivateMessages: Set<PeerID> = []
     private(set) var removedPrivateChats: [PeerID] = []
     private(set) var cleanedUpFileMessageIDs: [String] = []
+    private(set) var canceledPublicMediaMessageIDs: [String] = []
+    private(set) var cleanedOutgoingPublicMediaMessageIDs: [String] = []
+    private(set) var cleanedIncomingPublicMediaMessageIDs: [String] = []
+    var activeLiveVoiceMessageIDs: Set<String> = []
 
     func removePrivateChat(_ peerID: PeerID) {
         removedPrivateChats.append(peerID)
@@ -125,6 +137,33 @@ private final class MockChatPublicConversationContext: ChatPublicConversationCon
 
     func cleanupLocalFile(forMessage message: BitchatMessage) {
         cleanedUpFileMessageIDs.append(message.id)
+    }
+
+    func isActiveLiveVoiceMessage(_ message: BitchatMessage) -> Bool {
+        activeLiveVoiceMessageIDs.contains(message.id)
+    }
+
+    func cancelMediaTransferForPublicHistoryDeletion(messageID: String) {
+        canceledPublicMediaMessageIDs.append(messageID)
+    }
+
+    func hasSurvivingMediaReference(for message: BitchatMessage) -> Bool {
+        conversations.values.joined().contains {
+            $0.content == message.content
+        } || privateChats.values.joined().contains {
+            $0.content == message.content
+        }
+    }
+
+    func cleanupPublicMediaFile(
+        for message: BitchatMessage,
+        wasOutgoing: Bool
+    ) {
+        if wasOutgoing {
+            cleanedOutgoingPublicMediaMessageIDs.append(message.id)
+        } else {
+            cleanedIncomingPublicMediaMessageIDs.append(message.id)
+        }
     }
 
     // Geohash participants & presence
@@ -258,7 +297,8 @@ private func makePublicMessage(
     id: String = UUID().uuidString,
     sender: String = "alice",
     content: String = "hello world",
-    senderPeerID: PeerID? = PeerID(str: "aabbccddeeff0011")
+    senderPeerID: PeerID? = PeerID(str: "aabbccddeeff0011"),
+    deliveryStatus: DeliveryStatus? = nil
 ) -> BitchatMessage {
     BitchatMessage(
         id: id,
@@ -267,7 +307,8 @@ private func makePublicMessage(
         timestamp: Date(),
         isRelay: false,
         isPrivate: false,
-        senderPeerID: senderPeerID
+        senderPeerID: senderPeerID,
+        deliveryStatus: deliveryStatus
     )
 }
 
@@ -419,6 +460,91 @@ struct ChatPublicConversationCoordinatorContextTests {
         coordinator.clearCurrentPublicTimeline()
 
         #expect(context.archivePurgeCount == 0)
+    }
+
+    @Test @MainActor
+    func clearPublicTimeline_usesCapturedTargetInsteadOfActiveChannel() async {
+        let context = MockChatPublicConversationContext()
+        let coordinator = ChatPublicConversationCoordinator(context: context)
+        let geohash = "u4pruy"
+        let locationID = ConversationID.geohash(geohash)
+        context.activeChannel = .location(
+            GeohashChannel(level: .city, geohash: geohash)
+        )
+        context.conversations[.mesh] = [
+            makePublicMessage(id: "captured-mesh")
+        ]
+        context.conversations[locationID] = [
+            makePublicMessage(id: "current-location")
+        ]
+
+        coordinator.clearPublicTimeline(.mesh)
+
+        #expect(context.publicMessages(in: .mesh).isEmpty)
+        #expect(
+            context.publicMessages(in: locationID).map(\.id)
+                == ["current-location"]
+        )
+        #expect(context.clearedConversations == [.mesh])
+        #expect(context.archivePurgeCount == 1)
+    }
+
+    @Test @MainActor
+    func clearPublicTimeline_scopesMediaCleanupAndPreservesLiveVoice() async {
+        let context = MockChatPublicConversationContext()
+        let coordinator = ChatPublicConversationCoordinator(context: context)
+        let uniqueOutgoing = makePublicMessage(
+            id: "unique-outgoing",
+            content: "\(MimeType.Category.image.messagePrefix)unique.jpg",
+            deliveryStatus: .sent
+        )
+        let uniqueIncoming = makePublicMessage(
+            id: "unique-incoming",
+            content: "\(MimeType.Category.file.messagePrefix)received.pdf"
+        )
+        let sharedOutgoing = makePublicMessage(
+            id: "shared-outgoing",
+            content: "\(MimeType.Category.audio.messagePrefix)shared.m4a",
+            deliveryStatus: .failed(reason: "offline")
+        )
+        let liveVoice = makePublicMessage(
+            id: "live-voice",
+            content: "\(MimeType.Category.audio.messagePrefix)live.m4a"
+        )
+        let locationID = ConversationID.geohash("u4pruy")
+        context.conversations[.mesh] = [
+            uniqueOutgoing,
+            uniqueIncoming,
+            sharedOutgoing,
+            liveVoice
+        ]
+        context.conversations[locationID] = [
+            makePublicMessage(
+                id: "shared-survivor",
+                content: sharedOutgoing.content
+            )
+        ]
+        context.activeLiveVoiceMessageIDs = [liveVoice.id]
+
+        coordinator.clearPublicTimeline(.mesh)
+
+        #expect(context.publicMessages(in: .mesh).map(\.id) == [liveVoice.id])
+        #expect(
+            context.publicMessages(in: locationID).map(\.id)
+                == ["shared-survivor"]
+        )
+        #expect(
+            context.canceledPublicMediaMessageIDs
+                == [uniqueOutgoing.id, sharedOutgoing.id]
+        )
+        #expect(
+            context.cleanedOutgoingPublicMediaMessageIDs
+                == [uniqueOutgoing.id]
+        )
+        #expect(
+            context.cleanedIncomingPublicMediaMessageIDs
+                == [uniqueIncoming.id]
+        )
     }
 
     @Test @MainActor

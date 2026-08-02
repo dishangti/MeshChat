@@ -240,7 +240,7 @@ final class NotificationServiceTests: XCTestCase {
         XCTAssertEqual(center.pendingClearCount, 1)
 
         center.releaseAdd.signal()
-        wait(for: [sendFinished, clearEnqueued], timeout: 1)
+        wait(for: [sendFinished, clearEnqueued], timeout: TestConstants.settleTimeout)
         XCTAssertEqual(center.clearCompleted.wait(timeout: .now() + 1), .success)
 
         // The completion-aware barrier clears again after the late add.

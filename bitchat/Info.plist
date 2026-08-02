@@ -43,7 +43,7 @@
 	<key>NSBluetoothPeripheralUsageDescription</key>
 	<string>MeshChat uses Bluetooth to discover and connect with other compatible mesh users nearby.</string>
 	<key>NSCameraUsageDescription</key>
-	<string>MeshChat uses the camera to scan QR codes to verify peers.</string>
+	<string>MeshChat uses the camera to scan QR codes to add and verify friends and take photos you choose to share.</string>
 	<key>NSLocationWhenInUseUsageDescription</key>
 	<string>MeshChat uses your location to compute optional geohash channels, bridge cells, and nearby place labels. Exact coordinates are not included in mesh messages.</string>
 	<key>NSMicrophoneUsageDescription</key>

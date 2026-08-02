@@ -25,11 +25,13 @@ extension NostrRelayManager: NetworkActivationRelayControlling {}
 extension TorURLSession: NetworkActivationProxyControlling {}
 
 /// Coordinates when the app is allowed to start Tor and connect to Nostr relays.
-/// Policy: permit start when (location permissions are authorized OR there
-/// exists at least one mutual favorite) AND the device has a usable network
-/// path. When there is provably no network at all we do not bootstrap Tor or
-/// spin relay reconnects — that only wastes battery on a mesh-only/offline
-/// device. BLE mesh is entirely independent of this gate.
+/// Policy: permit start when an internet-backed feature is active (location
+/// permission, a mutual favorite, an open location channel, or an active
+/// Mesh Bridge rendezvous cell)
+/// AND the device has a usable network path. When there is provably no network
+/// at all we do not bootstrap Tor or spin relay reconnects — that only wastes
+/// battery on a mesh-only/offline device. BLE mesh is entirely independent of
+/// this gate.
 @MainActor
 final class NetworkActivationService: ObservableObject {
     static let shared = NetworkActivationService()
@@ -51,9 +53,11 @@ final class NetworkActivationService: ObservableObject {
     private let locationPermissionPublisher: AnyPublisher<LocationChannelManager.PermissionState, Never>
     private let mutualFavoritesPublisher: AnyPublisher<Set<Data>, Never>
     private let selectedChannelPublisher: AnyPublisher<ChannelID, Never>
+    private let bridgeActivePublisher: AnyPublisher<Bool, Never>
     private let permissionProvider: () -> LocationChannelManager.PermissionState
     private let mutualFavoritesProvider: () -> Set<Data>
     private let locationChannelSelectedProvider: () -> Bool
+    private let bridgeActiveProvider: () -> Bool
     private let reachabilityMonitor: NetworkReachabilityMonitoring
     private let torController: NetworkActivationTorControlling
     // Resolved lazily: NostrRelayManager.init() reads NetworkActivationService.shared
@@ -69,11 +73,20 @@ final class NetworkActivationService: ObservableObject {
         locationPermissionPublisher = LocationChannelManager.shared.$permissionState.eraseToAnyPublisher()
         mutualFavoritesPublisher = FavoritesPersistenceService.shared.$mutualFavorites.eraseToAnyPublisher()
         selectedChannelPublisher = LocationChannelManager.shared.$selectedChannel.eraseToAnyPublisher()
+        bridgeActivePublisher = Publishers.CombineLatest(
+            BridgeService.shared.$isEnabled,
+            BridgeService.shared.$activeCell
+        )
+        .map { enabled, cell in enabled && cell != nil }
+        .eraseToAnyPublisher()
         permissionProvider = { LocationChannelManager.shared.permissionState }
         mutualFavoritesProvider = { FavoritesPersistenceService.shared.mutualFavorites }
         locationChannelSelectedProvider = {
             if case .location = LocationChannelManager.shared.selectedChannel { return true }
             return false
+        }
+        bridgeActiveProvider = {
+            BridgeService.shared.isEnabled && BridgeService.shared.activeCell != nil
         }
         reachabilityMonitor = NWPathReachabilityMonitor()
         torController = TorManager.shared
@@ -90,6 +103,8 @@ final class NetworkActivationService: ObservableObject {
         mutualFavoritesProvider: @escaping () -> Set<Data>,
         selectedChannelPublisher: AnyPublisher<ChannelID, Never> = Empty().eraseToAnyPublisher(),
         locationChannelSelectedProvider: @escaping () -> Bool = { false },
+        bridgeActivePublisher: AnyPublisher<Bool, Never> = Empty().eraseToAnyPublisher(),
+        bridgeActiveProvider: @escaping () -> Bool = { false },
         reachabilityMonitor: NetworkReachabilityMonitoring,
         torController: NetworkActivationTorControlling,
         relayController: NetworkActivationRelayControlling,
@@ -103,6 +118,8 @@ final class NetworkActivationService: ObservableObject {
         self.mutualFavoritesProvider = mutualFavoritesProvider
         self.selectedChannelPublisher = selectedChannelPublisher
         self.locationChannelSelectedProvider = locationChannelSelectedProvider
+        self.bridgeActivePublisher = bridgeActivePublisher
+        self.bridgeActiveProvider = bridgeActiveProvider
         self.reachabilityMonitor = reachabilityMonitor
         self.torController = torController
         self.relayControllerProvider = { relayController }
@@ -170,6 +187,16 @@ final class NetworkActivationService: ObservableObject {
         // gate on its own for someone with no location permission and no
         // mutual favorites.
         selectedChannelPublisher
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] _ in
+                self?.reevaluate()
+            }
+            .store(in: &cancellables)
+
+        // An active Mesh Bridge cell is itself an internet feature. The cell
+        // requirement keeps the default-on preference fail-closed while the
+        // location consent prompt is unresolved.
+        bridgeActivePublisher
             .receive(on: DispatchQueue.main)
             .sink { [weak self] _ in
                 self?.reevaluate()
@@ -244,8 +271,8 @@ final class NetworkActivationService: ObservableObject {
         }
     }
 
-    /// Base policy: who is allowed to use the network at all (permission or a
-    /// mutual favorite), ignoring current link state.
+    /// Base policy: whether an internet-backed feature is active, ignoring
+    /// current link state.
     private func basePolicyAllowed() -> Bool {
         let permOK = permissionProvider() == .authorized
         let hasMutual = !mutualFavoritesProvider().isEmpty
@@ -256,7 +283,8 @@ final class NetworkActivationService: ObservableObject {
         // is itself an internet feature in active use, which is exactly what
         // this gate is meant to detect.
         let inLocationChannel = locationChannelSelectedProvider()
-        return permOK || hasMutual || inLocationChannel
+        let bridgeActive = bridgeActiveProvider()
+        return permOK || hasMutual || inLocationChannel || bridgeActive
     }
 
     /// Effective gate: base policy AND a usable network path. When there is

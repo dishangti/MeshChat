@@ -32,6 +32,8 @@ protocol ChatPublicConversationContext: AnyObject {
     func notifyUIChanged()
 
     // MARK: Public conversation store (single-writer intents)
+    /// Returns the messages currently stored in one exact public timeline.
+    func publicMessages(in conversationID: ConversationID) -> [BitchatMessage]
     /// Appends a public message in timestamp order. Returns `false` when a
     /// message with the same ID is already in that conversation.
     @discardableResult
@@ -42,6 +44,8 @@ protocol ChatPublicConversationContext: AnyObject {
     func removePublicMessage(withID messageID: String) -> BitchatMessage?
     /// Removes every matching message from a geohash conversation (block purge).
     func removePublicMessages(fromGeohash geohash: String, where predicate: (BitchatMessage) -> Bool)
+    /// Removes matching messages from one exact public conversation.
+    func removePublicMessages(from conversationID: ConversationID, where predicate: (BitchatMessage) -> Bool)
     /// Empties a public conversation's timeline (`/clear`).
     func clearPublicConversation(_ conversationID: ConversationID)
     /// Erases the on-disk archive of carried public mesh messages, so clearing
@@ -59,6 +63,14 @@ protocol ChatPublicConversationContext: AnyObject {
     @discardableResult
     func removePrivateMessage(withID messageID: String) -> BitchatMessage?
     func cleanupLocalFile(forMessage message: BitchatMessage)
+    /// Public history deletion preserves an active live-voice file and row.
+    func isActiveLiveVoiceMessage(_ message: BitchatMessage) -> Bool
+    /// Cancels exact transfer ownership before removing an outgoing media row.
+    func cancelMediaTransferForPublicHistoryDeletion(messageID: String)
+    /// Returns true when another stored row still owns the same media payload.
+    func hasSurvivingMediaReference(for message: BitchatMessage) -> Bool
+    /// Removes only the direction and media category owned by this public row.
+    func cleanupPublicMediaFile(for message: BitchatMessage, wasOutgoing: Bool)
 
     // MARK: Geohash participants & presence
     var geoNicknames: [String: String] { get }
@@ -164,6 +176,63 @@ extension ChatViewModel: ChatPublicConversationContext {
 
     func notifyMention(from sender: String, message: String, topic: NotificationTopic) {
         NotificationService.shared.sendMentionNotification(from: sender, message: message, topic: topic)
+    }
+
+    func isActiveLiveVoiceMessage(_ message: BitchatMessage) -> Bool {
+        liveVoiceCoordinator.isLiveVoiceMessage(message)
+    }
+
+    func cancelMediaTransferForPublicHistoryDeletion(messageID: String) {
+        mediaTransferCoordinator.cancelMediaTransferForConversationClear(
+            messageID: messageID
+        )
+    }
+
+    func hasSurvivingMediaReference(for message: BitchatMessage) -> Bool {
+        guard let target = publicMediaStorageKey(for: message) else {
+            return false
+        }
+        return conversations.conversationsByID.values.contains { conversation in
+            conversation.messages.contains {
+                publicMediaStorageKey(for: $0) == target
+            }
+        }
+    }
+
+    func cleanupPublicMediaFile(
+        for message: BitchatMessage,
+        wasOutgoing: Bool
+    ) {
+        if wasOutgoing {
+            mediaTransferCoordinator.cleanupOutgoingLocalFile(
+                forMessage: message
+            )
+        } else {
+            mediaTransferCoordinator.cleanupIncomingLocalFile(
+                forMessage: message
+            )
+        }
+    }
+
+    private func publicMediaStorageKey(
+        for message: BitchatMessage
+    ) -> String? {
+        let categories: [MimeType.Category] = [.audio, .image, .file]
+        guard let category = categories.first(where: {
+            message.content.hasPrefix($0.messagePrefix)
+        }) else {
+            return nil
+        }
+        let rawFilename = String(
+            message.content.dropFirst(category.messagePrefix.count)
+        ).trimmingCharacters(in: .whitespacesAndNewlines)
+        let filename = (rawFilename as NSString).lastPathComponent
+        guard !filename.isEmpty,
+              filename != ".",
+              filename != ".." else {
+            return nil
+        }
+        return "\(category.mediaDir)/\(filename)"
     }
 }
 
@@ -289,58 +358,73 @@ final class ChatPublicConversationCoordinator: PublicMessagePipelineDelegate {
     }
 
     func clearCurrentPublicTimeline() {
-        context.clearPublicConversation(ConversationID(channelID: context.activeChannel))
+        clearPublicTimeline(
+            ConversationID(channelID: context.activeChannel)
+        )
+    }
+
+    /// Deletes one exact public timeline without consulting mutable channel
+    /// selection again. Media cleanup is reference-aware and scoped to the
+    /// removed rows' category and direction; it never wipes shared outgoing
+    /// directories. Rows that arrive after this synchronous capture, plus an
+    /// active live-voice row, remain in the conversation.
+    func clearPublicTimeline(_ conversationID: ConversationID) {
+        switch conversationID {
+        case .mesh, .geohash:
+            break
+        case .direct:
+            return
+        }
+
+        let messages = context.publicMessages(in: conversationID).filter {
+            !context.isActiveLiveVoiceMessage($0)
+        }
+        let messageIDs = Set(messages.map(\.id))
+        let mediaMessages = messages.filter(Self.isMediaMessage)
+
+        for message in mediaMessages where Self.wasOutgoing(message) {
+            context.cancelMediaTransferForPublicHistoryDeletion(
+                messageID: message.id
+            )
+        }
+
+        context.removePublicMessages(from: conversationID) {
+            messageIDs.contains($0.id)
+        }
+
+        for message in mediaMessages where
+            !context.hasSurvivingMediaReference(for: message) {
+            context.cleanupPublicMediaFile(
+                for: message,
+                wasOutgoing: Self.wasOutgoing(message)
+            )
+        }
 
         // Clearing the mesh timeline also dismisses its archived echoes for
         // good: the watermark stops the next launch from re-seeding them, the
         // archive on disk is erased so the cleared history is actually gone
         // rather than merely hidden, and the dedup keys go so a cleared
         // message arriving live shows again.
-        if case .mesh = context.activeChannel {
+        if case .mesh = conversationID {
             MeshEchoSettings.clearedThrough = Date()
             archivedEchoKeys.removeAll()
             context.purgeArchivedPublicMessages()
         }
+    }
 
-        // The SPM test process shares the real Application Support tree, so this
-        // detached deletion can land mid-test under parallel scheduling and flake
-        // a file-dependent test. Tests never need the on-disk media cleared.
-        guard !TestEnvironment.isRunningTests else { return }
+    private static func isMediaMessage(_ message: BitchatMessage) -> Bool {
+        [
+            MimeType.Category.audio.messagePrefix,
+            MimeType.Category.image.messagePrefix,
+            MimeType.Category.file.messagePrefix
+        ].contains { message.content.hasPrefix($0) }
+    }
 
-        Task.detached(priority: .utility) {
-            // Skipped under tests: the test process shares the user's real
-            // ~/Library/Application Support/files tree, and this detached
-            // wipe fires at a nondeterministic time — racing tests that
-            // write media there (see the same guard in panicClearAllData).
-            guard !TestEnvironment.isRunningTests else { return }
-            do {
-                let base = try FileManager.default.url(
-                    for: .applicationSupportDirectory,
-                    in: .userDomainMask,
-                    appropriateFor: nil,
-                    create: true
-                )
-                let filesDir = base.appendingPathComponent("files", isDirectory: true)
-                let outgoingDirs = [
-                    filesDir.appendingPathComponent("voicenotes/outgoing", isDirectory: true),
-                    filesDir.appendingPathComponent("images/outgoing", isDirectory: true),
-                    filesDir.appendingPathComponent("files/outgoing", isDirectory: true)
-                ]
-
-                for dir in outgoingDirs {
-                    if FileManager.default.fileExists(atPath: dir.path) {
-                        try? FileManager.default.removeItem(at: dir)
-                        try? FileManager.default.createDirectory(
-                            at: dir,
-                            withIntermediateDirectories: true,
-                            attributes: nil
-                        )
-                    }
-                }
-            } catch {
-                SecureLogger.error("Failed to clear media files: \(error)", category: .session)
-            }
-        }
+    /// Received public media is constructed as `.notSentYet`; every local
+    /// public media placeholder enters the transfer pipeline as `.sending`
+    /// and may later become sent, failed, or partially delivered.
+    private static func wasOutgoing(_ message: BitchatMessage) -> Bool {
+        message.deliveryStatus != .notSentYet
     }
 
     func addSystemMessage(_ content: String, timestamp: Date = Date()) {

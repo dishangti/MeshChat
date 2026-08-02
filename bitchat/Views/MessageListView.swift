@@ -38,7 +38,7 @@ struct MessageListView: View {
     var isTextFieldFocused: FocusState<Bool>.Binding
 
     @State private var showMessageActions = false
-    @State private var showClearConfirmation = false
+    @State private var pendingHistoryDeletion: ConversationID?
     @State private var lastScrollTime: Date = .distantPast
     @State private var scrollThrottleTimer: Timer?
     @State private var unseenCount = 0
@@ -191,17 +191,30 @@ struct MessageListView: View {
             // scene/cold-launch URLs are routed canonically by AppRuntime.
             .environment(\.openURL, inlineOpenURLAction)
             .onTapGesture(count: 3) {
-                showClearConfirmation = true
+                if let privatePeer {
+                    pendingHistoryDeletion = .directPeer(privatePeer)
+                } else {
+                    pendingHistoryDeletion = ConversationID(
+                        channelID: locationChannelsModel.selectedChannel
+                    )
+                }
             }
             .confirmationDialog(
                 "content.clear.confirm_title",
-                isPresented: $showClearConfirmation,
+                isPresented: historyDeletionConfirmationBinding,
                 titleVisibility: .visible
             ) {
-                Button("content.clear.confirm_action", role: .destructive) {
-                    conversationUIModel.clearCurrentConversation()
+                if let target = pendingHistoryDeletion {
+                    Button("content.clear.confirm_action", role: .destructive) {
+                        conversationUIModel.clearConversationHistory(target)
+                        pendingHistoryDeletion = nil
+                    }
                 }
-                Button("common.cancel", role: .cancel) {}
+                Button("common.cancel", role: .cancel) {
+                    pendingHistoryDeletion = nil
+                }
+            } message: {
+                Text("content.clear.confirm_message")
             }
             .onAppear {
                 scrollToBottom(on: proxy)
@@ -294,6 +307,17 @@ struct MessageListView: View {
             }
             return .systemAction
         })
+    }
+
+    private var historyDeletionConfirmationBinding: Binding<Bool> {
+        Binding(
+            get: { pendingHistoryDeletion != nil },
+            set: { isPresented in
+                if !isPresented {
+                    pendingHistoryDeletion = nil
+                }
+            }
+        )
     }
 }
 

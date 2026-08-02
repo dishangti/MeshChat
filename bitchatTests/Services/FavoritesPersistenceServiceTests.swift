@@ -1,5 +1,6 @@
 import XCTest
 import BitFoundation
+import Combine
 @testable import bitchat
 
 @MainActor
@@ -19,6 +20,130 @@ final class FavoritesPersistenceServiceTests: XCTestCase {
         XCTAssertTrue(service.isFavorite(peerKey))
         XCTAssertEqual(service.getFavoriteStatus(for: peerKey)?.peerNickname, "Alice")
         XCTAssertNotNil(keychain.load(key: storageKey, service: serviceKey))
+    }
+
+    func test_addFavorite_rollsBackWhenDurableSaveCannotBeConfirmed() {
+        let keychain = MockKeychain()
+        keychain.shouldFailGenericSave = true
+        let service = FavoritesPersistenceService(keychain: keychain)
+        let peerKey = Data(repeating: 0xFA, count: 32)
+
+        XCTAssertFalse(
+            service.addFavorite(
+                peerNoisePublicKey: peerKey,
+                peerNickname: "Alice"
+            )
+        )
+        XCTAssertFalse(service.isFavorite(peerKey))
+
+        keychain.shouldFailGenericSave = false
+        let reloaded = FavoritesPersistenceService(keychain: keychain)
+        XCTAssertFalse(reloaded.isFavorite(peerKey))
+    }
+
+    func test_failedFavoriteReplacementPreservesPublishedAndDurableState() throws {
+        let keychain = MockKeychain()
+        let service = FavoritesPersistenceService(keychain: keychain)
+        let peerKey = Data(repeating: 0xFB, count: 32)
+
+        XCTAssertTrue(
+            service.addFavorite(
+                peerNoisePublicKey: peerKey,
+                peerNostrPublicKey: "npub1alice",
+                peerNickname: "Alice"
+            )
+        )
+        let originalData = try XCTUnwrap(
+            keychain.load(key: storageKey, service: serviceKey)
+        )
+
+        var publishedUpdateCount = 0
+        let observation = service.$favorites
+            .dropFirst()
+            .sink { _ in publishedUpdateCount += 1 }
+        let notification = expectation(
+            forNotification: .favoriteStatusChanged,
+            object: nil
+        )
+        notification.isInverted = true
+        keychain.simulatedGenericSaveError = .storageFull
+
+        XCTAssertFalse(
+            service.addFavorite(
+                peerNoisePublicKey: peerKey,
+                peerNostrPublicKey: "npub1changed",
+                peerNickname: "Changed"
+            )
+        )
+
+        wait(for: [notification], timeout: TestConstants.negativeWaitWindow)
+        XCTAssertEqual(publishedUpdateCount, 0)
+        XCTAssertEqual(service.getFavoriteStatus(for: peerKey)?.peerNickname, "Alice")
+        XCTAssertEqual(service.getFavoriteStatus(for: peerKey)?.peerNostrPublicKey, "npub1alice")
+        XCTAssertEqual(
+            keychain.load(key: storageKey, service: serviceKey),
+            originalData
+        )
+
+        let reloaded = FavoritesPersistenceService(keychain: keychain)
+        XCTAssertEqual(reloaded.getFavoriteStatus(for: peerKey)?.peerNickname, "Alice")
+        withExtendedLifetime(observation) {}
+    }
+
+    func test_failedFavoriteRemovalPreservesExistingDurableRelationship() throws {
+        let keychain = MockKeychain()
+        let service = FavoritesPersistenceService(keychain: keychain)
+        let peerKey = Data(repeating: 0xFC, count: 32)
+        XCTAssertTrue(
+            service.addFavorite(
+                peerNoisePublicKey: peerKey,
+                peerNickname: "Alice"
+            )
+        )
+        let originalData = try XCTUnwrap(
+            keychain.load(key: storageKey, service: serviceKey)
+        )
+        keychain.simulatedGenericSaveError = .deviceLocked
+
+        XCTAssertFalse(service.removeFavorite(peerNoisePublicKey: peerKey))
+
+        XCTAssertTrue(service.isFavorite(peerKey))
+        XCTAssertEqual(
+            keychain.load(key: storageKey, service: serviceKey),
+            originalData
+        )
+    }
+
+    func test_failedInboundFavoriteUpdatePreservesExistingDurableRelationship() throws {
+        let keychain = MockKeychain()
+        let service = FavoritesPersistenceService(keychain: keychain)
+        let peerKey = Data(repeating: 0xFD, count: 32)
+        XCTAssertTrue(
+            service.addFavorite(
+                peerNoisePublicKey: peerKey,
+                peerNickname: "Alice"
+            )
+        )
+        let originalData = try XCTUnwrap(
+            keychain.load(key: storageKey, service: serviceKey)
+        )
+        keychain.simulatedGenericSaveError = .accessDenied
+
+        XCTAssertFalse(
+            service.updatePeerFavoritedUs(
+                peerNoisePublicKey: peerKey,
+                favorited: true,
+                peerNickname: "Changed"
+            )
+        )
+
+        let relationship = service.getFavoriteStatus(for: peerKey)
+        XCTAssertEqual(relationship?.peerNickname, "Alice")
+        XCTAssertFalse(relationship?.theyFavoritedUs ?? true)
+        XCTAssertEqual(
+            keychain.load(key: storageKey, service: serviceKey),
+            originalData
+        )
     }
 
     func test_removeFavorite_preservesRelationshipWhenPeerStillFavoritesUs() {

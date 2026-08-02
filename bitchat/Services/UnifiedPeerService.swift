@@ -12,6 +12,18 @@ import Foundation
 import Combine
 import SwiftUI
 
+/// Result of the idempotent, device-local "add friend" intent.
+///
+/// Friendship reuses the existing favorite relationship because that is the
+/// relationship the routing stack already understands for offline delivery,
+/// Nostr reachability, and courier selection. `wasAdded` lets callers avoid
+/// sending duplicate social notifications when an already-saved friend is
+/// added again.
+struct FriendPersistenceOutcome: Equatable {
+    let displayName: String
+    let wasAdded: Bool
+}
+
 /// Single source of truth for peer state, combining mesh connectivity and favorites
 @MainActor
 final class UnifiedPeerService: ObservableObject, TransportPeerEventsDelegate {
@@ -31,7 +43,7 @@ final class UnifiedPeerService: ObservableObject, TransportPeerEventsDelegate {
     private let idBridge: NostrIdentityBridge
     private let identityManager: SecureIdentityStateManagerProtocol
     weak var messageRouter: MessageRouter?
-    private let favoritesService = FavoritesPersistenceService.shared
+    private let favoritesService: FavoritesPersistenceService
     private var cancellables = Set<AnyCancellable>()
     
     // MARK: - Initialization
@@ -39,11 +51,13 @@ final class UnifiedPeerService: ObservableObject, TransportPeerEventsDelegate {
     init(
         meshService: Transport,
         idBridge: NostrIdentityBridge,
-        identityManager: SecureIdentityStateManagerProtocol
+        identityManager: SecureIdentityStateManagerProtocol,
+        favoritesService: FavoritesPersistenceService? = nil
     ) {
         self.meshService = meshService
         self.idBridge = idBridge
         self.identityManager = identityManager
+        self.favoritesService = favoritesService ?? .shared
         
         // Subscribe to changes from both services
         setupSubscriptions()
@@ -156,9 +170,12 @@ final class UnifiedPeerService: ObservableObject, TransportPeerEventsDelegate {
             }
         }
         
-        // Phase 5: Filter out offline non-mutual peers and update published properties
+        // Phase 5: Keep every friend the local user explicitly saved. A
+        // one-way favorite is still a contact and must remain visible while
+        // offline; mutuality only controls Nostr availability, not whether the
+        // person exists in the contact list.
         let filtered = enrichedPeers.filter { p in
-            p.isConnected || p.isReachable || p.isMutualFavorite
+            p.isConnected || p.isReachable || p.isFavorite
         }
         self.peers = filtered
         self.connectedPeerIDs = connected
@@ -245,6 +262,192 @@ final class UnifiedPeerService: ObservableObject, TransportPeerEventsDelegate {
     }
 
     // MARK: - Public Methods
+
+    /// Saves a known mesh peer as a contact without changing verification
+    /// state. The relationship remains explicitly unverified until the user
+    /// completes a fingerprint or QR proof.
+    @discardableResult
+    func addFriend(_ peerID: PeerID) -> FriendPersistenceOutcome? {
+        let resolvedPeer: BitchatPeer?
+        if let noiseKey = peerID.noiseKey {
+            let shortPeerID = PeerID(publicKey: noiseKey)
+            resolvedPeer = getPeer(by: peerID) ?? getPeer(by: shortPeerID)
+        } else {
+            resolvedPeer = getPeer(by: peerID)
+        }
+        guard let peer = resolvedPeer,
+              peer.noisePublicKey.count == 32 else {
+            return nil
+        }
+        return addFriend(
+            noisePublicKey: peer.noisePublicKey,
+            nostrPublicKey: peer.nostrPublicKey,
+            claimedNickname: peer.nickname
+        )
+    }
+
+    /// Saves contact metadata obtained from a signed QR. This operation does
+    /// not pin the QR signing key and does not mark the identity as verified.
+    /// Callers are responsible for validating the signed QR at the action
+    /// boundary.
+    @discardableResult
+    func addFriend(
+        noisePublicKey: Data,
+        nostrPublicKey: String?,
+        claimedNickname: String
+    ) -> FriendPersistenceOutcome? {
+        guard noisePublicKey.count == 32,
+              noisePublicKey != meshService.noiseStaticPublicKeyData(),
+              let normalizedNickname = VerificationService.VerificationQR
+                .normalizedProtocolNickname(claimedNickname) else {
+            return nil
+        }
+
+        let fingerprint = noisePublicKey.sha256Fingerprint()
+        guard !identityManager.isBlocked(fingerprint: fingerprint) else {
+            return nil
+        }
+
+        let existingSocial = identityManager.getSocialIdentity(for: fingerprint)
+        guard existingSocial?.isBlocked != true else { return nil }
+        let wasAlreadyFriend = favoritesService.isFavorite(noisePublicKey)
+        guard favoritesService.addFavorite(
+            peerNoisePublicKey: noisePublicKey,
+            peerNostrPublicKey: nostrPublicKey,
+            peerNickname: normalizedNickname
+        ) else {
+            return nil
+        }
+
+        var social = existingSocial ?? SocialIdentity(
+            fingerprint: fingerprint,
+            localPetname: nil,
+            claimedNickname: normalizedNickname,
+            trustLevel: .unknown,
+            isFavorite: false,
+            isBlocked: false,
+            notes: nil
+        )
+        social.claimedNickname = normalizedNickname
+        social.isFavorite = true
+        guard identityManager.persistSocialIdentity(social) else {
+            if !wasAlreadyFriend {
+                _ = favoritesService.removeFavorite(peerNoisePublicKey: noisePublicKey)
+            }
+            return nil
+        }
+
+        if !wasAlreadyFriend {
+            let shortPeerID = PeerID(publicKey: noisePublicKey)
+            if let messageRouter {
+                messageRouter.sendFavoriteNotification(to: shortPeerID, isFavorite: true)
+            } else {
+                meshService.sendFavoriteNotification(to: shortPeerID, isFavorite: true)
+            }
+        }
+
+        updatePeers()
+        return FriendPersistenceOutcome(
+            displayName: social.localPetname?.trimmedOrNilIfEmpty ?? normalizedNickname,
+            wasAdded: !wasAlreadyFriend
+        )
+    }
+
+    /// Persists the exact identity proven by the QR challenge-response without
+    /// adding a friend. Friend and verification states deliberately remain
+    /// independent.
+    @discardableResult
+    func persistVerifiedIdentity(
+        peerID: PeerID,
+        expectedNoisePublicKey: Data,
+        signingPublicKey: Data,
+        claimedNickname: String
+    ) -> String? {
+        guard expectedNoisePublicKey.count == 32,
+              signingPublicKey.count == 32,
+              expectedNoisePublicKey != meshService.noiseStaticPublicKeyData() else {
+            return nil
+        }
+
+        let shortPeerID = PeerID(publicKey: expectedNoisePublicKey)
+        guard peerID.toShort() == shortPeerID,
+              let peer = getPeer(by: peerID) ?? getPeer(by: shortPeerID),
+              peer.noisePublicKey == expectedNoisePublicKey else {
+            return nil
+        }
+
+        let fingerprint = expectedNoisePublicKey.sha256Fingerprint()
+        guard !identityManager.isBlocked(fingerprint: fingerprint) else {
+            return nil
+        }
+        if let pinnedSigningPublicKey = identityManager
+            .authenticatedSigningPublicKey(forFingerprint: fingerprint)
+            ?? identityManager.signingPublicKey(forFingerprint: fingerprint),
+           pinnedSigningPublicKey != signingPublicKey {
+            return nil
+        }
+
+        let normalizedNickname = VerificationService.VerificationQR
+            .normalizedProtocolNickname(peer.nickname)
+            ?? VerificationService.VerificationQR.normalizedProtocolNickname(claimedNickname)
+        guard let normalizedNickname else { return nil }
+
+        var social = identityManager.getSocialIdentity(for: fingerprint) ?? SocialIdentity(
+            fingerprint: fingerprint,
+            localPetname: nil,
+            claimedNickname: normalizedNickname,
+            trustLevel: .unknown,
+            isFavorite: favoritesService.isFavorite(expectedNoisePublicKey),
+            isBlocked: false,
+            notes: nil
+        )
+        guard !social.isBlocked else { return nil }
+        social.claimedNickname = normalizedNickname
+        social.isFavorite = favoritesService.isFavorite(expectedNoisePublicKey)
+        guard identityManager.persistVerifiedIdentity(
+            fingerprint: fingerprint,
+            noisePublicKey: expectedNoisePublicKey,
+            signingPublicKey: signingPublicKey,
+            socialIdentity: social
+        ) else {
+            return nil
+        }
+
+        updatePeers()
+        return social.localPetname?.trimmedOrNilIfEmpty ?? normalizedNickname
+    }
+
+    /// Removes only an existing friend relationship. Repeated or stale UI
+    /// actions can never add the peer back.
+    @discardableResult
+    func removeFriend(_ peerID: PeerID) -> Bool {
+        guard let peer = getPeer(by: peerID),
+              peer.noisePublicKey.count == 32 else {
+            return false
+        }
+        guard favoritesService.isFavorite(peer.noisePublicKey) else {
+            return true
+        }
+        guard favoritesService.removeFavorite(
+            peerNoisePublicKey: peer.noisePublicKey
+        ) else {
+            return false
+        }
+
+        let fingerprint = peer.noisePublicKey.sha256Fingerprint()
+        if var social = identityManager.getSocialIdentity(for: fingerprint) {
+            social.isFavorite = false
+            identityManager.updateSocialIdentity(social)
+        }
+
+        if let messageRouter {
+            messageRouter.sendFavoriteNotification(to: peer.peerID, isFavorite: false)
+        } else {
+            meshService.sendFavoriteNotification(to: peer.peerID, isFavorite: false)
+        }
+        updatePeers()
+        return true
+    }
     
     /// Get peer by ID
     func getPeer(by peerID: PeerID) -> BitchatPeer? {
@@ -305,75 +508,19 @@ final class UnifiedPeerService: ObservableObject, TransportPeerEventsDelegate {
         return fingerprint
     }
 
-    /// Toggle favorite status
-    func toggleFavorite(_ peerID: PeerID) {
-        guard let peer = getPeer(by: peerID) else {
-            SecureLogger.warning("⚠️ Cannot toggle favorite - peer not found: \(peerID)", category: .session)
-            return 
-        }
-        
-        let wasFavorite = peer.isFavorite
-        
-        // Get the actual nickname for logging and saving
-        var actualNickname = peer.nickname
-        
-        // Debug logging to understand the issue
-        SecureLogger.debug("🔍 Toggle favorite - peer.nickname: '\(peer.nickname)', peer.displayName: '\(peer.displayName)', peerID: \(peerID)", category: .session)
-        
-        if actualNickname.isEmpty {
-            // Try to get from mesh service's current peer list
-            if let meshPeerNickname = meshService.peerNickname(peerID: peerID) {
-                actualNickname = meshPeerNickname
-                SecureLogger.debug("🔍 Got nickname from mesh service: '\(actualNickname)'", category: .session)
-            }
-        }
-        
-        // Use displayName as fallback (which shows ID prefix if nickname is empty)
-        let finalNickname = actualNickname.isEmpty ? peer.displayName : actualNickname
-        
-        if wasFavorite {
-            // Remove favorite
-            favoritesService.removeFavorite(peerNoisePublicKey: peer.noisePublicKey)
-        } else {
-            // Get or derive peer's Nostr public key if not already known
-            var peerNostrKey = peer.nostrPublicKey
-            if peerNostrKey == nil {
-                // Try to get from NostrIdentityBridge association
-                peerNostrKey = idBridge.getNostrPublicKey(for: peer.noisePublicKey)
-            }
-            
-            // Add favorite
-            favoritesService.addFavorite(
-                peerNoisePublicKey: peer.noisePublicKey,
-                peerNostrPublicKey: peerNostrKey,
-                peerNickname: finalNickname
-            )
-        }
-        
-        // Log the final nickname being saved
-        SecureLogger.debug("⭐️ Toggled favorite for '\(finalNickname)' (peerID: \(peerID), was: \(wasFavorite), now: \(!wasFavorite))", category: .session)
-        
-        // Send favorite notification to the peer via router (mesh or Nostr)
-        if let router = messageRouter {
-            router.sendFavoriteNotification(to: peerID, isFavorite: !wasFavorite)
-        } else {
-            // Fallback to mesh-only if router not yet wired
-            meshService.sendFavoriteNotification(to: peerID, isFavorite: !wasFavorite)
-        }
-        
-        // Force update of peers to reflect the change
-        updatePeers()
-        
-        // Force UI update by notifying SwiftUI directly
-        DispatchQueue.main.async { [weak self] in
-            self?.objectWillChange.send()
-        }
-    }
-    
     func getFingerprint(for peerID: PeerID) -> String? {
         // Check cache first
         if let cached = fingerprintCache[peerID] {
             return cached
+        }
+
+        // A full Noise-key conversation ID is already the authenticated
+        // identity material. Derive its fingerprint directly so an offline
+        // non-friend can still be named, verified, or blocked from Recents.
+        if let noisePublicKey = peerID.noiseKey {
+            let fingerprint = noisePublicKey.sha256Fingerprint()
+            fingerprintCache[peerID] = fingerprint
+            return fingerprint
         }
         
         // Try to get from mesh service
@@ -387,6 +534,25 @@ final class UnifiedPeerService: ObservableObject, TransportPeerEventsDelegate {
             let fingerprint = peer.noisePublicKey.sha256Fingerprint()
             fingerprintCache[peerID] = fingerprint
             return fingerprint
+        }
+
+        // Announcements persist the full Noise identity even for people who
+        // were never added as friends. Resolve an offline short ID only when
+        // its 64-bit prefix identifies exactly one cached identity; guessing
+        // across a collision would attach social actions to the wrong person.
+        if peerID.isShort {
+            let candidates = identityManager.getCryptoIdentitiesByPeerIDPrefix(peerID)
+                .filter {
+                    $0.publicKey.count == 32
+                        && PeerID(publicKey: $0.publicKey) == peerID
+                        && $0.fingerprint == $0.publicKey.sha256Fingerprint()
+                }
+            guard candidates.count == 1, let identity = candidates.first else {
+                return nil
+            }
+            fingerprintCache[peerID] = identity.fingerprint
+            fingerprintCache[PeerID(hexData: identity.publicKey)] = identity.fingerprint
+            return identity.fingerprint
         }
         
         return nil

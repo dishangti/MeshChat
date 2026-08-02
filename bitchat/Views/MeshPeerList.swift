@@ -5,8 +5,12 @@ struct MeshPeerList: View {
     @EnvironmentObject private var peerListModel: PeerListModel
     @ThemedPalette private var palette
     let onTapPeer: (PeerID) -> Void
-    let onToggleFavorite: (PeerID) -> Void
+    let onRemoveFriend: (PeerID) -> Void
     let onShowFingerprint: (PeerID) -> Void
+    /// Adds the selected peer without changing verification state.
+    var onAddFriend: ((PeerID) -> Void)? = nil
+    /// Opens the device-local nickname editor for the selected identity.
+    var onSetNickname: ((PeerID) -> Void)? = nil
     /// Optional so existing call sites (and previews/tests) keep compiling;
     /// when absent the block/unblock context-menu entry is hidden.
     var onToggleBlock: ((MeshPeerRow) -> Void)? = nil
@@ -16,6 +20,16 @@ struct MeshPeerList: View {
 
     private enum Strings {
         static let noneNearby: LocalizedStringKey = "geohash_people.none_nearby"
+        static let friendsSection = String(
+            localized: "mesh_peers.section.friends",
+            defaultValue: "Friends",
+            comment: "Section title for saved mesh friends"
+        )
+        static let nearbySection = String(
+            localized: "mesh_peers.section.nearby",
+            defaultValue: "Nearby",
+            comment: "Section title for nearby mesh people who are not friends"
+        )
         static let blockedTooltip = String(localized: "geohash_people.tooltip.blocked", comment: "Tooltip shown next to a blocked peer indicator")
         static let newMessagesTooltip = String(localized: "mesh_peers.tooltip.new_messages", comment: "Tooltip for the unread messages indicator")
         static let connected = String(localized: "content.accessibility.connected_mesh", comment: "Accessibility label for mesh-connected peer indicator")
@@ -27,9 +41,10 @@ struct MeshPeerList: View {
         static let blocked = String(localized: "mesh_peers.state.blocked", comment: "State label for a blocked peer")
         static let vouched = String(localized: "mesh_peers.state.vouched", comment: "State label for a peer vouched for by someone the user verified")
         static let vouchedTooltip = String(localized: "mesh_peers.tooltip.vouched", comment: "Tooltip for the vouched (unfilled seal) badge next to a peer")
-        static let addFavorite = String(localized: "content.accessibility.add_favorite", comment: "Accessibility label to add a favorite")
+        static let addFavorite = String(localized: "friends.action.add", comment: "Action that adds a person as a friend")
         static let removeFavorite = String(localized: "content.accessibility.remove_favorite", comment: "Accessibility label to remove a favorite")
         static let showFingerprint = String(localized: "mesh_peers.action.fingerprint", comment: "Context menu action that shows a peer's fingerprint/verification screen")
+        static let setNickname = String(localized: "fingerprint.local_alias.label", comment: "Context menu action that edits a local nickname")
         static let openDMHint = String(localized: "mesh_peers.accessibility.open_dm_hint", comment: "Accessibility hint on a peer row explaining activation opens a private chat")
         static let directMessage = String(localized: "content.actions.direct_message", comment: "Action that opens a private chat with the person")
         static let block = String(localized: "geohash_people.action.block", comment: "Context menu action to block a person")
@@ -42,6 +57,7 @@ struct MeshPeerList: View {
         let peers: [MeshPeerRow] = displayIDs.compactMap { id in
             peerListModel.meshRows.first(where: { $0.id == id })
         }
+        let sectionedPeers = peers.filter(\.isFavorite) + peers.filter { !$0.isFavorite }
 
         if peerListModel.meshRows.isEmpty {
             // Match the section's row rhythm (same size, indent, and vertical
@@ -54,9 +70,18 @@ struct MeshPeerList: View {
                 .padding(.vertical, 4)
         } else {
             VStack(alignment: .leading, spacing: 0) {
-                ForEach(0..<peers.count, id: \.self) { idx in
-                    let peer = peers[idx]
+                ForEach(0..<sectionedPeers.count, id: \.self) { idx in
+                    let peer = sectionedPeers[idx]
                     let isMe = peer.isMe
+
+                    if idx == 0 || sectionedPeers[idx - 1].isFavorite != peer.isFavorite {
+                        PeopleSectionHeader(
+                            icon: peer.isFavorite ? "star.fill" : "person.2.fill",
+                            iconColor: peer.isFavorite ? .yellow : palette.accent,
+                            title: peer.isFavorite ? Strings.friendsSection : Strings.nearbySection
+                        )
+                    }
+
                     HStack(spacing: 4) {
                         let assigned = peerListModel.colorForMeshPeer(id: peer.peerID, isDark: colorScheme == .dark)
                         let baseColor = isMe ? Color.orange : assigned
@@ -125,20 +150,29 @@ struct MeshPeerList: View {
                                         // bottom-heavy, so geometric centering
                                         // reads low next to the name.
                                         .offset(y: icon.hasPrefix("lock") ? -0.5 : 0)
-                                        .foregroundColor(baseColor)
+                                        .foregroundColor(
+                                            peer.encryptionStatus == .noiseVerified
+                                                ? .green
+                                                : .red
+                                        )
                                 }
                             } else {
                                 // Offline: prefer showing verified badge from persisted fingerprints
                                 if peer.showsVerifiedBadgeWhenOffline {
                                     Image(systemName: "checkmark.seal.fill")
                                         .font(.bitchatSystem(size: 10))
-                                        .foregroundColor(baseColor)
+                                        .foregroundColor(.green)
                                 } else if let icon = peer.encryptionStatus.icon {
-                                    // Fallback to whatever status says (likely lock if we had a past session)
+                                    // Preserve the verified color during the
+                                    // brief alias/persistence refresh window.
                                     Image(systemName: icon)
                                         .font(.bitchatSystem(size: 10))
                                         .offset(y: icon.hasPrefix("lock") ? -0.5 : 0)
-                                        .foregroundColor(baseColor)
+                                        .foregroundColor(
+                                            peer.encryptionStatus == .noiseVerified
+                                                ? .green
+                                                : .red
+                                        )
                                 }
                             }
 
@@ -163,9 +197,15 @@ struct MeshPeerList: View {
                                 .help(Strings.newMessagesTooltip)
                         }
 
-                        if !isMe {
-                            Button(action: { onToggleFavorite(peer.peerID) }) {
-                                Image(systemName: peer.isFavorite ? "star.fill" : "star")
+                        if !isMe, peer.isFavorite || onAddFriend != nil {
+                            Button(action: {
+                                if peer.isFavorite {
+                                    onRemoveFriend(peer.peerID)
+                                } else {
+                                    onAddFriend?(peer.peerID)
+                                }
+                            }) {
+                                Image(systemName: peer.isFavorite ? "star.fill" : "person.badge.plus")
                                     .font(.bitchatSystem(size: 12))
                                     .foregroundColor(peer.isFavorite ? .yellow : palette.secondary)
                                     // Widen the tap target beyond the bare glyph;
@@ -189,8 +229,15 @@ struct MeshPeerList: View {
                             Button(Strings.directMessage) {
                                 onTapPeer(peer.peerID)
                             }
-                            Button(peer.isFavorite ? Strings.removeFavorite : Strings.addFavorite) {
-                                onToggleFavorite(peer.peerID)
+                            if peer.isFavorite {
+                                Button(Strings.removeFavorite) {
+                                    onRemoveFriend(peer.peerID)
+                                }
+                            } else if let onAddFriend {
+                                Button(Strings.addFavorite) { onAddFriend(peer.peerID) }
+                            }
+                            if let onSetNickname {
+                                Button(Strings.setNickname) { onSetNickname(peer.peerID) }
                             }
                             Button(Strings.showFingerprint) {
                                 onShowFingerprint(peer.peerID)
@@ -214,8 +261,15 @@ struct MeshPeerList: View {
                     .accessibilityHint(isMe ? "" : Strings.openDMHint)
                     .accessibilityActions {
                         if !isMe {
-                            Button(peer.isFavorite ? Strings.removeFavorite : Strings.addFavorite) {
-                                onToggleFavorite(peer.peerID)
+                            if peer.isFavorite {
+                                Button(Strings.removeFavorite) {
+                                    onRemoveFriend(peer.peerID)
+                                }
+                            } else if let onAddFriend {
+                                Button(Strings.addFavorite) { onAddFriend(peer.peerID) }
+                            }
+                            if let onSetNickname {
+                                Button(Strings.setNickname) { onSetNickname(peer.peerID) }
                             }
                             Button(Strings.showFingerprint) {
                                 onShowFingerprint(peer.peerID)

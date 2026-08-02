@@ -24,6 +24,7 @@ struct BridgeServiceTests {
         }
 
         var relaysConnected = true
+        var relayTargetsAvailable = true
         var locationCell: String? = BridgeServiceTests.cell
         var meshAdvertisedCell: String?
         var bridgePeers: [PeerID] = []
@@ -74,6 +75,9 @@ struct BridgeServiceTests {
             service.publishToRelays = { [weak self] event, cell in
                 self?.published.append((event, cell))
             }
+            service.hasRelayTargets = { [weak self] _ in
+                self?.relayTargetsAvailable ?? false
+            }
             service.openSubscription = { [weak self] cells in
                 self?.openedSubscriptions.append(cells)
             }
@@ -122,8 +126,10 @@ struct BridgeServiceTests {
             service.scheduleTimer = { [weak self] delay, work in
                 self?.scheduledTimers.append((delay, work))
             }
-            if enabled {
-                service.setEnabled(true)
+            if service.isEnabled != enabled {
+                service.setEnabled(enabled)
+            } else if enabled {
+                service.refreshRendezvous()
             }
         }
 
@@ -194,6 +200,35 @@ struct BridgeServiceTests {
         #expect(fixture.service.subscribedCells.count == 9)
     }
 
+    @Test func relayRecoveryReopensSubscriptionEvenWhenCellIsUnchanged() {
+        let fixture = Fixture(enabled: true)
+        let opensBeforeRecovery = fixture.openedSubscriptions.count
+        let closesBeforeRecovery = fixture.closedSubscriptions
+
+        fixture.service.refreshRendezvous(reopenSubscription: true)
+
+        #expect(fixture.openedSubscriptions.count == opensBeforeRecovery + 1)
+        #expect(fixture.closedSubscriptions == closesBeforeRecovery + 1)
+        #expect(fixture.service.activeCell == Self.cell)
+    }
+
+    @Test func changingCellPublishesPresenceImmediately() {
+        let fixture = Fixture(enabled: true)
+        let firstCellPresenceCount = fixture.published.filter {
+            $0.cell == Self.cell &&
+            $0.event.kind == NostrProtocol.EventKind.geohashPresence.rawValue
+        }.count
+
+        fixture.locationCell = "u4prux"
+        fixture.service.refreshRendezvous()
+
+        #expect(firstCellPresenceCount == 1)
+        #expect(fixture.published.contains {
+            $0.cell == "u4prux" &&
+            $0.event.kind == NostrProtocol.EventKind.geohashPresence.rawValue
+        })
+    }
+
     @Test func missingCellRequestsALocationFix() {
         // Field bug: the bridge waited passively for availableChannels,
         // which only flow while some other feature pumps location. Bridging
@@ -258,7 +293,8 @@ struct BridgeServiceTests {
         #expect(fixture.service.queuedUplinks.isEmpty)
         #expect(fixture.service.bridgedPeerCount == 0)
         #expect(fixture.service.bridgedParticipants.isEmpty)
-        #expect(fixture.defaults.object(forKey: "bridge.userEnabled") == nil)
+        #expect(fixture.defaults.object(forKey: "bridge.userEnabled") != nil)
+        #expect(!fixture.defaults.bool(forKey: "bridge.userEnabled"))
 
         // Work armed by the old lifecycle cannot broadcast after the wipe,
         // even if its injected test scheduler fires later.
@@ -282,8 +318,32 @@ struct BridgeServiceTests {
         #expect(fixture.removedInjectedMessageIDs.isEmpty)
     }
 
+    @Test func freshDefaultsEnableBridgeByDefault() {
+        let suite = "BridgeServiceDefaultTests-\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        defaults.removePersistentDomain(forName: suite)
+        defer { defaults.removePersistentDomain(forName: suite) }
+
+        let service = BridgeService(defaults: defaults)
+
+        #expect(service.isEnabled)
+        #expect(defaults.object(forKey: "bridge.userEnabled") == nil)
+    }
+
+    @Test func persistedDisabledChoiceOverridesDefault() {
+        let suite = "BridgeServiceDisabledTests-\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        defaults.removePersistentDomain(forName: suite)
+        defaults.set(false, forKey: "bridge.userEnabled")
+        defer { defaults.removePersistentDomain(forName: suite) }
+
+        #expect(!BridgeService(defaults: defaults).isEnabled)
+    }
+
     @Test func togglePersistsAcrossInstances() {
         let fixture = Fixture(enabled: true)
+        fixture.service.setEnabled(false)
+        fixture.service.setEnabled(true)
         let revived = BridgeService(defaults: fixture.defaults)
         #expect(revived.isEnabled)
     }
@@ -366,6 +426,64 @@ struct BridgeServiceTests {
         let carrier = try #require(NostrCarrierPacket.decode(sent.payload))
         #expect(carrier.direction == .toBridge)
         #expect(carrier.geohash == Self.cell)
+    }
+
+    @Test func internetOnlyOutgoingQueuesUntilRelayConnects() {
+        let fixture = Fixture(enabled: true)
+        fixture.relaysConnected = false
+        fixture.bridgePeers = []
+
+        fixture.service.bridgeOutgoing(
+            content: "wait for the relay",
+            senderPeerID: PeerID(str: "0011223344556677"),
+            timestamp: Date()
+        )
+
+        #expect(fixture.publishedMessages.isEmpty)
+        #expect(fixture.service.queuedUplinks.count == 1)
+
+        fixture.relaysConnected = true
+        fixture.service.flushQueuedUplinks()
+
+        #expect(fixture.service.queuedUplinks.isEmpty)
+        #expect(fixture.publishedMessages.count == 1)
+        #expect(fixture.publishedMessages.first?.event.content == "wait for the relay")
+    }
+
+    @Test func missingGeoRelayTargetsKeepsOutgoingQueuedUntilDirectoryRefresh() {
+        let fixture = Fixture(enabled: true)
+        fixture.relayTargetsAvailable = false
+
+        fixture.service.bridgeOutgoing(
+            content: "wait for reviewed relays",
+            senderPeerID: PeerID(str: "0011223344556677"),
+            timestamp: Date()
+        )
+
+        #expect(fixture.publishedMessages.isEmpty)
+        #expect(fixture.service.queuedUplinks.count == 1)
+
+        fixture.service.flushQueuedUplinks()
+        #expect(fixture.service.queuedUplinks.count == 1)
+
+        fixture.relayTargetsAvailable = true
+        fixture.service.flushQueuedUplinks()
+        #expect(fixture.service.queuedUplinks.isEmpty)
+        #expect(fixture.publishedMessages.first?.event.content == "wait for reviewed relays")
+    }
+
+    @Test func unconfiguredRelayTargetPolicyQueuesOutgoingFailClosed() {
+        let fixture = Fixture(enabled: true)
+        fixture.service.hasRelayTargets = nil
+
+        fixture.service.bridgeOutgoing(
+            content: "wait for relay policy",
+            senderPeerID: PeerID(str: "0011223344556677"),
+            timestamp: Date()
+        )
+
+        #expect(fixture.publishedMessages.isEmpty)
+        #expect(fixture.service.queuedUplinks.count == 1)
     }
 
     @Test func ownRelayBackfilledEventIsIgnoredAfterRestart() throws {

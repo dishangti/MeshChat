@@ -51,7 +51,15 @@ struct MeshChatHomeView: View {
 
                     HStack(spacing: 10) {
                         compactAction(title: "#location", icon: "number", action: onOpenLocations)
-                        compactAction(title: "Verify", icon: "qrcode", action: onOpenVerification)
+                        compactAction(
+                            title: String(
+                                localized: "verification.sheet.title",
+                                defaultValue: "Scan QR Code",
+                                comment: "Action that opens the global identity QR scanner"
+                            ),
+                            icon: "qrcode.viewfinder",
+                            action: onOpenVerification
+                        )
                     }
                 }
                 .frame(maxWidth: 460)

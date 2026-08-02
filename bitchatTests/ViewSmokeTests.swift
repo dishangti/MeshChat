@@ -348,15 +348,17 @@ struct ViewSmokeTests {
         _ = mount(
             MeshPeerList(
                 onTapPeer: { _ in },
-                onToggleFavorite: { _ in },
-                onShowFingerprint: { _ in }
+                onRemoveFriend: { _ in },
+                onShowFingerprint: { _ in },
+                onAddFriend: { _ in }
             )
             .environmentObject(featureModels.peerListModel)
         )
         _ = MeshPeerList(
             onTapPeer: { _ in },
-            onToggleFavorite: { _ in },
-            onShowFingerprint: { _ in }
+            onRemoveFriend: { _ in },
+            onShowFingerprint: { _ in },
+            onAddFriend: { _ in }
         )
         .environmentObject(featureModels.peerListModel)
 
@@ -372,8 +374,9 @@ struct ViewSmokeTests {
         _ = mount(
             MeshPeerList(
                 onTapPeer: { _ in },
-                onToggleFavorite: { _ in },
-                onShowFingerprint: { _ in }
+                onRemoveFriend: { _ in },
+                onShowFingerprint: { _ in },
+                onAddFriend: { _ in }
             )
             .environmentObject(featureModels.peerListModel)
         )
@@ -510,6 +513,7 @@ struct ViewSmokeTests {
             completion(.denied)
         })
             .environmentObject(LocationChannelsModel(manager: makeSmokeLocationManager()))
+        let help = MeshChatHelpView()
         let header = SectionHeader("app_info.features.title")
         let featureRow = FeatureRow(info: feature)
         let paymentCashu = PaymentChipView(paymentType: .cashu("cashuA_test-token"))
@@ -526,6 +530,7 @@ struct ViewSmokeTests {
         _ = DeliveryStatusView(status: .failed(reason: "offline")).body
         _ = DeliveryStatusView(status: .partiallyDelivered(reached: 2, total: 3)).body
         _ = mount(appInfo)
+        _ = mount(help)
         _ = mount(header)
         _ = mount(featureRow)
         _ = mount(paymentCashu)
@@ -566,6 +571,89 @@ struct ViewSmokeTests {
 
         #expect(featureModels.privateConversationModel.selectedPeerID == peerID)
         #expect(featureModels.privateConversationModel.selectedHeaderState?.headerPeerID == peerID)
+    }
+
+    @Test
+    func meshChatDirectoryViews_renderHomeAndFriendSections() async {
+        let (viewModel, transport, _) = makeSmokeViewModel()
+        let featureModels = makeSmokeFeatureModels(for: viewModel)
+        let friendPeer = PeerID(str: "6162636465666768")
+        let nearbyPeer = PeerID(str: "7172737475767778")
+        let friendNoiseKey = Data(repeating: 0x77, count: 32)
+        let recentNoiseKey = Data(repeating: 0x99, count: 32)
+        let recentPeer = PeerID(hexData: recentNoiseKey)
+        defer {
+            _ = FavoritesPersistenceService.shared.removeFavorite(
+                peerNoisePublicKey: friendNoiseKey
+            )
+            _ = FavoritesPersistenceService.shared.removeFavorite(
+                peerNoisePublicKey: recentNoiseKey
+            )
+        }
+
+        transport.updatePeerSnapshots([
+            makeSnapshot(peerID: friendPeer, nickname: "Friend", noiseByte: 0x77),
+            makeSnapshot(peerID: nearbyPeer, nickname: "Nearby", noiseByte: 0x88)
+        ])
+        try? await Task.sleep(nanoseconds: 50_000_000)
+        // Seed persisted state directly because this test only renders the
+        // directory; direct contact addition is covered by service/UI tests.
+        FavoritesPersistenceService.shared.addFavorite(
+            peerNoisePublicKey: friendNoiseKey,
+            peerNickname: "Friend"
+        )
+        viewModel.identityManager.upsertCryptographicIdentity(
+            fingerprint: recentNoiseKey.sha256Fingerprint(),
+            noisePublicKey: recentNoiseKey,
+            signingPublicKey: nil,
+            claimedNickname: "Recent"
+        )
+        viewModel.conversations.append(
+            BitchatMessage(
+                id: "recent-smoke-dm",
+                sender: "Recent",
+                content: "hello",
+                timestamp: Date(),
+                isRelay: false,
+                isPrivate: true,
+                recipientNickname: viewModel.nickname,
+                senderPeerID: recentPeer
+            ),
+            to: .directPeer(recentPeer)
+        )
+        try? await Task.sleep(nanoseconds: 50_000_000)
+
+        _ = mount(
+            installSmokeEnvironment(
+                MeshChatHomeView(
+                    onOpenMesh: {},
+                    onOpenLocations: {},
+                    onOpenVerification: {}
+                ),
+                featureModels: featureModels
+            )
+        )
+        _ = mount(
+            installSmokeEnvironment(
+                MeshChatSidebarView(
+                    activePeerID: nil,
+                    showsConversationSelection: false,
+                    onOpenChannel: { _ in },
+                    onOpenPeer: { _ in },
+                    onOpenLocations: {},
+                    onOpenNotices: {},
+                    onOpenAppInfo: {},
+                    onOpenSettings: {},
+                    onOpenVerification: {},
+                    onPanic: {}
+                ),
+                featureModels: featureModels
+            )
+        )
+
+        #expect(featureModels.peerListModel.meshRows.contains { $0.peerID == friendPeer && $0.isFavorite })
+        #expect(featureModels.peerListModel.meshRows.contains { $0.peerID == nearbyPeer && !$0.isFavorite })
+        #expect(featureModels.peerListModel.recentMeshRows.contains { $0.stablePeerID == recentPeer })
     }
 
     @Test("Root Bluetooth alert waits for location and notices sheets")
@@ -835,6 +923,7 @@ struct ViewSmokeTests {
             coordinator.setup(previewLayer: preview.videoPreviewLayer) { _ in }
             coordinator.setActive(false)
         }
+        coordinator.tearDown()
 
         #expect(preview.videoPreviewLayer.videoGravity == .resizeAspectFill)
         #endif

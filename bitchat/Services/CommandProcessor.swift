@@ -70,10 +70,13 @@ protocol CommandContextProvider: AnyObject {
     /// conversation captured when the command was issued.
     func addCommandOutput(_ content: String, to destination: CommandOutputDestination)
 
-    // MARK: - Favorites
-    /// Toggles the favorite via the unified peer flow, which persists by the
-    /// real noise key and notifies the peer over mesh or Nostr.
-    func toggleFavorite(peerID: PeerID)
+    // MARK: - Friends
+    /// Adds a known contact without changing verification state.
+    @discardableResult
+    func addFriend(peerID: PeerID) -> Bool
+    /// Removes an existing friend without exposing a state toggle.
+    @discardableResult
+    func removeFriend(peerID: PeerID) -> Bool
 
     // MARK: - Groups
     // Group logic lives in `ChatGroupCoordinator`; these forward the parsed
@@ -570,14 +573,24 @@ final class CommandProcessor {
             isCurrentlyFavorite = FavoritesPersistenceService.shared.getFavoriteStatus(forPeerID: peerID)?.isFavorite ?? false
         }
 
-        guard add != isCurrentlyFavorite else {
-            return .success(message: add ? "\(nickname) is already a favorite" : "\(nickname) is not a favorite")
+        if add {
+            guard !isCurrentlyFavorite else {
+                return .success(message: "\(nickname) is already a friend")
+            }
+            guard contextProvider?.addFriend(peerID: peerID) == true else {
+                return .error(message: "Could not add \(nickname); try again")
+            }
+            return .success(message: "Added \(nickname) to friends")
         }
 
-        // toggleFavorite persists by the real noise key and notifies the peer.
-        contextProvider?.toggleFavorite(peerID: peerID)
+        guard isCurrentlyFavorite else {
+            return .success(message: "\(nickname) is not a friend")
+        }
+        guard contextProvider?.removeFriend(peerID: peerID) == true else {
+            return .error(message: "Could not remove \(nickname); try again")
+        }
 
-        return .success(message: add ? "Added \(nickname) to favorites" : "Removed \(nickname) from favorites")
+        return .success(message: "Removed \(nickname) from friends")
     }
     
 }

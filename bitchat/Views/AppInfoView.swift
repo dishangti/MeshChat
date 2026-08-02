@@ -5,12 +5,12 @@ enum AppInfoPane: String {
     static let storageKey = "appInfo.selectedPane"
     case settings
     case info
+    case help
 }
 
-/// The sheet behind the MeshChat logo: a segmented Settings/Info surface.
-/// Settings gathers every user preference (appearance, voice, connectivity
-/// toggles, panic wipe); Info keeps the about content (how-to, features,
-/// privacy, symbols legend).
+/// The sheet behind the MeshChat logo: a segmented Help/Info/Settings surface.
+/// Help is task-oriented guidance, Info is product context and the symbols
+/// legend, and Settings gathers preferences and destructive controls.
 struct AppInfoView: View {
     @Environment(\.dismiss) var dismiss
     @Environment(\.scenePhase) private var scenePhase
@@ -53,9 +53,10 @@ struct AppInfoView: View {
     @State private var relayInput = ""
     @State private var relayError: String?
     @ObservedObject private var locationManager = LocationChannelManager.shared
-    /// The presenting entry point chooses Info (app logo) or Settings (gear)
-    /// by writing this shared selection before the sheet appears.
-    @AppStorage(AppInfoPane.storageKey) private var selectedPane: AppInfoPane = .info
+    /// The presenting entry point chooses Help (app logo) or Settings (gear)
+    /// by writing this shared selection before the sheet appears. Info remains
+    /// available from the segmented control.
+    @AppStorage(AppInfoPane.storageKey) private var selectedPane: AppInfoPane = .help
     @State private var showPanicConfirmation = false
     @AppStorage(AppLanguageSettings.overrideKey) private var languageOverride = ""
     /// The override changed this session; localization resolves at process
@@ -79,9 +80,10 @@ struct AppInfoView: View {
         /// New keys carry their English copy inline (defaultValue) until the
         /// i18n pass lands them in the catalog; moved keys keep their homes.
         enum Settings {
-            static let tabPickerLabel = String(localized: "app_info.tab.picker_label", defaultValue: "View", comment: "Accessibility label for the segmented control switching between the settings and info panes of the app info sheet")
+            static let tabPickerLabel = String(localized: "app_info.tab.picker_label", defaultValue: "View", comment: "Accessibility label for the segmented control switching between the Help, Info, and Settings panes")
             static let tabSettings = String(localized: "app_info.tab.settings", defaultValue: "Settings", comment: "Segmented control label for the settings pane of the app info sheet")
             static let tabInfo = String(localized: "app_info.tab.info", defaultValue: "Info", comment: "Segmented control label for the info pane of the app info sheet")
+            static let tabHelp = String(localized: "meshchat.help.title", defaultValue: "Help", comment: "Segmented control label for the standalone MeshChat help page")
 
             static let connectivityTitle = String(localized: "app_info.settings.connectivity.title", defaultValue: "Connectivity", comment: "Section header for the connectivity toggles: mesh bridge, internet gateway, and Tor routing")
 
@@ -208,23 +210,31 @@ struct AppInfoView: View {
 
         enum Legend {
             static let title: LocalizedStringKey = "app_info.legend.title"
-            /// Every glyph the peer lists and headers use, in one place —
-            /// nothing else in the app defines them. A nil color renders in
+            /// Common glyphs used across peer lists, message rows, and headers.
+            /// Stable IDs keep repeated symbols distinct. A nil color follows
             /// the theme's primary text color.
-            static let items: [(icon: String, color: Color?, text: String)] = [
-                ("antenna.radiowaves.left.and.right", nil, String(localized: "app_info.legend.mesh_connected")),
-                ("point.3.filled.connected.trianglepath.dotted", nil, String(localized: "app_info.legend.mesh_relayed")),
-                ("globe", nil, String(localized: "app_info.legend.nostr")),
-                ("network", Color.cyan, String(localized: "app_info.legend.bridged", defaultValue: "Message arrived across a mesh bridge.", comment: "Symbols legend entry for the cyan network glyph shown on messages carried across a mesh bridge")),
-                ("person", nil, String(localized: "app_info.legend.offline")),
-                ("mappin.and.ellipse", nil, String(localized: "app_info.legend.location_nearby")),
-                ("face.dashed", nil, String(localized: "app_info.legend.teleported")),
-                ("lock.fill", nil, String(localized: "app_info.legend.encrypted")),
-                ("lock.slash", nil, String(localized: "app_info.legend.encryption_failed")),
-                ("checkmark.seal.fill", nil, String(localized: "app_info.legend.verified")),
-                ("star.fill", nil, String(localized: "app_info.legend.favorite")),
-                ("envelope.fill", nil, String(localized: "app_info.legend.unread")),
-                ("nosign", nil, String(localized: "app_info.legend.blocked"))
+            struct Item: Identifiable {
+                let id: String
+                let icon: String
+                let color: Color?
+                let text: String
+            }
+
+            static let items: [Item] = [
+                Item(id: "mesh-connected", icon: "antenna.radiowaves.left.and.right", color: nil, text: String(localized: "app_info.legend.mesh_connected")),
+                Item(id: "mesh-relayed", icon: "point.3.filled.connected.trianglepath.dotted", color: nil, text: String(localized: "app_info.legend.mesh_relayed")),
+                Item(id: "nostr", icon: "globe", color: nil, text: String(localized: "app_info.legend.nostr")),
+                Item(id: "bridged", icon: "network", color: .cyan, text: String(localized: "app_info.legend.bridged", defaultValue: "Message arrived across a mesh bridge.", comment: "Symbols legend entry for the cyan network glyph shown on messages carried across a mesh bridge")),
+                Item(id: "offline", icon: "person", color: nil, text: String(localized: "app_info.legend.offline")),
+                Item(id: "location-nearby", icon: "mappin.and.ellipse", color: nil, text: String(localized: "app_info.legend.location_nearby")),
+                Item(id: "teleported", icon: "face.dashed", color: nil, text: String(localized: "app_info.legend.teleported")),
+                Item(id: "identity-unverified", icon: "lock.fill", color: .red, text: String(localized: "app_info.legend.encrypted")),
+                Item(id: "encryption-failed", icon: "lock.slash", color: .red, text: String(localized: "app_info.legend.encryption_failed")),
+                Item(id: "identity-verified", icon: "checkmark.seal.fill", color: .green, text: String(localized: "app_info.legend.verified")),
+                Item(id: "private-message", icon: "lock.fill", color: .orange, text: String(localized: "app_info.legend.private_message")),
+                Item(id: "favorite", icon: "star.fill", color: nil, text: String(localized: "app_info.legend.favorite")),
+                Item(id: "unread", icon: "envelope.fill", color: nil, text: String(localized: "app_info.legend.unread")),
+                Item(id: "blocked", icon: "nosign", color: nil, text: String(localized: "app_info.legend.blocked"))
             ]
         }
 
@@ -270,25 +280,6 @@ struct AppInfoView: View {
             )
         }
 
-        enum HowToUse {
-            static let title: LocalizedStringKey = "app_info.how_to_use.title"
-            /// The instruction strings flowed into one comma-separated
-            /// paragraph. The translations carry their legacy bullet-list
-            /// prefix ("• "), so it is stripped here.
-            static var paragraph: String {
-                [
-                    String(localized: "app_info.how_to_use.set_nickname"),
-                    String(localized: "app_info.how_to_use.change_channels"),
-                    String(localized: "app_info.how_to_use.open_sidebar"),
-                    String(localized: "app_info.how_to_use.start_dm"),
-                    String(localized: "app_info.how_to_use.clear_chat"),
-                    String(localized: "app_info.how_to_use.commands")
-                ]
-                .map { $0.hasPrefix("• ") ? String($0.dropFirst(2)) : $0 }
-                .joined(separator: ", ")
-            }
-        }
-
     }
 
     var body: some View {
@@ -309,9 +300,7 @@ struct AppInfoView: View {
             VStack(spacing: 0) {
                 panePicker
 
-                ScrollView {
-                    paneContent
-                }
+                paneContent
             }
             .themedSheetBackground()
         }
@@ -329,9 +318,7 @@ struct AppInfoView: View {
             VStack(spacing: 0) {
                 panePicker
 
-                ScrollView {
-                    paneContent
-                }
+                paneContent
             }
             .themedSheetBackground()
             .navigationBarTitleDisplayMode(.inline)
@@ -357,6 +344,7 @@ struct AppInfoView: View {
 
     private var panePicker: some View {
         Picker(Strings.Settings.tabPickerLabel, selection: $selectedPane) {
+            Text(Strings.Settings.tabHelp).tag(AppInfoPane.help)
             Text(Strings.Settings.tabInfo).tag(AppInfoPane.info)
             Text(Strings.Settings.tabSettings).tag(AppInfoPane.settings)
         }
@@ -370,9 +358,11 @@ struct AppInfoView: View {
     private var paneContent: some View {
         switch selectedPane {
         case .settings:
-            settingsContent
+            ScrollView { settingsContent }
         case .info:
-            infoContent
+            ScrollView { infoContent }
+        case .help:
+            MeshChatHelpView()
         }
     }
 
@@ -1086,16 +1076,6 @@ struct AppInfoView: View {
             .frame(maxWidth: .infinity)
             .padding(.vertical)
 
-            // How to Use
-            VStack(alignment: .leading, spacing: 16) {
-                SectionHeader(Strings.HowToUse.title)
-
-                Text(verbatim: Strings.HowToUse.paragraph)
-                    .bitchatFont(size: 14)
-                    .foregroundColor(textColor)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-
             // Network diagnostics
             if topologyProvider != nil {
                 VStack(alignment: .leading, spacing: 16) {
@@ -1151,7 +1131,7 @@ struct AppInfoView: View {
             VStack(alignment: .leading, spacing: 10) {
                 SectionHeader(Strings.Legend.title)
 
-                ForEach(Strings.Legend.items, id: \.icon) { item in
+                ForEach(Strings.Legend.items) { item in
                     HStack(alignment: .top, spacing: 12) {
                         Image(systemName: item.icon)
                             .font(.bitchatSystem(size: 14))
@@ -1214,6 +1194,7 @@ struct SectionHeader: View {
             .bitchatFont(size: 16, weight: .bold)
             .foregroundColor(textColor)
             .padding(.top, 8)
+            .accessibilityAddTraits(.isHeader)
     }
 }
 

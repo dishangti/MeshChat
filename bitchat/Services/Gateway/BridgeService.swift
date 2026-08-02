@@ -10,8 +10,9 @@ import BitLogger
 import Combine
 import Foundation
 
-/// Policy engine for the mesh bridge: an opt-in stitcher of disjoint BLE
-/// mesh islands that share a place. While the toggle is on, this device's
+/// Policy engine for the mesh bridge: a default-enabled, user-controlled
+/// stitcher of disjoint BLE mesh islands that share a place. While the toggle
+/// is on, this device's
 /// public mesh messages are additionally signed (with a derived, unlinkable
 /// per-cell Nostr identity) as rendezvous events for the local geohash cell
 /// and published to the cell's deterministic geo relays — directly when we
@@ -103,6 +104,9 @@ final class BridgeService: ObservableObject {
         let depositor: PeerID
         let cell: String
         let event: NostrEvent
+        /// Local compose traffic is trusted and cannot be displaced by an
+        /// untrusted mesh depositor filling the shared bounded queue.
+        let isLocal: Bool
     }
 
     /// A validated rendezvous message ready for the timeline.
@@ -153,6 +157,10 @@ final class BridgeService: ObservableObject {
 
     /// Publishes a signed event to the geo relays for a cell.
     var publishToRelays: (@MainActor (NostrEvent, String) -> Void)?
+    /// Whether the reviewed geo-relay directory currently has a target for
+    /// this cell. Bridge traffic stays queued when it does not; it must never
+    /// spill into the private-message relay set as an implicit fallback.
+    var hasRelayTargets: (@MainActor (String) -> Bool)?
     /// Opens the rendezvous subscription for (cell + neighbors); events are
     /// fed back via `handleRendezvousEvent`.
     var openSubscription: (@MainActor ([String]) -> Void)?
@@ -254,6 +262,7 @@ final class BridgeService: ObservableObject {
     private let now: () -> Date
     private let verifyEventSignature: (NostrEvent) -> Bool
     private static let enabledKey = "bridge.userEnabled"
+    private static let defaultEnabled = true
 
     init(
         defaults: UserDefaults = .standard,
@@ -263,7 +272,9 @@ final class BridgeService: ObservableObject {
         self.defaults = defaults
         self.now = now
         self.verifyEventSignature = verifyEventSignature
-        self.isEnabled = defaults.bool(forKey: Self.enabledKey)
+        self.isEnabled = defaults.object(forKey: Self.enabledKey) == nil
+            ? Self.defaultEnabled
+            : defaults.bool(forKey: Self.enabledKey)
         self.meshBroadcastEventIDs = BoundedIDSet(capacity: Limits.maxTrackedEventIDs)
         self.publishedEventIDs = BoundedIDSet(capacity: Limits.maxTrackedEventIDs)
         self.rebroadcastEventIDs = BoundedIDSet(capacity: Limits.maxTrackedEventIDs)
@@ -294,9 +305,9 @@ final class BridgeService: ObservableObject {
     }
 
     /// Synchronously removes every bridge-derived identity and message trace
-    /// during a panic wipe. The persisted opt-in is removed as well: silently
-    /// reconnecting a freshly generated identity to the previous rendezvous
-    /// would reveal that the wiped device remained in the same area.
+    /// during a panic wipe. Bridge mode is explicitly persisted as disabled:
+    /// silently reconnecting a freshly generated identity to the previous
+    /// rendezvous would reveal that the wiped device remained in the same area.
     func resetForPanic() {
         lifecycleGeneration &+= 1
 
@@ -306,7 +317,7 @@ final class BridgeService: ObservableObject {
 
         isEnabled = false
         nearbyOnly = false
-        defaults.removeObject(forKey: Self.enabledKey)
+        defaults.set(false, forKey: Self.enabledKey)
 
         activeCell = nil
         subscribedCells.removeAll(keepingCapacity: false)
@@ -344,7 +355,7 @@ final class BridgeService: ObservableObject {
     /// Recomputes the active cell and (re)opens or closes the subscription.
     /// Call on toggle changes, location updates, and relay connectivity
     /// changes; idempotent.
-    func refreshRendezvous() {
+    func refreshRendezvous(reopenSubscription: Bool = false) {
         let cell = isEnabled ? currentCell() : nil
         // No cell yet: ask for a fix — the availableChannels change re-enters
         // here once it lands.
@@ -352,6 +363,20 @@ final class BridgeService: ObservableObject {
             requestLocationFix?()
         }
         guard cell != activeCell else {
+            // Bootstrap wires the bridge before network activation starts.
+            // The first subscribe can therefore be rejected by the global
+            // network gate even though the cell is already known. Reopen on
+            // relay recovery so that rejected intent never leaves a live
+            // bridge publishing into a rendezvous it does not observe.
+            if reopenSubscription, let cell {
+                if !subscribedCells.isEmpty {
+                    closeSubscription?()
+                }
+                let cells = [cell] + Geohash.neighbors(of: cell)
+                subscribedCells = Set(cells)
+                openSubscription?(cells)
+                publishPresence()
+            }
             // The maintenance timer must run even cell-less: it is what
             // retries the location fix (launch races the permission
             // callback, so the first request can silently no-op).
@@ -363,6 +388,11 @@ final class BridgeService: ObservableObject {
             subscribedCells = []
         }
         activeCell = cell
+        // Presence throttling is cell-scoped. A heartbeat sent moments before
+        // moving must not suppress the first heartbeat in the new rendezvous.
+        if cell != nil {
+            lastPresenceAt = .distantPast
+        }
         onActiveCellChanged?(cell)
         guard let cell else {
             if isEnabled { armPresenceTimerIfNeeded() }
@@ -422,16 +452,30 @@ final class BridgeService: ObservableObject {
             SecureLogger.error("🌉 Bridge: failed to compose rendezvous event", category: .session)
             return
         }
-        publishedEventIDs.insert(event.id)
         injectedMessageIDs.insert(event.id) // our own timeline already has it
-        if relaysConnected?() ?? false {
+        if relaysConnected?() ?? false, hasRelayTargets?(cell) == true {
+            publishedEventIDs.insert(event.id)
             publishToRelays?(event, cell)
         } else if let carrier = NostrCarrierPacket(direction: .toBridge, geohash: cell, event: event),
                   let payload = carrier.encode(),
                   let gateway = availableBridgePeers?().first {
             if sendToBridgePeer?(payload, gateway) ?? false {
+                publishedEventIDs.insert(event.id)
                 SecureLogger.debug("🌉 Bridge: uplinked own event via gateway \(gateway.id.prefix(8))…", category: .session)
+            } else {
+                enqueueUplink(
+                    QueuedUplink(depositor: senderPeerID, cell: cell, event: event, isLocal: true),
+                    enforceDepositorLimit: false
+                )
             }
+        } else {
+            // Tor and relay bootstrap are asynchronous. Keep a bounded local
+            // copy so an internet-only sender's first message is not lost
+            // merely because it was composed a moment before a socket opened.
+            enqueueUplink(
+                QueuedUplink(depositor: senderPeerID, cell: cell, event: event, isLocal: true),
+                enforceDepositorLimit: false
+            )
         }
     }
 
@@ -440,7 +484,10 @@ final class BridgeService: ObservableObject {
     /// relay reconnect) can coincide, and same-second heartbeats are
     /// byte-identical events anyway.
     func publishPresence() {
-        guard isEnabled, let cell = activeCell, relaysConnected?() ?? false else { return }
+        guard isEnabled,
+              let cell = activeCell,
+              relaysConnected?() ?? false,
+              hasRelayTargets?(cell) == true else { return }
         guard now().timeIntervalSince(lastPresenceAt) >= 30 else { return }
         lastPresenceAt = now()
         guard let identity = try? deriveIdentity?(cell),
@@ -611,10 +658,15 @@ final class BridgeService: ObservableObject {
             SecureLogger.debug("🌉 Bridge: rejected deposit from \(depositor.id.prefix(8))… (bad signature)", category: .security)
             return
         }
-        if relaysConnected?() ?? false {
+        if relaysConnected?() ?? false, hasRelayTargets?(carrier.geohash) == true {
             publish(event, cell: carrier.geohash)
         } else {
-            enqueueUplink(QueuedUplink(depositor: depositor, cell: carrier.geohash, event: event))
+            enqueueUplink(QueuedUplink(
+                depositor: depositor,
+                cell: carrier.geohash,
+                event: event,
+                isLocal: false
+            ))
         }
         // No local injection: the depositor's radio broadcast already carried
         // the message to this island, including us.
@@ -625,8 +677,12 @@ final class BridgeService: ObservableObject {
         guard isEnabled, relaysConnected?() ?? false, !queuedUplinks.isEmpty else { return }
         let queued = queuedUplinks
         queuedUplinks.removeAll()
-        for item in queued where !publishedEventIDs.contains(item.event.id) {
-            publish(item.event, cell: item.cell)
+        for item in queued where !publishedEventIDs.contains(item.event.id) && isFresh(item.event) {
+            if hasRelayTargets?(item.cell) == true {
+                publish(item.event, cell: item.cell)
+            } else {
+                queuedUplinks.append(item)
+            }
         }
     }
 
@@ -637,11 +693,23 @@ final class BridgeService: ObservableObject {
     }
 
     @discardableResult
-    private func enqueueUplink(_ item: QueuedUplink) -> Bool {
-        let fromDepositor = queuedUplinks.filter { $0.depositor == item.depositor }.count
-        guard fromDepositor < Limits.maxQueuedUplinksPerDepositor else { return false }
+    private func enqueueUplink(
+        _ item: QueuedUplink,
+        enforceDepositorLimit: Bool = true
+    ) -> Bool {
+        if enforceDepositorLimit {
+            let fromDepositor = queuedUplinks.filter { $0.depositor == item.depositor }.count
+            guard fromDepositor < Limits.maxQueuedUplinksPerDepositor else { return false }
+        }
+        guard !queuedUplinks.contains(where: { $0.event.id == item.event.id }) else { return false }
         if queuedUplinks.count >= Limits.maxQueuedUplinks {
-            queuedUplinks.removeFirst(queuedUplinks.count - Limits.maxQueuedUplinks + 1)
+            if let untrustedIndex = queuedUplinks.firstIndex(where: { !$0.isLocal }) {
+                queuedUplinks.remove(at: untrustedIndex)
+            } else if item.isLocal {
+                queuedUplinks.removeFirst()
+            } else {
+                return false
+            }
         }
         queuedUplinks.append(item)
         return true
@@ -773,7 +841,8 @@ final class BridgeService: ObservableObject {
     private func handleDownlinkBroadcast(_ carrier: NostrCarrierPacket) {
         // Reception is deliberately NOT gated on the toggle: it is passive
         // radio, and two phones side by side should not disagree about what
-        // the channel said. Publishing/subscribing remain opt-in.
+        // the channel said. Publishing/subscribing remain controlled by the
+        // bridge toggle.
         guard let event = structurallyValidEvent(from: carrier),
               !publishedEventIDs.contains(event.id),
               !isOwnRendezvousEvent(event, cell: carrier.geohash),

@@ -17,6 +17,7 @@ struct ContentRootModalPresentationState {
     var isPeopleSheetPresented = false
     var isAppInfoPresented = false
     var isFingerprintPresented = false
+    var isNicknameEditorPresented = false
     var isLocationChannelsSheetPresented = false
     var isNoticesSheetPresented = false
     var isImagePreviewPresented = false
@@ -29,6 +30,7 @@ struct ContentRootModalPresentationState {
         isPeopleSheetPresented
             || isAppInfoPresented
             || isFingerprintPresented
+            || isNicknameEditorPresented
             || isLocationChannelsSheetPresented
             || isNoticesSheetPresented
             || isImagePreviewPresented
@@ -54,6 +56,8 @@ extension ContentRootModalPresentationState {
             isAppInfoPresented: appChromeModel.isAppInfoPresented,
             isFingerprintPresented:
                 appChromeModel.showingFingerprintFor != nil,
+            isNicknameEditorPresented:
+                appChromeModel.showingNicknameFor != nil,
             isLocationChannelsSheetPresented:
                 appChromeModel.isLocationChannelsSheetPresented,
             isNoticesSheetPresented:
@@ -350,6 +354,19 @@ struct ContentView: View {
         )) {
             if let peerID = appChromeModel.showingFingerprintFor {
                 FingerprintView(peerID: peerID)
+                    .environmentObject(verificationModel)
+            }
+        }
+        .sheet(isPresented: Binding(
+            get: {
+                appChromeModel.showingNicknameFor != nil
+                    && !showSidebar
+                    && selectedPrivatePeerID == nil
+            },
+            set: { _ in appChromeModel.clearNicknameEditor() }
+        )) {
+            if let peerID = appChromeModel.showingNicknameFor {
+                LocalNicknameSheetView(peerID: peerID)
                     .environmentObject(verificationModel)
             }
         }

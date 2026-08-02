@@ -7,10 +7,10 @@
 // `ChatViewModel`, following the `ChatDeliveryCoordinatorContextTests` /
 // `ChatPrivateConversationCoordinatorContextTests` exemplars.
 //
-// Scope note: favorites are injected through the context
-// (`favoriteRelationship(forNoiseKey:)` / `addFavorite` / `removeFavorite`),
-// so the favorite toggle and lookup flows are covered here alongside the
-// session, migration, encryption-status, and nickname resolution flows.
+// Scope note: favorite reads and removal are injected through the context, so
+// removal-only and lookup flows are covered here alongside session, migration,
+// encryption-status, and nickname resolution flows. Friend addition belongs
+// exclusively to the signed-QR verification coordinator.
 //
 
 import Testing
@@ -90,11 +90,14 @@ private final class MockChatPeerIdentityContext: ChatPeerIdentityContext {
     var fingerprintsByPeerID: [PeerID: String] = [:]
     var peerIDsByNickname: [String: PeerID] = [:]
     var ephemeralPeerIDsByNoiseKey: [Data: PeerID] = [:]
-    private(set) var toggledFavoritePeers: [PeerID] = []
+    private(set) var removedUnifiedFriends: [PeerID] = []
 
     func unifiedPeer(for peerID: PeerID) -> BitchatPeer? { peersByID[peerID] }
     func unifiedIsBlocked(_ peerID: PeerID) -> Bool { blockedPeers.contains(peerID) }
-    func unifiedToggleFavorite(_ peerID: PeerID) { toggledFavoritePeers.append(peerID) }
+    func unifiedRemoveFriend(_ peerID: PeerID) -> Bool {
+        removedUnifiedFriends.append(peerID)
+        return true
+    }
     func unifiedFingerprint(for peerID: PeerID) -> String? { fingerprintsByPeerID[peerID] }
     func unifiedPeerID(forNickname nickname: String) -> PeerID? { peerIDsByNickname[nickname] }
     func ephemeralPeerID(forNoiseKey noiseKey: Data) -> PeerID? { ephemeralPeerIDsByNoiseKey[noiseKey] }
@@ -174,16 +177,11 @@ private final class MockChatPeerIdentityContext: ChatPeerIdentityContext {
     var geohashPeople: [GeoPerson] = []
     private(set) var registeredNostrKeyMappings: [(pubkey: String, peerID: PeerID)] = []
     private(set) var nostrFavoriteNotifications: [(noisePublicKey: Data, isFavorite: Bool)] = []
-    var bridgedNostrKeysByNoiseKey: [Data: String] = [:]
 
     func visibleGeohashPeople() -> [GeoPerson] { geohashPeople }
 
     func registerNostrKeyMapping(_ pubkey: String, for peerID: PeerID) {
         registeredNostrKeyMappings.append((pubkey, peerID))
-    }
-
-    func bridgedNostrPublicKey(for noiseKey: Data) -> String? {
-        bridgedNostrKeysByNoiseKey[noiseKey]
     }
 
     func sendFavoriteNotificationViaNostr(noisePublicKey: Data, isFavorite: Bool) {
@@ -193,8 +191,8 @@ private final class MockChatPeerIdentityContext: ChatPeerIdentityContext {
     // Favorites
     var favoriteRelationshipsByNoiseKey: [Data: FavoritesPersistenceService.FavoriteRelationship] = [:]
     var favoriteRelationshipsByPeerID: [PeerID: FavoritesPersistenceService.FavoriteRelationship] = [:]
-    private(set) var addedFavorites: [(noiseKey: Data, nostrPublicKey: String?, nickname: String)] = []
     private(set) var removedFavorites: [Data] = []
+    private(set) var socialFavoriteUpdates: [(isFavorite: Bool, noiseKey: Data)] = []
 
     func favoriteRelationship(forNoiseKey noiseKey: Data) -> FavoritesPersistenceService.FavoriteRelationship? {
         favoriteRelationshipsByNoiseKey[noiseKey]
@@ -204,12 +202,14 @@ private final class MockChatPeerIdentityContext: ChatPeerIdentityContext {
         favoriteRelationshipsByPeerID[peerID]
     }
 
-    func addFavorite(noiseKey: Data, nostrPublicKey: String?, nickname: String) {
-        addedFavorites.append((noiseKey, nostrPublicKey, nickname))
+    func removeFavorite(noiseKey: Data) -> Bool {
+        removedFavorites.append(noiseKey)
+        favoriteRelationshipsByNoiseKey.removeValue(forKey: noiseKey)
+        return true
     }
 
-    func removeFavorite(noiseKey: Data) {
-        removedFavorites.append(noiseKey)
+    func setSocialFavorite(_ isFavorite: Bool, noiseKey: Data) {
+        socialFavoriteUpdates.append((isFavorite, noiseKey))
     }
 }
 
@@ -416,39 +416,25 @@ struct ChatPeerIdentityCoordinatorContextTests {
         #expect(coordinator.getPeerIDForNickname("carol") == meshPeer)
     }
     @Test @MainActor
-    func toggleFavorite_forNoiseKeyPeer_usesInjectedFavoritesStore() async {
+    func removeFriend_forOfflineNoiseKeyIsRemovalOnlyAndIdempotent() async {
         let context = MockChatPeerIdentityContext()
         let coordinator = ChatPeerIdentityCoordinator(context: context)
-        let noiseKey = Data(repeating: 0xAB, count: 32)
+        let noiseKey = Data(repeating: 0xAC, count: 32)
         let peerID = PeerID(hexData: noiseKey)
-
-        // No prior relationship: adds a favorite, no Nostr notification yet.
-        coordinator.toggleFavorite(peerID: peerID)
-        #expect(context.addedFavorites.count == 1)
-        #expect(context.addedFavorites.first?.noiseKey == noiseKey)
-        #expect(context.addedFavorites.first?.nickname == "Unknown")
-        #expect(context.nostrFavoriteNotifications.isEmpty)
-        #expect(coordinator.isFavorite(peerID: peerID) == false)
-
-        // They already favorite us: adding sends the mutual notification.
-        context.favoriteRelationshipsByNoiseKey[noiseKey] = makeFavoriteRelationship(
-            noiseKey: noiseKey,
-            theyFavoritedUs: true
-        )
-        coordinator.toggleFavorite(peerID: peerID)
-        #expect(context.addedFavorites.count == 2)
-        #expect(context.addedFavorites.last?.nickname == "alice")
-        #expect(context.nostrFavoriteNotifications.map(\.isFavorite) == [true])
-
-        // Existing favorite: toggling removes it and notifies the unfavorite.
         context.favoriteRelationshipsByNoiseKey[noiseKey] = makeFavoriteRelationship(
             noiseKey: noiseKey,
             isFavorite: true
         )
-        #expect(coordinator.isFavorite(peerID: peerID) == true)
-        coordinator.toggleFavorite(peerID: peerID)
+
+        #expect(coordinator.removeFriend(peerID: peerID))
+        #expect(coordinator.removeFriend(peerID: peerID))
         #expect(context.removedFavorites == [noiseKey])
-        #expect(context.nostrFavoriteNotifications.map(\.isFavorite) == [true, false])
+        #expect(context.socialFavoriteUpdates.count == 1)
+        #expect(context.socialFavoriteUpdates.first?.isFavorite == false)
+        #expect(context.socialFavoriteUpdates.first?.noiseKey == noiseKey)
+        #expect(context.nostrFavoriteNotifications.count == 1)
+        #expect(context.nostrFavoriteNotifications.first?.noisePublicKey == noiseKey)
+        #expect(context.nostrFavoriteNotifications.first?.isFavorite == false)
     }
 
 }

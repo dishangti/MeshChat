@@ -537,7 +537,7 @@ struct ChatViewModelNostrExtensionTests {
     }
 
     @Test @MainActor
-    func handleGiftWrap_blockedSenderSkipsMessageStorage() async throws {
+    func handleGiftWrap_blockedSenderSkipsMessageStorageAndAck() async throws {
         let (viewModel, _) = makeTestableViewModel()
         let sender = try NostrIdentity.generate()
         let recipient = try NostrIdentity.generate()
@@ -559,14 +559,16 @@ struct ChatViewModelNostrExtensionTests {
 
         viewModel.handleGiftWrap(giftWrap, id: recipient)
 
-        // Gift-wrap decryption runs off the main actor; wait for the ack
-        // (sent even for blocked senders) to know processing finished.
-        let didAck = await TestHelpers.waitUntil(
-            { viewModel.sentGeoDeliveryAcks.contains(messageID) },
+        // Gift-wrap decryption runs off the main actor. Key registration occurs
+        // immediately before the blocked-message policy, so it is a stable
+        // completion signal without requiring a delivery acknowledgement.
+        let didProcess = await TestHelpers.waitUntil(
+            { viewModel.nostrKeyMapping[convKey] == sender.publicKeyHex },
             timeout: 5.0
         )
-        #expect(didAck)
+        #expect(didProcess)
         #expect(viewModel.privateChats[convKey] == nil)
+        #expect(!viewModel.sentGeoDeliveryAcks.contains(messageID))
     }
 
     @Test @MainActor

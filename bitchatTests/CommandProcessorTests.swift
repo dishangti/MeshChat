@@ -303,11 +303,9 @@ struct CommandProcessorTests {
         #expect(!identityManager.isNostrBlocked(pubkeyHexLowercased: String(repeating: "d", count: 64)))
     }
 
-    /// /fav must go through toggleFavorite (which persists by the real noise
-    /// key) — not write the hex peer ID into the favorites store, and not
-    /// send a second favorite notification.
+    /// `/fav` adds a contact without verification; `/unfav` only removes.
     @MainActor
-    @Test func favoriteCommandTogglesWithoutDirectStoreWrite() async {
+    @Test func favoriteCommandAddsWithoutVerificationAndUnfavoriteOnlyRemoves() async {
         let identityManager = MockIdentityManager(MockKeychain())
         let context = MockCommandContextProvider()
         let processor = CommandProcessor(
@@ -315,8 +313,14 @@ struct CommandProcessorTests {
             meshService: MockTransport(),
             identityManager: identityManager
         )
-        let peerID = PeerID(str: "00aa00bb00cc00dd")
+        let noiseKey = Data(repeating: 0xA7, count: 32)
+        let peerID = PeerID(publicKey: noiseKey)
         context.nicknameToPeerID["alice"] = peerID
+        defer {
+            FavoritesPersistenceService.shared.removeFavorite(
+                peerNoisePublicKey: noiseKey
+            )
+        }
 
         let result = await withSelectedChannel(.mesh, context: context) {
             processor.process("/fav alice")
@@ -324,27 +328,43 @@ struct CommandProcessorTests {
 
         switch result {
         case .success(let message):
-            #expect(message == "Added alice to favorites")
+            #expect(message == "Added alice to friends")
         default:
-            Issue.record("Expected success result")
+            Issue.record("Expected add success")
         }
-        #expect(context.toggledFavorites == [peerID])
+        #expect(context.addedFriends == [peerID])
+        #expect(context.removedFriends.isEmpty)
+
+        FavoritesPersistenceService.shared.addFavorite(
+            peerNoisePublicKey: noiseKey,
+            peerNickname: "alice"
+        )
+        let removeResult = await withSelectedChannel(.mesh, context: context) {
+            processor.process("/unfav alice")
+        }
+        switch removeResult {
+        case .success(let message):
+            #expect(message == "Removed alice from friends")
+        default:
+            Issue.record("Expected removal success")
+        }
+        #expect(context.removedFriends == [peerID])
         #expect(context.favoriteNotifications.isEmpty)
         // The 8-byte routing ID must never be stored as a "noise key".
         let bogusKey = Data(hexString: peerID.id)!
         #expect(FavoritesPersistenceService.shared.getFavoriteStatus(for: bogusKey) == nil)
 
-        // Unfavoriting someone who is not a favorite is a no-op.
+        // Removing someone who is not a friend is an idempotent no-op.
         let unfavResult = await withSelectedChannel(.mesh, context: context) {
             processor.process("/unfav alice")
         }
         switch unfavResult {
         case .success(let message):
-            #expect(message == "alice is not a favorite")
+            #expect(message == "alice is not a friend")
         default:
             Issue.record("Expected success result")
         }
-        #expect(context.toggledFavorites == [peerID])
+        #expect(context.removedFriends == [peerID])
     }
 
     @MainActor
@@ -604,7 +624,8 @@ private final class MockCommandContextProvider: CommandContextProvider {
     private(set) var publicSystemMessages: [String] = []
     private(set) var commandOutputs: [String] = []
     private(set) var commandOutputDestinations: [CommandOutputDestination] = []
-    private(set) var toggledFavorites: [PeerID] = []
+    private(set) var addedFriends: [PeerID] = []
+    private(set) var removedFriends: [PeerID] = []
     private(set) var favoriteNotifications: [(peerID: PeerID, isFavorite: Bool)] = []
 
     init(nickname: String = "tester", idBridge: NostrIdentityBridge = NostrIdentityBridge(keychain: MockKeychain())) {
@@ -671,8 +692,21 @@ private final class MockCommandContextProvider: CommandContextProvider {
         commandOutputDestinations.append(destination)
     }
 
-    func toggleFavorite(peerID: PeerID) {
-        toggledFavorites.append(peerID)
+    func addFriend(peerID: PeerID) -> Bool {
+        addedFriends.append(peerID)
+        return true
+    }
+
+    func removeFriend(peerID: PeerID) -> Bool {
+        removedFriends.append(peerID)
+        if let relationship = FavoritesPersistenceService.shared.getFavoriteStatus(
+            forPeerID: peerID
+        ) {
+            FavoritesPersistenceService.shared.removeFavorite(
+                peerNoisePublicKey: relationship.peerNoisePublicKey
+            )
+        }
+        return true
     }
 
     // Groups: record the parsed subcommand + argument the processor forwarded.

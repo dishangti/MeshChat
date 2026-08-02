@@ -173,6 +173,14 @@ final class AppRuntime: ObservableObject {
         }
 
         NetworkActivationService.shared.start()
+        // Bridge is enabled by default, but its rendezvous identity needs a
+        // coarse local geohash. Ask at the normal app-start boundary so a
+        // fresh install does not remain silently cell-less until the user
+        // toggles Bridge off and on again.
+        if BridgeService.shared.isEnabled,
+           chatViewModel.locationManager.permissionState == .notDetermined {
+            chatViewModel.locationManager.enableLocationChannels()
+        }
         GeohashPresenceService.shared.start()
         checkForSharedContent()
         performMediaMaintenance()

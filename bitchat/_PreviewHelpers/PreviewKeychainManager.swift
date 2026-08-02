@@ -94,10 +94,25 @@ final class PreviewKeychainManager: KeychainManagerProtocol {
     // MARK: - Generic Data Storage (consolidated from KeychainHelper)
 
     func save(key: String, data: Data, service: String, accessible: CFString?) {
-        guard installAccessAllowed() else { return }
+        _ = saveWithResult(
+            key: key,
+            data: data,
+            service: service,
+            accessible: accessible
+        )
+    }
+
+    func saveWithResult(
+        key: String,
+        data: Data,
+        service: String,
+        accessible: CFString?
+    ) -> KeychainSaveResult {
+        guard installAccessAllowed() else { return .accessDenied }
         lock.lock()
         defer { lock.unlock() }
         serviceStorage[service, default: [:]][key] = data
+        return .success
     }
 
     func load(key: String, service: String) -> Data? {

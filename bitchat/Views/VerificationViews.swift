@@ -110,17 +110,15 @@ struct ImageWrapper: View {
     }
 }
 
-/// Peer verification QR scanner. Uses the camera on iOS and macOS; macOS also
-/// keeps a paste/validate fallback for machines without a usable camera.
+/// Friend QR scanner with an always-available paste fallback on every platform.
 struct QRScanView: View {
     @EnvironmentObject private var verificationModel: VerificationModel
+    @Environment(\.scenePhase) private var scenePhase
     @ThemedPalette private var palette
     var isActive: Bool = true
-    var onSuccess: (() -> Void)? = nil  // Called when verification succeeds
+    var onCandidate: ((FriendVerificationCandidate) -> Void)? = nil
     @State private var input = ""
-    @State private var result: String = ""
-    @State private var lastValid: String = ""
-
+    @State private var lastSubmittedCode = ""
     @State private var cameraUnavailable = false
 
     private enum Strings {
@@ -131,22 +129,16 @@ struct QRScanView: View {
             defaultValue: "Camera unavailable — paste a QR below.",
             comment: "Shown over the scanner preview when no camera is available or permission was denied"
         )
-        static func requested(_ nickname: String) -> String {
-            String(
-                format: String(localized: "verification.scan.status.requested", comment: "Status text when verification is requested for a nickname"),
-                locale: .current,
-                nickname
-            )
-        }
-        static let notFound = String(localized: "verification.scan.status.no_peer", comment: "Status when no matching peer is found for a verification request")
-        static let invalid = String(localized: "verification.scan.status.invalid", comment: "Status when a scanned QR payload is invalid")
     }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             ZStack {
-                CameraScannerView(isActive: isActive, onUnavailable: { cameraUnavailable = true }) { code in
-                    handleScannedCode(code, announceResult: false)
+                CameraScannerView(
+                    isActive: isActive && scenePhase == .active,
+                    onUnavailable: { cameraUnavailable = true }
+                ) { code in
+                    handleScannedCode(code)
                 }
                 if cameraUnavailable {
                     Text(Strings.cameraUnavailable)
@@ -159,50 +151,45 @@ struct QRScanView: View {
             .frame(height: 260)
             .clipShape(RoundedRectangle(cornerRadius: 8))
 
-            #if os(macOS)
             Text(Strings.pastePrompt)
                 .bitchatFont(size: 14, weight: .medium)
             TextEditor(text: $input)
-                .frame(height: 100)
-                .border(palette.secondary.opacity(0.4))
+                .bitchatFont(size: 12)
+                .autocorrectionDisabled(true)
+                #if os(iOS)
+                .textInputAutocapitalization(.never)
+                #endif
+                .frame(minHeight: 72, maxHeight: 100)
+                .padding(6)
+                .scrollContentBackground(.hidden)
+                .background(palette.secondary.opacity(0.1))
+                .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                .overlay {
+                    RoundedRectangle(cornerRadius: 8, style: .continuous)
+                        .stroke(palette.secondary.opacity(0.25), lineWidth: 1)
+                }
+                .accessibilityIdentifier("friend-qr-paste-editor")
             Button(Strings.validate) {
-                handleScannedCode(input, announceResult: true)
+                handleScannedCode(input)
             }
-            .buttonStyle(.bordered)
-            if !result.isEmpty {
-                Text(result)
-                    .bitchatFont(size: 12)
-                    .foregroundColor(palette.secondary)
-            }
-            #endif
-            Spacer()
+            .buttonStyle(.borderedProminent)
+            .disabled(input.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+            .frame(maxWidth: .infinity, alignment: .trailing)
         }
         .padding()
     }
 
-    private func handleScannedCode(_ code: String, announceResult: Bool) {
-        guard code != lastValid else {
-            if announceResult {
-                result = Strings.requested("")
-            }
-            return
-        }
+    private func handleScannedCode(_ rawCode: String) {
+        let code = rawCode.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !code.isEmpty, code != lastSubmittedCode else { return }
+        lastSubmittedCode = code
 
         switch verificationModel.verifyScannedPayload(code) {
-        case .requested(let nickname):
-            lastValid = code
-            if announceResult {
-                result = Strings.requested(nickname)
-            }
-            onSuccess?()
-        case .notFound:
-            if announceResult {
-                result = Strings.notFound
-            }
-        case .invalid:
-            if announceResult {
-                result = Strings.invalid
-            }
+        case .candidate(let candidate):
+            input = ""
+            onCandidate?(candidate)
+        case .rejected:
+            break
         }
     }
 }
@@ -227,6 +214,11 @@ struct CameraScannerView: UIViewRepresentable {
 
     func updateUIView(_ uiView: PreviewView, context: Context) {
         context.coordinator.setActive(isActive)
+    }
+
+    static func dismantleUIView(_ uiView: PreviewView, coordinator: CameraScannerCoordinator) {
+        coordinator.tearDown()
+        uiView.videoPreviewLayer.session = nil
     }
 
     func makeCoordinator() -> CameraScannerCoordinator { CameraScannerCoordinator() }
@@ -263,6 +255,11 @@ struct CameraScannerView: NSViewRepresentable {
         context.coordinator.setActive(isActive)
     }
 
+    static func dismantleNSView(_ nsView: PreviewView, coordinator: CameraScannerCoordinator) {
+        coordinator.tearDown()
+        nsView.videoPreviewLayer.session = nil
+    }
+
     func makeCoordinator() -> CameraScannerCoordinator { CameraScannerCoordinator() }
 
     final class PreviewView: NSView {
@@ -287,20 +284,44 @@ struct CameraScannerView: NSViewRepresentable {
 #endif
 
 final class CameraScannerCoordinator: NSObject, AVCaptureMetadataOutputObjectsDelegate {
+    private struct LifecycleState {
+        var generation: UInt64 = 0
+        var desiredActive = false
+        var permissionGranted = false
+        var isTornDown = true
+    }
+
     private var onCode: ((String) -> Void)?
     private var onUnavailable: (() -> Void)?
     private let session = AVCaptureSession()
-    private var isRunning = false
-    private var permissionGranted = false
-    private var desiredActive = false
+    private let sessionQueue = DispatchQueue(label: "chat.meshchat.qr-camera-session")
+    private let lifecycleLock = NSLock()
+    private var lifecycle = LifecycleState()
     private var didConfigureSession = false
     private weak var previewLayer: AVCaptureVideoPreviewLayer?
+
+    private func withLifecycleState<T>(_ body: (inout LifecycleState) -> T) -> T {
+        lifecycleLock.lock()
+        defer { lifecycleLock.unlock() }
+        return body(&lifecycle)
+    }
+
+    private func lifecycleSnapshot() -> LifecycleState {
+        withLifecycleState { $0 }
+    }
 
     func setup(
         previewLayer: AVCaptureVideoPreviewLayer,
         onCode: @escaping (String) -> Void,
         onUnavailable: (() -> Void)? = nil
     ) {
+        let generation = withLifecycleState { state in
+            state.generation &+= 1
+            state.desiredActive = false
+            state.permissionGranted = false
+            state.isTornDown = false
+            return state.generation
+        }
         self.onCode = onCode
         self.onUnavailable = onUnavailable
         self.previewLayer = previewLayer
@@ -310,30 +331,44 @@ final class CameraScannerCoordinator: NSObject, AVCaptureMetadataOutputObjectsDe
         // cold launches do not trigger a TCC prompt just by constructing input.
         switch AVCaptureDevice.authorizationStatus(for: .video) {
         case .authorized:
-            permissionGranted = true
-            if !configureSessionIfNeeded() {
-                reportUnavailable()
-            }
+            withLifecycleState { $0.permissionGranted = true }
+            prepareSession(for: generation)
         case .notDetermined:
-            AVCaptureDevice.requestAccess(for: .video) { granted in
+            AVCaptureDevice.requestAccess(for: .video) { [weak self] granted in
                 DispatchQueue.main.async {
-                    self.permissionGranted = granted
+                    guard let self else { return }
+                    let accepted = self.withLifecycleState { state in
+                        guard state.generation == generation, !state.isTornDown else {
+                            return false
+                        }
+                        state.permissionGranted = granted
+                        return true
+                    }
+                    guard accepted else { return }
                     if granted {
-                        if !self.configureSessionIfNeeded() {
-                            self.reportUnavailable()
-                            return
-                        }
-                        if self.desiredActive && !self.isRunning {
-                            self.setActive(true)
-                        }
+                        self.prepareSession(for: generation)
                     } else {
-                        self.reportUnavailable()
+                        self.reportUnavailable(for: generation)
                     }
                 }
             }
         default:
-            permissionGranted = false
-            reportUnavailable()
+            reportUnavailable(for: generation)
+        }
+    }
+
+    private func prepareSession(for generation: UInt64) {
+        sessionQueue.async { [weak self] in
+            guard let self else { return }
+            let state = self.lifecycleSnapshot()
+            guard state.generation == generation,
+                  !state.isTornDown,
+                  state.permissionGranted else { return }
+            guard self.configureSessionIfNeeded() else {
+                self.reportUnavailable(for: generation)
+                return
+            }
+            self.reconcileSession(for: generation)
         }
     }
 
@@ -356,33 +391,74 @@ final class CameraScannerCoordinator: NSObject, AVCaptureMetadataOutputObjectsDe
         }
         session.addOutput(output)
         output.setMetadataObjectsDelegate(self, queue: DispatchQueue.main)
-        if output.availableMetadataObjectTypes.contains(.qr) {
-            output.metadataObjectTypes = [.qr]
+        guard output.availableMetadataObjectTypes.contains(.qr) else {
+            session.removeOutput(output)
+            session.commitConfiguration()
+            return false
         }
+        output.metadataObjectTypes = [.qr]
         session.commitConfiguration()
-        previewLayer?.session = session
         didConfigureSession = true
         return true
     }
 
-    private func reportUnavailable() {
-        DispatchQueue.main.async {
+    private func reportUnavailable(for generation: UInt64) {
+        DispatchQueue.main.async { [weak self] in
+            guard let self else { return }
+            let state = self.lifecycleSnapshot()
+            guard state.generation == generation, !state.isTornDown else { return }
             self.onUnavailable?()
         }
     }
 
     func setActive(_ active: Bool) {
-        desiredActive = active
-        guard permissionGranted, didConfigureSession else { return }
-        if active && !isRunning {
-            isRunning = true
-            DispatchQueue.global(qos: .userInitiated).async {
-                if !self.session.isRunning { self.session.startRunning() }
-            }
-        } else if !active && isRunning {
-            isRunning = false
-            DispatchQueue.global(qos: .userInitiated).async {
-                if self.session.isRunning { self.session.stopRunning() }
+        let generation = withLifecycleState { state -> UInt64? in
+            guard !state.isTornDown else { return nil }
+            state.desiredActive = active
+            return state.generation
+        }
+        guard let generation else { return }
+        sessionQueue.async { [weak self] in
+            self?.reconcileSession(for: generation)
+        }
+    }
+
+    private func reconcileSession(for generation: UInt64) {
+        let state = lifecycleSnapshot()
+        guard state.generation == generation else { return }
+        guard !state.isTornDown,
+              state.permissionGranted,
+              didConfigureSession else {
+            if session.isRunning { session.stopRunning() }
+            return
+        }
+        if state.desiredActive {
+            if !session.isRunning { session.startRunning() }
+        } else if session.isRunning {
+            session.stopRunning()
+        }
+    }
+
+    func tearDown() {
+        let shouldTearDown = withLifecycleState { state in
+            guard !state.isTornDown else { return false }
+            state.generation &+= 1
+            state.desiredActive = false
+            state.permissionGranted = false
+            state.isTornDown = true
+            return true
+        }
+        guard shouldTearDown else { return }
+        onCode = nil
+        onUnavailable = nil
+        previewLayer = nil
+        let session = self.session
+        sessionQueue.async {
+            if session.isRunning { session.stopRunning() }
+            for output in session.outputs {
+                if let metadataOutput = output as? AVCaptureMetadataOutput {
+                    metadataOutput.setMetadataObjectsDelegate(nil, queue: nil)
+                }
             }
         }
     }
@@ -401,29 +477,102 @@ final class CameraScannerCoordinator: NSObject, AVCaptureMetadataOutputObjectsDe
     }
 }
 
-// Combined sheet: shows my QR by default with a button to scan instead
+/// Global identity QR sheet. Contact, nickname, and verification actions are
+/// independent so none of them silently upgrades another state.
 struct VerificationSheetView: View {
     @EnvironmentObject private var verificationModel: VerificationModel
     @Binding var isPresented: Bool
-    @State private var showingScanner = false
+    @State private var mode: Mode = .scan
+    @State private var friendNickname = ""
+    @State private var loadedCandidateID: String?
+    @State private var nicknameFeedback: NicknameFeedback?
+    @State private var friendAddFailed = false
     @ThemedPalette private var palette
 
     private var accentColor: Color { palette.accent }
     private var boxColor: Color { palette.secondary.opacity(0.1) }
 
+    private enum Mode {
+        case scan
+        case myQR
+    }
+
+    private enum NicknameFeedback {
+        case saved
+        case invalid
+        case persistenceFailed
+    }
+
+    private enum Strings {
+        static let localNickname = String(
+            localized: "fingerprint.local_alias.label",
+            defaultValue: "Local Nickname",
+            comment: "Label for a device-local nickname field"
+        )
+        static let localNicknamePlaceholder = String(
+            localized: "fingerprint.local_alias.placeholder",
+            defaultValue: "Nickname on this device",
+            comment: "Placeholder for a device-local nickname field"
+        )
+        static let localNicknameHint = String(
+            localized: "fingerprint.local_alias.hint",
+            defaultValue: "Saved only on this device. This person will not see it.",
+            comment: "Privacy explanation under a local nickname field"
+        )
+        static let invalidNickname: LocalizedStringKey = "fingerprint.local_alias.invalid"
+        static let nicknameSaved: LocalizedStringKey = "fingerprint.local_alias.saved"
+        static let save: LocalizedStringKey = "save"
+        static let addFriend: LocalizedStringKey = "friends.action.add"
+        static let friendAdded: LocalizedStringKey = "verification.friend.added"
+        static let friendAddFailed: LocalizedStringKey = "verification.scan.status.persistence_failed"
+        static let verifyEncryption: LocalizedStringKey = "fingerprint.action.mark_verified"
+        static let done: LocalizedStringKey = "common.done"
+        static let tryAgain: LocalizedStringKey = "common.try_again"
+
+        static func verifying(_ name: String) -> String {
+            String(
+                format: String(
+                    localized: "verification.scan.status.requested",
+                    comment: "Progress text while verifying a friend's encryption identity"
+                ),
+                locale: .current,
+                name
+            )
+        }
+
+        static func verified(_ name: String) -> String {
+            String(
+                format: String(
+                    localized: "verification.scan.status.verified",
+                    defaultValue: "%@'s encryption identity is verified.",
+                    comment: "Success text after a signed encryption verification response"
+                ),
+                locale: .current,
+                name
+            )
+        }
+    }
+
     var body: some View {
         VStack(spacing: 0) {
             // Top header (always at top)
             HStack {
+                if mode == .scan,
+                   verificationModel.friendVerificationState != .idle {
+                    Button(action: resetAndScan) {
+                        Image(systemName: "chevron.left")
+                            .frame(width: 32, height: 32)
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("verification.scan.prompt_friend")
+                }
                 Text("verification.sheet.title")
                     .bitchatFont(size: 14, weight: .bold)
                     .foregroundColor(accentColor)
                 Spacer()
-                SheetCloseButton {
-                    showingScanner = false
-                    isPresented = false
-                }
-                .foregroundColor(accentColor)
+                SheetCloseButton { isPresented = false }
+                    .foregroundColor(accentColor)
             }
             .padding(.horizontal, 16)
             .padding(.top, 12)
@@ -431,65 +580,356 @@ struct VerificationSheetView: View {
 
             Divider()
 
-            // Content area
-            Group {
-                if showingScanner {
-                    VStack(alignment: .leading, spacing: 12) {
-                        Text("verification.scan.prompt_friend")
-                            .bitchatFont(size: 16, weight: .bold)
-                            .frame(maxWidth: .infinity)
-                            .multilineTextAlignment(.center)
-                            .foregroundColor(accentColor)
-                        QRScanView(isActive: showingScanner, onSuccess: {
-                            showingScanner = false
-                        })
-                            .environmentObject(verificationModel)
-                            .frame(minHeight: 280)
-                            .clipShape(RoundedRectangle(cornerRadius: 10))
-                    }
-                    .padding()
+            ScrollView {
+                sheetContent
+                    .frame(maxWidth: 560)
                     .frame(maxWidth: .infinity)
-                    .background(boxColor)
-                    .cornerRadius(8)
-                } else {
-                    MyQRView(qrString: verificationModel.myQRString())
-                }
+                    .padding(16)
             }
-            .padding(16)
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
 
-            // Centered controls moved up
-            VStack(spacing: 10) {
-                if showingScanner {
-                    Button(action: { showingScanner = false }) {
-                        Label("verification.my_qr.title", systemImage: "qrcode")
-                            .bitchatFont(size: 13)
+            if showsModeSwitcher {
+                VStack(spacing: 10) {
+                    if mode == .scan {
+                        Button(action: { mode = .myQR }) {
+                            Label("verification.my_qr.title", systemImage: "qrcode")
+                                .bitchatFont(size: 13)
+                        }
+                        .buttonStyle(.bordered)
+                    } else {
+                        Button(action: { mode = .scan }) {
+                            Label("verification.scan.prompt_friend", systemImage: "camera.viewfinder")
+                                .bitchatFont(size: 13, weight: .medium)
+                        }
+                        .buttonStyle(.bordered)
                     }
-                    .buttonStyle(.bordered)
-                } else {
-                    Button(action: { showingScanner = true }) {
-                        Label("verification.scan.prompt_friend", systemImage: "camera.viewfinder")
-                            .bitchatFont(size: 13, weight: .medium)
-                    }
-                    .buttonStyle(.bordered)
-                    .tint(.gray)
                 }
-
-                // Optional: Remove verification for selected peer (if verified)
-                if let peerID = verificationModel.selectedPeerID,
-                   verificationModel.isVerified(peerID: peerID) {
-                    Button(action: { verificationModel.unverifyFingerprint(for: peerID) }) {
-                        Label("fingerprint.action.remove_verification", systemImage: "minus.circle")
-                            .bitchatFont(size: 12)
-                    }
-                    .buttonStyle(.bordered)
-                    .tint(.gray)
-                }
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 14)
             }
-            .frame(maxWidth: .infinity)
-            .padding(.vertical, 14)
         }
         .themedSheetBackground()
-        .onDisappear { showingScanner = false }
+        .onAppear {
+            syncCandidate(verificationModel.friendCandidate)
+        }
+        .onChange(of: verificationModel.friendCandidate?.id) { _ in
+            syncCandidate(verificationModel.friendCandidate)
+        }
+        .onDisappear {
+            verificationModel.resetFriendVerificationFlow()
+            friendNickname = ""
+            loadedCandidateID = nil
+            nicknameFeedback = nil
+            friendAddFailed = false
+            mode = .scan
+        }
+    }
+
+    @ViewBuilder
+    private var sheetContent: some View {
+        if mode == .myQR {
+            MyQRView(qrString: verificationModel.myQRString())
+        } else {
+            switch verificationModel.friendVerificationState {
+            case .idle:
+                scannerContent
+            case .ready:
+                if let candidate = verificationModel.friendCandidate {
+                    confirmationContent(candidate: candidate)
+                } else {
+                    scannerContent
+                }
+            case .verifying:
+                progressContent
+            case .verified(_, let displayName):
+                successContent(displayName: displayName)
+            case .failed(let failure):
+                failureContent(failure)
+            }
+        }
+    }
+
+    private var scannerContent: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("verification.scan.prompt_friend")
+                .bitchatFont(size: 16, weight: .bold)
+                .frame(maxWidth: .infinity)
+                .multilineTextAlignment(.center)
+                .foregroundColor(accentColor)
+            QRScanView(
+                isActive: mode == .scan && verificationModel.friendVerificationState == .idle,
+                onCandidate: { syncCandidate($0) }
+            )
+            .environmentObject(verificationModel)
+            .frame(minHeight: 390)
+            .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+        }
+        .padding()
+        .frame(maxWidth: .infinity)
+        .background(boxColor)
+        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+    }
+
+    private func confirmationContent(candidate: FriendVerificationCandidate) -> some View {
+        VStack(spacing: 20) {
+            Image(systemName: "person.crop.circle.badge.questionmark")
+                .font(.system(size: 52, weight: .medium))
+                .foregroundColor(accentColor)
+                .accessibilityHidden(true)
+
+            Text(verbatim: candidate.claimedNickname)
+                .bitchatFont(size: 22, weight: .bold)
+                .multilineTextAlignment(.center)
+
+            Text(verbatim: fingerprintSummary(candidate.fingerprint))
+                .bitchatFont(size: 12)
+                .foregroundColor(palette.secondary)
+                .textSelection(.enabled)
+
+            VStack(alignment: .leading, spacing: 8) {
+                Text(verbatim: Strings.localNickname)
+                    .bitchatFont(size: 12, weight: .semibold)
+                    .foregroundColor(palette.secondary)
+
+                TextField(Strings.localNicknamePlaceholder, text: $friendNickname)
+                    .textFieldStyle(.roundedBorder)
+                    #if os(iOS)
+                    .textInputAutocapitalization(.words)
+                    #endif
+                    .onSubmit { saveLocalNickname(candidate) }
+                    .accessibilityIdentifier("friend-nickname-field")
+
+                Text(verbatim: Strings.localNicknameHint)
+                    .bitchatFont(size: 11)
+                    .foregroundColor(palette.secondary)
+
+                if let nicknameFeedback {
+                    Label(
+                        nicknameFeedbackText(nicknameFeedback),
+                        systemImage: nicknameFeedback == .saved
+                            ? "checkmark.circle.fill"
+                            : "exclamationmark.circle.fill"
+                    )
+                        .bitchatFont(size: 11, weight: .medium)
+                        .foregroundColor(nicknameFeedback == .saved ? .green : .orange)
+                }
+
+                Button(Strings.save) {
+                    saveLocalNickname(candidate)
+                }
+                .buttonStyle(.bordered)
+                .disabled(!nicknameHasChanges(candidate))
+            }
+
+            if verificationModel.isFriend(candidate) {
+                Label(Strings.friendAdded, systemImage: "person.crop.circle.badge.checkmark")
+                    .foregroundColor(.green)
+                    .bitchatFont(size: 13, weight: .semibold)
+            } else {
+                Button {
+                    addFriend(candidate)
+                } label: {
+                    Label(Strings.addFriend, systemImage: "person.badge.plus")
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.borderedProminent)
+                .controlSize(.large)
+                .accessibilityIdentifier("confirm-add-friend")
+            }
+
+            if friendAddFailed {
+                Label(Strings.friendAddFailed, systemImage: "exclamationmark.circle.fill")
+                    .bitchatFont(size: 11, weight: .medium)
+                    .foregroundColor(.orange)
+            }
+
+            Button(action: startVerification) {
+                Label(Strings.verifyEncryption, systemImage: "checkmark.shield")
+                    .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(.bordered)
+            .controlSize(.large)
+            .accessibilityIdentifier("verify-encryption")
+        }
+        .padding(24)
+        .background(boxColor)
+        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+    }
+
+    private var progressContent: some View {
+        statusContent(
+            icon: nil,
+            title: Strings.verifying(candidateDisplayName),
+            color: accentColor,
+            showsProgress: true
+        )
+    }
+
+    private func successContent(displayName: String) -> some View {
+        VStack(spacing: 18) {
+            statusContent(
+                icon: "checkmark.circle.fill",
+                title: Strings.verified(displayName),
+                color: .green,
+                showsProgress: false
+            )
+            if let candidate = verificationModel.friendCandidate,
+               !verificationModel.isFriend(candidate) {
+                Button {
+                    addFriend(candidate)
+                } label: {
+                    Label(Strings.addFriend, systemImage: "person.badge.plus")
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.large)
+            }
+            if friendAddFailed {
+                Label(Strings.friendAddFailed, systemImage: "exclamationmark.circle.fill")
+                    .bitchatFont(size: 11, weight: .medium)
+                    .foregroundColor(.orange)
+            }
+            Button(Strings.done) { isPresented = false }
+                .buttonStyle(.borderedProminent)
+                .controlSize(.large)
+        }
+    }
+
+    private func failureContent(_ failure: FriendVerificationFailure) -> some View {
+        VStack(spacing: 18) {
+            statusContent(
+                icon: "exclamationmark.triangle.fill",
+                title: failureMessage(failure),
+                color: .orange,
+                showsProgress: false
+            )
+            Button(Strings.tryAgain) { resetAndScan() }
+                .buttonStyle(.borderedProminent)
+                .controlSize(.large)
+        }
+    }
+
+    private func statusContent(
+        icon: String?,
+        title: String,
+        color: Color,
+        showsProgress: Bool
+    ) -> some View {
+        VStack(spacing: 18) {
+            if showsProgress {
+                ProgressView()
+                    .controlSize(.large)
+                    .tint(color)
+            } else if let icon {
+                Image(systemName: icon)
+                    .font(.system(size: 52, weight: .semibold))
+                    .foregroundColor(color)
+                    .accessibilityHidden(true)
+            }
+            Text(verbatim: title)
+                .bitchatFont(size: 16, weight: .semibold)
+                .multilineTextAlignment(.center)
+                .foregroundColor(palette.primary)
+        }
+        .frame(maxWidth: .infinity, minHeight: 260)
+        .padding(24)
+        .background(boxColor)
+        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+    }
+
+    private var showsModeSwitcher: Bool {
+        verificationModel.friendVerificationState == .idle
+    }
+
+    private var candidateDisplayName: String {
+        let local = friendNickname.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !local.isEmpty { return local }
+        return verificationModel.friendCandidate?.claimedNickname ?? ""
+    }
+
+    private func syncCandidate(_ candidate: FriendVerificationCandidate?) {
+        guard let candidate, loadedCandidateID != candidate.id else { return }
+        loadedCandidateID = candidate.id
+        friendNickname = candidate.existingLocalPetname ?? ""
+        nicknameFeedback = nil
+        friendAddFailed = false
+        mode = .scan
+    }
+
+    private func startVerification() {
+        _ = verificationModel.startEncryptionVerification()
+    }
+
+    private func addFriend(_ candidate: FriendVerificationCandidate) {
+        friendAddFailed = !verificationModel.addFriendFromCandidate()
+    }
+
+    private func saveLocalNickname(_ candidate: FriendVerificationCandidate) {
+        let normalized = friendNickname
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .trimmedOrNilIfEmpty
+        if let normalized, InputValidator.validateNickname(normalized) == nil {
+            nicknameFeedback = .invalid
+            return
+        }
+        let saved = verificationModel.setLocalPetname(
+            normalized,
+            for: candidate
+        )
+        nicknameFeedback = saved ? .saved : .persistenceFailed
+    }
+
+    private func nicknameFeedbackText(
+        _ feedback: NicknameFeedback
+    ) -> LocalizedStringKey {
+        switch feedback {
+        case .saved:
+            return Strings.nicknameSaved
+        case .invalid:
+            return Strings.invalidNickname
+        case .persistenceFailed:
+            return Strings.friendAddFailed
+        }
+    }
+
+    private func nicknameHasChanges(_ candidate: FriendVerificationCandidate) -> Bool {
+        friendNickname.trimmingCharacters(in: .whitespacesAndNewlines)
+            != (candidate.existingLocalPetname ?? "")
+    }
+
+    private func fingerprintSummary(_ fingerprint: String) -> String {
+        let normalized = fingerprint.uppercased()
+        guard normalized.count > 16 else { return normalized }
+        return "\(normalized.prefix(8))…\(normalized.suffix(8))"
+    }
+
+    private func resetAndScan() {
+        verificationModel.resetFriendVerificationFlow()
+        friendNickname = ""
+        loadedCandidateID = nil
+        nicknameFeedback = nil
+        friendAddFailed = false
+        mode = .scan
+    }
+
+    private func failureMessage(_ failure: FriendVerificationFailure) -> String {
+        switch failure {
+        case .invalidPayload, .invalidResponse:
+            return String(localized: "verification.scan.status.invalid")
+        case .invalidLocalPetname:
+            return String(localized: "fingerprint.local_alias.invalid")
+        case .selfIdentity:
+            return String(localized: "verification.scan.status.self")
+        case .blocked:
+            return String(localized: "verification.scan.status.blocked")
+        case .signingKeyMismatch, .activeSessionMismatch:
+            return String(localized: "verification.scan.status.identity_mismatch")
+        case .peerNotFound, .peerUnavailable:
+            return String(localized: "verification.scan.status.no_peer")
+        case .persistenceRejected:
+            return String(localized: "verification.scan.status.persistence_failed")
+        case .timedOut:
+            return String(localized: "verification.scan.status.timed_out")
+        }
     }
 }

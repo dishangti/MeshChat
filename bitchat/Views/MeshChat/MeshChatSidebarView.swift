@@ -24,6 +24,8 @@ struct MeshChatSidebarView: View {
     @ThemedPalette private var palette
 
     @State private var searchText = ""
+    @State private var pendingFriendRemoval: SidebarFriendRemovalTarget?
+    @State private var pendingRecentChatDeletion: RecentChatDeletionTarget?
     @FocusState private var isNicknameFocused: Bool
 
     let activePeerID: PeerID?
@@ -36,11 +38,27 @@ struct MeshChatSidebarView: View {
     let onOpenSettings: () -> Void
     let onOpenVerification: () -> Void
     let onPanic: () -> Void
+    var onDeleteActiveRecent: () -> Void = {}
 
     private enum Strings {
         static let people = String(
             localized: "content.header.people",
             comment: "Title for the people list sheet"
+        )
+        static let friends = String(
+            localized: "mesh_peers.section.friends",
+            defaultValue: "Friends",
+            comment: "Section title for saved mesh friends"
+        )
+        static let nearbySection = String(
+            localized: "mesh_peers.section.nearby",
+            defaultValue: "Nearby",
+            comment: "Section title for nearby mesh people who are not friends"
+        )
+        static let recent = String(
+            localized: "mesh_peers.section.recent",
+            defaultValue: "Recent",
+            comment: "Section title for offline non-friends with direct-message history"
         )
         static let channels = String(
             localized: "location_channels.title",
@@ -64,11 +82,16 @@ struct MeshChatSidebarView: View {
             defaultValue: "Notices",
             comment: "Title of the notices surface"
         )
-        static let verification = String(
-            localized: "content.accessibility.verification",
-            comment: "Label for peer verification"
+        static let scanQRCode = String(
+            localized: "verification.sheet.title",
+            defaultValue: "Scan QR Code",
+            comment: "Action that opens the global identity QR scanner"
         )
-        static let verifyMenu = "Verify"
+        static let setNickname = String(
+            localized: "fingerprint.local_alias.label",
+            defaultValue: "Local Nickname",
+            comment: "Action that opens the local nickname editor"
+        )
         static let settings = String(
             localized: "app_info.tab.settings",
             defaultValue: "Settings",
@@ -121,12 +144,17 @@ struct MeshChatSidebarView: View {
             comment: "Action opening a peer's fingerprint and verification screen"
         )
         static let addFavorite = String(
-            localized: "content.accessibility.add_favorite",
-            comment: "Action adding a favorite"
+            localized: "friends.action.add",
+            comment: "Action adding a friend"
         )
         static let removeFavorite = String(
             localized: "content.accessibility.remove_favorite",
             comment: "Action removing a favorite"
+        )
+        static let deleteRecentChat = String(
+            localized: "recent_chat.delete.action",
+            defaultValue: "Delete Chat",
+            comment: "Action deleting a chat from the Recent section"
         )
         static let block = String(
             localized: "geohash_people.action.block",
@@ -141,8 +169,8 @@ struct MeshChatSidebarView: View {
             comment: "Hint for opening a private chat"
         )
         static let appInfoHint = String(
-            localized: "content.accessibility.app_info_hint",
-            comment: "Hint for opening app info from the brand header"
+            localized: "meshchat.help.open_hint",
+            comment: "Hint for opening Help from the brand header"
         )
         static let noneNearby = String(
             localized: "geohash_people.none_nearby",
@@ -197,6 +225,158 @@ struct MeshChatSidebarView: View {
         .frame(minWidth: 280, idealWidth: 320, maxHeight: .infinity)
         .background(ThemedRootBackground())
         .foregroundColor(palette.primary)
+        .confirmationDialog(
+            friendRemovalConfirmationTitle,
+            isPresented: friendRemovalConfirmationBinding,
+            titleVisibility: .visible
+        ) {
+            if let target = pendingFriendRemoval {
+                Button(Strings.removeFavorite, role: .destructive) {
+                    peerListModel.removeFriend(peerID: target.peerID)
+                    pendingFriendRemoval = nil
+                }
+            }
+            Button("common.cancel", role: .cancel) {
+                pendingFriendRemoval = nil
+            }
+        } message: {
+            Text(
+                String(
+                    localized: "friends.remove.confirm_message",
+                    defaultValue: "This only removes the friend relationship. Chat history, local nickname, block status, and verification are kept.",
+                    comment: "Explanation shown before removing a friend"
+                )
+            )
+        }
+        .confirmationDialog(
+            recentChatDeletionConfirmationTitle,
+            isPresented: recentChatDeletionConfirmationBinding,
+            titleVisibility: .visible
+        ) {
+            if let target = pendingRecentChatDeletion {
+                Button(Strings.deleteRecentChat, role: .destructive) {
+                    let activePeerAtConfirmation = activePeerID
+                    let wasShowingConversation = showsConversationSelection
+                    let deletedPeerID = peerListModel.deleteRecentChat(
+                        fingerprint: target.fingerprint
+                    )
+                    pendingRecentChatDeletion = nil
+                    if MeshChatRecentDeletionNavigation.shouldShowHome(
+                        afterDeleting: deletedPeerID,
+                        activePeerID: activePeerAtConfirmation,
+                        wasShowingConversation: wasShowingConversation
+                    ) {
+                        onDeleteActiveRecent()
+                    }
+                }
+            }
+            Button("common.cancel", role: .cancel) {
+                pendingRecentChatDeletion = nil
+            }
+        } message: {
+            Text(
+                String(
+                    localized: "recent_chat.delete.confirm_message",
+                    defaultValue: "This deletes the local chat history and removes this person from Recent. Their local nickname, block status, and verification are kept. New messages can make the chat appear again.",
+                    comment: "Explanation shown before deleting a Recent chat"
+                )
+            )
+        }
+    }
+}
+
+private struct SidebarFriendRemovalTarget {
+    let peerID: PeerID
+    let displayName: String
+}
+
+private struct RecentChatDeletionTarget {
+    let fingerprint: String
+    let displayName: String
+}
+
+private extension MeshChatSidebarView {
+    var friendRemovalConfirmationBinding: Binding<Bool> {
+        Binding(
+            get: { pendingFriendRemoval != nil },
+            set: { isPresented in
+                if !isPresented {
+                    pendingFriendRemoval = nil
+                }
+            }
+        )
+    }
+
+    var recentChatDeletionConfirmationBinding: Binding<Bool> {
+        Binding(
+            get: { pendingRecentChatDeletion != nil },
+            set: { isPresented in
+                if !isPresented {
+                    pendingRecentChatDeletion = nil
+                }
+            }
+        )
+    }
+
+    var friendRemovalConfirmationTitle: String {
+        guard let target = pendingFriendRemoval else { return "" }
+        let format = String(
+            localized: "friends.remove.confirm_title",
+            defaultValue: "Remove %@ from Friends?",
+            comment: "Title confirming removal of a named friend"
+        )
+        return String(
+            format: format,
+            locale: .current,
+            target.displayName
+        )
+    }
+
+    var recentChatDeletionConfirmationTitle: String {
+        guard let target = pendingRecentChatDeletion else { return "" }
+        let format = String(
+            localized: "recent_chat.delete.confirm_title",
+            defaultValue: "Delete Chat with %@?",
+            comment: "Title confirming deletion of a named Recent chat"
+        )
+        return String(
+            format: format,
+            locale: .current,
+            target.displayName
+        )
+    }
+
+    func friendRemovalTarget(
+        for peer: MeshPeerRow
+    ) -> SidebarFriendRemovalTarget {
+        let stablePeerID: PeerID
+        if let livePeer = peerListModel.allPeers.first(where: {
+            $0.peerID == peer.peerID && $0.noisePublicKey.count == 32
+        }) {
+            stablePeerID = PeerID(hexData: livePeer.noisePublicKey)
+        } else {
+            stablePeerID = peer.peerID
+        }
+        return SidebarFriendRemovalTarget(
+            peerID: stablePeerID,
+            displayName: peer.displayName
+        )
+    }
+}
+
+enum MeshChatRecentDeletionNavigation {
+    static func shouldShowHome(
+        afterDeleting deletedPeerID: PeerID?,
+        activePeerID: PeerID?,
+        wasShowingConversation: Bool
+    ) -> Bool {
+        guard wasShowingConversation,
+              let deletedPeerID,
+              let activePeerID else {
+            return false
+        }
+        return activePeerID == deletedPeerID
+            || activePeerID.toShort() == deletedPeerID.toShort()
     }
 }
 
@@ -402,16 +582,36 @@ private extension MeshChatSidebarView {
                 }
             }
         } else {
-            sidebarSectionHeader(icon: "person.2.fill", title: Strings.people)
+            if !filteredFriends.isEmpty {
+                sidebarSectionHeader(icon: "star.fill", title: Strings.friends)
 
-            ForEach(filteredPeers) { peer in
-                peerRow(peer)
+                ForEach(filteredFriends) { peer in
+                    peerRow(peer)
+                }
+            }
+
+            if !filteredRecentPeers.isEmpty {
+                sidebarSectionHeader(icon: "clock.fill", title: Strings.recent)
+
+                ForEach(filteredRecentPeers) { peer in
+                    recentPeerRow(peer)
+                }
+            }
+
+            if !filteredNearbyPeers.isEmpty {
+                sidebarSectionHeader(icon: "person.2.fill", title: Strings.nearbySection)
+
+                ForEach(filteredNearbyPeers) { peer in
+                    peerRow(peer)
+                }
             }
 
             if !hasSearchQuery {
                 BridgePeopleList()
 
-                if filteredPeers.isEmpty && bridgeService.bridgedParticipants.isEmpty {
+                if filteredPeers.isEmpty
+                    && filteredRecentPeers.isEmpty
+                    && bridgeService.bridgedParticipants.isEmpty {
                     Text(verbatim: Strings.noneNearby)
                         .bitchatFont(size: 13)
                         .foregroundColor(palette.secondary)
@@ -607,8 +807,17 @@ private extension MeshChatSidebarView {
             Button(Strings.directMessage) {
                 onOpenPeer(peer.peerID)
             }
-            Button(peer.isFavorite ? Strings.removeFavorite : Strings.addFavorite) {
-                peerListModel.toggleFavorite(peerID: peer.peerID)
+            if peer.isFavorite {
+                Button(Strings.removeFavorite, role: .destructive) {
+                    pendingFriendRemoval = friendRemovalTarget(for: peer)
+                }
+            } else {
+                Button(Strings.addFavorite) {
+                    _ = peerListModel.addFriend(peerID: peer.peerID)
+                }
+            }
+            Button(Strings.setNickname) {
+                appChromeModel.showNicknameEditor(for: peer.peerID)
             }
             Button(Strings.showFingerprint) {
                 appChromeModel.showFingerprint(for: peer.peerID)
@@ -637,8 +846,17 @@ private extension MeshChatSidebarView {
             onOpenPeer(peer.peerID)
         }
         .accessibilityActions {
-            Button(peer.isFavorite ? Strings.removeFavorite : Strings.addFavorite) {
-                peerListModel.toggleFavorite(peerID: peer.peerID)
+            if peer.isFavorite {
+                Button(Strings.removeFavorite, role: .destructive) {
+                    pendingFriendRemoval = friendRemovalTarget(for: peer)
+                }
+            } else {
+                Button(Strings.addFavorite) {
+                    _ = peerListModel.addFriend(peerID: peer.peerID)
+                }
+            }
+            Button(Strings.setNickname) {
+                appChromeModel.showNicknameEditor(for: peer.peerID)
             }
             Button(Strings.showFingerprint) {
                 appChromeModel.showFingerprint(for: peer.peerID)
@@ -655,6 +873,145 @@ private extension MeshChatSidebarView {
                         displayName: peer.displayName
                     )
                 }
+            }
+        }
+    }
+
+    func recentPeerRow(_ peer: RecentMeshPeerRow) -> some View {
+        let hasUnread = recentPeerHasUnread(peer)
+        let isSelected = showsConversationSelection
+            && (activePeerID.map(peer.conversationPeerIDs.contains) == true
+                || activePeerID?.toShort() == peer.stablePeerID.toShort())
+        let peerColor = peerListModel.colorForMeshPeer(
+            id: peer.stablePeerID,
+            isDark: colorScheme == .dark
+        )
+
+        return Button {
+            openRecentPeer(peer)
+        } label: {
+            HStack(spacing: 11) {
+                ZStack {
+                    Circle().fill(peerColor.opacity(0.16))
+                    Text(verbatim: peerInitial(peer.displayName))
+                        .bitchatFont(size: 14, weight: .semibold)
+                        .foregroundColor(peerColor)
+                }
+                .frame(width: 40, height: 40)
+                .accessibilityHidden(true)
+
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(verbatim: peer.displayName)
+                        .bitchatFont(size: 14, weight: hasUnread ? .semibold : .regular)
+                        .foregroundColor(palette.primary)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+
+                    HStack(spacing: 5) {
+                        Image(systemName: "antenna.radiowaves.left.and.right.slash")
+                            .font(.bitchatSystem(size: 9, weight: .medium))
+                            .accessibilityHidden(true)
+                        Text(verbatim: Strings.offline)
+                            .lineLimit(1)
+                        Text(verbatim: "•")
+                            .accessibilityHidden(true)
+                        Text(peer.lastMessageAt, style: .relative)
+                            .lineLimit(1)
+                    }
+                    .bitchatFont(size: 11)
+                    .foregroundColor(palette.secondary)
+                }
+
+                Spacer(minLength: 6)
+                HStack(spacing: 5) {
+                    if hasUnread {
+                        unreadBadge
+                    }
+                    if peer.isBlocked {
+                        Image(systemName: "nosign")
+                            .font(.bitchatSystem(size: 11))
+                            .foregroundColor(.red)
+                            .accessibilityHidden(true)
+                    }
+                }
+            }
+            .padding(.horizontal, 12)
+            .frame(minHeight: 56)
+            .background(selectionBackground(isSelected: isSelected))
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .contextMenu {
+            Button(Strings.directMessage) {
+                openRecentPeer(peer)
+            }
+            Button(Strings.addFavorite) {
+                _ = peerListModel.addFriend(recentPeer: peer)
+            }
+            Button(Strings.setNickname) {
+                appChromeModel.showNicknameEditor(for: peer.stablePeerID)
+            }
+            Button(Strings.showFingerprint) {
+                appChromeModel.showFingerprint(for: peer.stablePeerID)
+            }
+            if peer.isBlocked {
+                Button(Strings.unblock) {
+                    conversationUIModel.unblock(
+                        peerID: peer.stablePeerID,
+                        displayName: peer.displayName
+                    )
+                }
+            } else {
+                Button(Strings.block, role: .destructive) {
+                    conversationUIModel.block(
+                        peerID: peer.stablePeerID,
+                        displayName: peer.displayName
+                    )
+                }
+            }
+            Divider()
+            Button(Strings.deleteRecentChat, role: .destructive) {
+                pendingRecentChatDeletion = RecentChatDeletionTarget(
+                    fingerprint: peer.fingerprint,
+                    displayName: peer.displayName
+                )
+            }
+        }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(recentPeerAccessibilityLabel(peer, hasUnread: hasUnread))
+        .accessibilityHint(Strings.openDMHint)
+        .accessibilityAddTraits(isSelected ? [.isButton, .isSelected] : .isButton)
+        .accessibilityAction {
+            openRecentPeer(peer)
+        }
+        .accessibilityActions {
+            Button(Strings.addFavorite) {
+                _ = peerListModel.addFriend(recentPeer: peer)
+            }
+            Button(Strings.setNickname) {
+                appChromeModel.showNicknameEditor(for: peer.stablePeerID)
+            }
+            Button(Strings.showFingerprint) {
+                appChromeModel.showFingerprint(for: peer.stablePeerID)
+            }
+            Button(peer.isBlocked ? Strings.unblock : Strings.block) {
+                if peer.isBlocked {
+                    conversationUIModel.unblock(
+                        peerID: peer.stablePeerID,
+                        displayName: peer.displayName
+                    )
+                } else {
+                    conversationUIModel.block(
+                        peerID: peer.stablePeerID,
+                        displayName: peer.displayName
+                    )
+                }
+            }
+            Button(Strings.deleteRecentChat, role: .destructive) {
+                pendingRecentChatDeletion = RecentChatDeletionTarget(
+                    fingerprint: peer.fingerprint,
+                    displayName: peer.displayName
+                )
             }
         }
     }
@@ -847,12 +1204,10 @@ private extension MeshChatSidebarView {
 
     func encryptionColor(for status: EncryptionStatus) -> Color {
         switch status {
-        case .none:
-            return .red
         case .noiseVerified:
             return .green
-        case .noiseHandshaking, .noiseSecured, .noHandshake:
-            return palette.secondary
+        case .none, .noiseHandshaking, .noiseSecured, .noHandshake:
+            return .red
         }
     }
 
@@ -898,8 +1253,8 @@ private extension MeshChatSidebarView {
             action: onOpenNotices
         )
         utilityButton(
-            icon: "qrcode",
-            title: Strings.verifyMenu,
+            icon: "qrcode.viewfinder",
+            title: Strings.scanQRCode,
             action: onOpenVerification
         )
         utilityButton(
@@ -1006,6 +1361,27 @@ private extension MeshChatSidebarView {
             }
     }
 
+    var filteredFriends: [MeshPeerRow] {
+        filteredPeers.filter(\.isFavorite)
+    }
+
+    var filteredNearbyPeers: [MeshPeerRow] {
+        filteredPeers.filter { !$0.isFavorite }
+    }
+
+    var filteredRecentPeers: [RecentMeshPeerRow] {
+        peerListModel.recentMeshRows.filter { peer in
+            matches([
+                peer.displayName,
+                peer.claimedNickname,
+                Strings.recent,
+                Strings.offline,
+                peer.isBlocked ? Strings.blocked : "",
+                recentPeerHasUnread(peer) ? Strings.unread : ""
+            ])
+        }
+    }
+
     var filteredGeohashPeople: [GeohashPersonRow] {
         peerListModel.geohashPeople
             .filter { person in
@@ -1024,9 +1400,23 @@ private extension MeshChatSidebarView {
     }
 
     var hasConversationSearchResults: Bool {
-        showsMeshChannel || showsCurrentLocation || !filteredBookmarks.isEmpty
-            || !filteredGroups.isEmpty || !filteredPeers.isEmpty
-            || !filteredGeohashPeople.isEmpty
+        let hasCommonResults = showsMeshChannel || showsCurrentLocation
+            || !filteredBookmarks.isEmpty || !filteredGroups.isEmpty
+        if case .location = locationChannelsModel.selectedChannel {
+            return hasCommonResults || !filteredGeohashPeople.isEmpty
+        }
+        return hasCommonResults || !filteredPeers.isEmpty
+            || !filteredRecentPeers.isEmpty
+    }
+
+    func recentPeerHasUnread(_ peer: RecentMeshPeerRow) -> Bool {
+        peer.hasUnread || peer.conversationPeerIDs.contains {
+            privateInboxModel.unreadPeerIDs.contains($0)
+        }
+    }
+
+    func openRecentPeer(_ peer: RecentMeshPeerRow) {
+        onOpenPeer(peerListModel.prepareRecentConversationForOpening(peer))
     }
 
     func matches(_ candidates: [String]) -> Bool {
@@ -1142,6 +1532,16 @@ private extension MeshChatSidebarView {
         }
         if peer.showsVouchedBadge { parts.append(Strings.vouched) }
         if peer.isFavorite { parts.append(Strings.favorite) }
+        if hasUnread { parts.append(Strings.unread) }
+        if peer.isBlocked { parts.append(Strings.blocked) }
+        return parts.joined(separator: ", ")
+    }
+
+    func recentPeerAccessibilityLabel(
+        _ peer: RecentMeshPeerRow,
+        hasUnread: Bool
+    ) -> String {
+        var parts = [peer.displayName, Strings.offline, Strings.recent]
         if hasUnread { parts.append(Strings.unread) }
         if peer.isBlocked { parts.append(Strings.blocked) }
         return parts.joined(separator: ", ")

@@ -2,8 +2,7 @@
 // ChatViewModel.swift
 // bitchat
 //
-// This is free and unencumbered software released into the public domain.
-// For more information, see <https://unlicense.org>
+// SPDX-License-Identifier: MIT
 //
 
 ///
@@ -170,7 +169,7 @@ final class ChatViewModel: ObservableObject, BitchatDelegate, SynchronousMessage
     }
     private var visibleMessagesCache: [BitchatMessage]?
     @Published var currentColorScheme: ColorScheme = .light
-    @Published var currentTheme: AppTheme = .matrix
+    @Published var currentTheme: AppTheme = .defaultTheme
     @Published var isConnected = false
     @Published private(set) var panicRecoveryBlocked = false
     var networkActivationAllowed: Bool { !panicRecoveryBlocked }
@@ -331,6 +330,7 @@ final class ChatViewModel: ObservableObject, BitchatDelegate, SynchronousMessage
     let keychain: KeychainManagerProtocol
     private let panicRecoveryOperations: PanicRecoveryOperations
     private let panicNetworkLifecycle: PanicNetworkLifecycle
+    private let panicBridgeReset: @MainActor () -> Void
     private var isPanicResetting = false
     /// Private group membership: keys in the keychain, metadata on disk.
     let groupStore: GroupStore
@@ -1028,13 +1028,13 @@ final class ChatViewModel: ObservableObject, BitchatDelegate, SynchronousMessage
     /// `true` when the conversation contains a message with `messageID`.
     @MainActor
     func publicConversationContainsMessage(withID messageID: String, in conversationID: ConversationID) -> Bool {
-        conversations.conversationsByID[conversationID]?.containsMessage(withID: messageID) ?? false
+        publicMessagePipeline.containsMessage(withID: messageID) ||
+            (conversations.conversationsByID[conversationID]?.containsMessage(withID: messageID) ?? false)
     }
 
     @MainActor
     func bridgeInjectedPublicMessageIsPresent(withID messageID: String) -> Bool {
-        publicMessagePipeline.containsMessage(withID: messageID) ||
-            publicConversationContainsMessage(withID: messageID, in: .mesh)
+        publicConversationContainsMessage(withID: messageID, in: .mesh)
     }
 
     /// Removes a message by ID from whichever public conversation contains
@@ -1168,7 +1168,10 @@ final class ChatViewModel: ObservableObject, BitchatDelegate, SynchronousMessage
         sfMetrics: StoreAndForwardMetrics? = nil,
         panicMediaWipe: (() throws -> Void)? = nil,
         panicRecoveryOperations: PanicRecoveryOperations? = nil,
-        panicNetworkLifecycle: PanicNetworkLifecycle = .noop
+        panicNetworkLifecycle: PanicNetworkLifecycle = .noop,
+        panicBridgeReset: @escaping @MainActor () -> Void = {
+            BridgeService.shared.resetForPanic()
+        }
     ) {
         let conversations = conversations ?? ConversationStore()
         let peerIdentityStore = peerIdentityStore ?? PeerIdentityStore()
@@ -1186,6 +1189,7 @@ final class ChatViewModel: ObservableObject, BitchatDelegate, SynchronousMessage
         self.panicRecoveryOperations = panicRecoveryOperations
             ?? .ephemeral(wipeMedia: panicMediaWipe ?? {})
         self.panicNetworkLifecycle = panicNetworkLifecycle
+        self.panicBridgeReset = panicBridgeReset
         self.groupStore = GroupStore(keychain: keychain)
         self.idBridge = idBridge
         self.identityManager = identityManager
@@ -1399,6 +1403,49 @@ final class ChatViewModel: ObservableObject, BitchatDelegate, SynchronousMessage
         )
     }
 
+    /// Returns the block state for a bridge participant's authenticated Nostr
+    /// identity. Short bridge peer IDs are presentation-only and rejected.
+    @MainActor
+    func isBridgeUserBlocked(pubkeyHex: String) -> Bool {
+        guard let fullPubkey = normalizedBridgePublicKey(pubkeyHex) else { return false }
+        return identityManager.isNostrBlocked(pubkeyHexLowercased: fullPubkey)
+    }
+
+    /// Blocks exactly one bridge signer using their complete 32-byte Nostr
+    /// public key. Nicknames and shortened bridge peer IDs are never resolved.
+    @MainActor
+    func blockBridgeUser(pubkeyHex: String, displayName: String) {
+        setBridgeUserBlocked(pubkeyHex, blocked: true, displayName: displayName)
+    }
+
+    @MainActor
+    func unblockBridgeUser(pubkeyHex: String, displayName: String) {
+        setBridgeUserBlocked(pubkeyHex, blocked: false, displayName: displayName)
+    }
+
+    @MainActor
+    private func setBridgeUserBlocked(_ pubkeyHex: String, blocked: Bool, displayName: String) {
+        guard let fullPubkey = normalizedBridgePublicKey(pubkeyHex) else { return }
+        identityManager.setNostrBlocked(fullPubkey, isBlocked: blocked)
+        NotificationCenter.default.post(name: Notification.Name("peerStatusUpdated"), object: nil)
+        addCommandOutput(
+            String(
+                format: String(
+                    localized: blocked ? "system.mesh.blocked" : "system.mesh.unblocked",
+                    comment: "System message shown when a bridge participant is blocked or unblocked"
+                ),
+                locale: .current,
+                displayName
+            )
+        )
+    }
+
+    private func normalizedBridgePublicKey(_ rawValue: String) -> String? {
+        let normalized = rawValue.lowercased()
+        guard normalized.count == 64, normalized.allSatisfy(\.isHexDigit) else { return nil }
+        return normalized
+    }
+
     // Mesh (Noise identity) block helpers. Unlike the `/block <nickname>`
     // command, these resolve and persist the block by the peer's stable
     // fingerprint (derived from `peerID`), so the exact tapped peer is
@@ -1559,6 +1606,7 @@ final class ChatViewModel: ObservableObject, BitchatDelegate, SynchronousMessage
         // state. These services cancel their subscriptions and delayed tasks,
         // so old callbacks cannot reconnect during the transaction.
         panicNetworkLifecycle.stop()
+        panicBridgeReset()
 
         // Establish both independent durable intents before erasing anything.
         // `wipeMedia` will still attempt deletion if neither write succeeds.
@@ -1576,6 +1624,8 @@ final class ChatViewModel: ObservableObject, BitchatDelegate, SynchronousMessage
         // handles before clearing state or removing the media directory.
         mediaTransferCoordinator.resetForPanic()
         liveVoiceCoordinator.resetForPanic()
+        publicMessagePipeline.resetForPanic()
+        publicConversationCoordinator.resetForPanic()
         privateChatClearGeneration &+= 1
         queuedPrivateChatClears.removeAll(keepingCapacity: false)
         privateChatClearInFlight = false
@@ -1637,6 +1687,8 @@ final class ChatViewModel: ObservableObject, BitchatDelegate, SynchronousMessage
         MeshSightingsTracker.shared.clear()
         MeshEchoSettings.reset()
         NotificationPrivacySettings.reset()
+        NotificationDeliverySettings.reset()
+        NotificationService.shared.clearAllNotifications()
         // A hand-added relay names an operator someone chose to route through,
         // which is the kind of trace a wipe should not leave behind.
         NostrRelaySettings.reset()
@@ -2307,7 +2359,8 @@ final class ChatViewModel: ObservableObject, BitchatDelegate, SynchronousMessage
 
     /// Handle incoming public message
     @MainActor
-    func handlePublicMessage(_ message: BitchatMessage) {
+    @discardableResult
+    func handlePublicMessage(_ message: BitchatMessage) -> Bool {
         // Bridge hints are unauthenticated and may never suppress a genuine
         // BLE sender. Once the radio packet has passed BLE signature checks,
         // replace any earlier bridge alias before this row is enqueued.
@@ -2318,14 +2371,37 @@ final class ChatViewModel: ObservableObject, BitchatDelegate, SynchronousMessage
         }
         // A finalized voice note whose burst already streamed in live swaps
         // into the existing bubble instead of appearing twice.
-        if liveVoiceCoordinator.absorbFinalizedVoiceNote(message) { return }
-        publicConversationCoordinator.handlePublicMessage(message)
+        if liveVoiceCoordinator.absorbFinalizedVoiceNote(message) { return false }
+        return publicConversationCoordinator.handlePublicMessage(message)
+    }
+
+    /// Converts an authenticated bridge event into a local timeline message.
+    /// Blocking must happen here, while the complete Nostr signer key is still
+    /// available; `PeerID(bridge:)` intentionally retains only a prefix.
+    @MainActor
+    func handleBridgeInboundMessage(_ inbound: BridgeService.InboundBridgeMessage) {
+        guard let fullPubkey = normalizedBridgePublicKey(inbound.senderPubkey),
+              !identityManager.isNostrBlocked(pubkeyHexLowercased: fullPubkey) else {
+            return
+        }
+        let mentions = parseMentions(from: inbound.content)
+        handlePublicMessage(BitchatMessage(
+            id: inbound.messageID,
+            sender: inbound.senderNickname,
+            content: inbound.content,
+            timestamp: inbound.timestamp,
+            isRelay: false,
+            senderPeerID: PeerID(bridge: fullPubkey),
+            mentions: mentions.isEmpty ? nil : mentions,
+            isBridged: true
+        ))
     }
 
     /// Handle an incoming public Nostr message with its validated NIP-13
     /// difficulty; sufficient PoW relaxes the per-sender rate limit.
     @MainActor
-    func handlePublicMessage(_ message: BitchatMessage, powBits: Int) {
+    @discardableResult
+    func handlePublicMessage(_ message: BitchatMessage, powBits: Int) -> Bool {
         publicConversationCoordinator.handlePublicMessage(message, powBits: powBits)
     }
 

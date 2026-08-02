@@ -464,16 +464,11 @@ private extension ChatViewModelBootstrapper {
         bridge.broadcastToMesh = { [weak bleService] payload in
             bleService?.broadcastNostrCarrier(payload)
         }
+        bridge.isSenderBlocked = { [weak viewModel] fullPubkey in
+            viewModel?.isBridgeUserBlocked(pubkeyHex: fullPubkey) ?? false
+        }
         bridge.injectInbound = { [weak viewModel] inbound in
-            viewModel?.handlePublicMessage(BitchatMessage(
-                id: inbound.messageID,
-                sender: inbound.senderNickname,
-                content: inbound.content,
-                timestamp: inbound.timestamp,
-                isRelay: false,
-                senderPeerID: PeerID(bridge: inbound.senderPubkey),
-                isBridged: true
-            ))
+            viewModel?.handleBridgeInboundMessage(inbound)
         }
         bridge.removeInjectedInbound = { [weak viewModel] messageID in
             viewModel?.removeBridgeInjectedPublicMessage(withID: messageID)

@@ -6,8 +6,7 @@
 // (invites and key updates over Noise) and ChaCha20-Poly1305 group messages
 // broadcast as MessageType.groupMessage (0x25).
 //
-// This is free and unencumbered software released into the public domain.
-// For more information, see <https://unlicense.org>
+// SPDX-License-Identifier: MIT
 //
 
 import BitFoundation

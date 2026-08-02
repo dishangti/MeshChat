@@ -30,6 +30,40 @@ enum AppEvent: Sendable, Equatable {
     case terminationRequested
 }
 
+/// Conversation that is actually on screen. Selection alone is insufficient:
+/// Home intentionally retains the last public channel for draft continuity.
+enum AppVisibleConversation: Equatable {
+    case mesh
+    case geohash(String)
+    case direct(PeerID)
+}
+
+/// Lightweight route/visibility state shared by AppRuntime and the adaptive
+/// shell. It stays separate from the transport-owning runtime so previews and
+/// view tests never need to construct a second ChatViewModel just to navigate.
+@MainActor
+final class AppRouteModel: ObservableObject {
+    @Published private(set) var pendingURLRoute: ChatURLRoute? = nil
+    private(set) var visibleConversation: AppVisibleConversation? = nil
+
+    func enqueue(_ route: ChatURLRoute) {
+        pendingURLRoute = route
+    }
+
+    func consume(_ route: ChatURLRoute) {
+        guard pendingURLRoute == route else { return }
+        pendingURLRoute = nil
+    }
+
+    func clearPendingRoute() {
+        pendingURLRoute = nil
+    }
+
+    func setVisibleConversation(_ conversation: AppVisibleConversation?) {
+        visibleConversation = conversation
+    }
+}
+
 actor AppEventStream {
     private var continuations: [UUID: AsyncStream<AppEvent>.Continuation] = [:]
 

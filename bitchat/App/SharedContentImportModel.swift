@@ -10,9 +10,10 @@ enum SharedContentDestination: Sendable, Equatable {
     static func resolve(
         selectedPrivatePeerID: PeerID?,
         privateDisplayName: String?,
-        activeChannel: ChannelID
+        activeChannel: ChannelID,
+        includesPrivateConversation: Bool = true
     ) -> SharedContentDestination {
-        if let selectedPrivatePeerID {
+        if includesPrivateConversation, let selectedPrivatePeerID {
             let fallback = String(selectedPrivatePeerID.id.prefix(12))
             return .privateConversation(
                 peerID: selectedPrivatePeerID,

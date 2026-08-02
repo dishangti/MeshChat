@@ -17,8 +17,9 @@ struct NotificationRedactionTests {
     private final class RecordingDeliverer: NotificationRequestDelivering {
         var requests: [UNNotificationRequest] = []
 
-        func add(_ request: UNNotificationRequest) {
+        func add(_ request: UNNotificationRequest, completionHandler: @escaping () -> Void) {
             requests.append(request)
+            completionHandler()
         }
     }
 
@@ -84,7 +85,7 @@ struct NotificationRedactionTests {
     @Test func redactedMentionWithholdsSenderAndBody() throws {
         let (service, deliverer) = makeService(hidePreviews: true)
 
-        service.sendMentionNotification(from: "bob", message: "regroup now")
+        service.sendMentionNotification(from: "bob", message: "regroup now", topic: .mesh)
 
         let content = try #require(deliverer.requests.first).content
         #expect(!content.title.contains("bob"))

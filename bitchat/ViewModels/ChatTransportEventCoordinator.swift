@@ -38,7 +38,8 @@ protocol ChatTransportEventContext: AnyObject {
     // MARK: Inbound message handling
     func isMessageBlocked(_ message: BitchatMessage) -> Bool
     func handlePrivateMessage(_ message: BitchatMessage)
-    func handlePublicMessage(_ message: BitchatMessage)
+    @discardableResult
+    func handlePublicMessage(_ message: BitchatMessage) -> Bool
     func checkForMentions(_ message: BitchatMessage)
     func sendHapticFeedback(for message: BitchatMessage)
     func parseMentions(from content: String) -> [String]
@@ -347,9 +348,8 @@ private extension ChatTransportEventCoordinator {
             mentions: mentions.isEmpty ? nil : mentions
         )
 
+        guard !context.isMessageBlocked(message) else { return }
         context.handlePublicMessage(message)
-        context.checkForMentions(message)
-        context.sendHapticFeedback(for: message)
     }
 
     @MainActor
@@ -363,12 +363,17 @@ private extension ChatTransportEventCoordinator {
 
         if message.isPrivate {
             context.handlePrivateMessage(message)
+            // Private-message delivery owns its own alert path. Treating a DM
+            // mention as mesh activity would bypass the direct-message toggle
+            // and can produce a duplicate notification.
+            context.sendHapticFeedback(for: message)
         } else {
+            // Store/content dedup and rate limiting suppress rendering and
+            // feedback, but they do not make an authenticated transport
+            // packet invalid. BLE retransmissions must still be ACKed or the
+            // sender will retry a duplicate indefinitely.
             context.handlePublicMessage(message)
         }
-
-        context.checkForMentions(message)
-        context.sendHapticFeedback(for: message)
         return true
     }
 
@@ -429,14 +434,17 @@ private extension ChatTransportEventCoordinator {
         timestamp: Date,
         in context: any ChatTransportEventContext
     ) {
+        guard !shouldDropNoisePayload(type, fromBlockedPeer: peerID, in: context) else {
+            SecureLogger.debug(
+                "🚫 Ignoring \(type.description) Noise payload from blocked peer: \(peerID)",
+                category: .security
+            )
+            return
+        }
+
         switch type {
         case .privateMessage:
             guard let packet = PrivateMessagePacket.decode(from: payload) else { return }
-
-            guard !context.isPeerBlocked(peerID) else {
-                SecureLogger.debug("🚫 Ignoring Noise payload from blocked peer: \(peerID)", category: .security)
-                return
-            }
 
             let senderName = context.unifiedPeer(for: peerID)?.nickname ?? "Unknown"
             let mentions = context.parseMentions(from: packet.content)
@@ -511,6 +519,31 @@ private extension ChatTransportEventCoordinator {
             // state inside the transport. Neither payload crosses this
             // UI-facing typed-payload fallback.
             break
+        }
+    }
+
+    @MainActor
+    func shouldDropNoisePayload(
+        _ type: NoisePayloadType,
+        fromBlockedPeer peerID: PeerID,
+        in context: any ChatTransportEventContext
+    ) -> Bool {
+        switch type {
+        case .privateMessage, .groupInvite, .voiceFrame,
+             .verifyChallenge, .verifyResponse, .vouch:
+            // These payloads can create conversation, invitation, audible, or
+            // trust UI state. A matching verification response is correlated
+            // to a local QR scan, but a block applied while it was pending must
+            // still prevent the identity mutation and success notification.
+            return context.isPeerBlocked(peerID)
+
+        case .delivered, .readReceipt, .groupKeyUpdate,
+             .privateFile, .authenticatedPeerState:
+            // Preserve authenticated protocol control traffic. In particular,
+            // an existing group's creator must still be able to rotate its key
+            // or remove this device. Private-file and peer-state payloads are
+            // consumed by the transport and are no-ops in this UI fallback.
+            return false
         }
     }
 

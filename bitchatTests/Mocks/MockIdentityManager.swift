@@ -2,8 +2,7 @@
 // MockIdentityManager.swift
 // bitchat
 //
-// This is free and unencumbered software released into the public domain.
-// For more information, see <https://unlicense.org>
+// SPDX-License-Identifier: MIT
 //
 
 import Foundation
@@ -69,6 +68,10 @@ final class MockIdentityManager: SecureIdentityStateManagerProtocol {
         } else {
             blockedFingerprints.remove(fingerprint)
         }
+    }
+
+    func getBlockedSocialIdentities() -> [SocialIdentity] {
+        socialIdentities.values.filter(\.isBlocked)
     }
     
     func isNostrBlocked(pubkeyHexLowercased: String) -> Bool {

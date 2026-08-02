@@ -3,7 +3,7 @@
 // bitchat
 //
 // Handles command parsing and execution for BitChat
-// This is free and unencumbered software released into the public domain.
+// SPDX-License-Identifier: MIT
 //
 
 import Foundation
@@ -133,19 +133,19 @@ final class CommandProcessor {
         case "/unblock":
             return handleUnblock(args)
         case "/group":
-            if inGeoPublic || inGeoDM { return .error(message: "groups are only for mesh peers in #mesh") }
+            if inGeoPublic || inGeoDM { return .error(message: "Groups are only for mesh peers in #mesh") }
             return handleGroup(args)
         case "/fav":
-            if inGeoPublic || inGeoDM { return .error(message: "favorites are only for mesh peers in #mesh") }
+            if inGeoPublic || inGeoDM { return .error(message: "Favorites are only for mesh peers in #mesh") }
             return handleFavorite(args, add: true)
         case "/unfav":
-            if inGeoPublic || inGeoDM { return .error(message: "favorites are only for mesh peers in #mesh") }
+            if inGeoPublic || inGeoDM { return .error(message: "Favorites are only for mesh peers in #mesh") }
             return handleFavorite(args, add: false)
         case "/ping":
-            if inGeoPublic || inGeoDM { return .error(message: "ping only works for mesh peers in #mesh") }
+            if inGeoPublic || inGeoDM { return .error(message: "Ping only works for mesh peers in #mesh") }
             return handlePing(args)
         case "/trace":
-            if inGeoPublic || inGeoDM { return .error(message: "trace only works for mesh peers in #mesh") }
+            if inGeoPublic || inGeoDM { return .error(message: "Trace only works for mesh peers in #mesh") }
             return handleTrace(args)
         case "/pay":
             return handlePay(args)
@@ -154,7 +154,7 @@ final class CommandProcessor {
         case "/help":
             return .success(message: Self.helpText)
         default:
-            return .error(message: "unknown command: \(cmd) — type /help for commands")
+            return .error(message: "Unknown command: \(cmd) — type /help for commands")
         }
     }
 
@@ -162,22 +162,22 @@ final class CommandProcessor {
     /// suggestion panel hides once arguments are typed, and typos used to
     /// dead-end in a bare "unknown command" — this is the way out.
     static let helpText = """
-    commands:
-    /msg @name [message] — start a private chat
-    /who — list who's here
-    /clear — clear this chat
-    /hug @name — send a hug
-    /slap @name — slap with a large trout
+    Commands:
+    /msg @name [message] — Start a private chat
+    /who — List who's here
+    /clear — Clear this chat
+    /hug @name — Send a hug
+    /slap @name — Slap with a large trout
     /block @name · /unblock @name
-    /fav @name · /unfav @name — favorites (mesh only)
-    /group create <name> — start an encrypted group
-    /group invite @name · /group remove @name — manage members (creator)
-    /group leave · /group list — leave or list your groups
-    /ping @name — measure round-trip time (mesh only)
-    /trace @name — estimated mesh path (mesh only)
-    /pay <token> — send a cashu ecash token in this chat
-    /drop <message> — pin a note to this place for 24h (needs location)
-    /help — this list
+    /fav @name · /unfav @name — Favorites (mesh only)
+    /group create <name> — Start an encrypted group
+    /group invite @name · /group remove @name — Manage members (creator)
+    /group leave · /group list — Leave or list your groups
+    /ping @name — Measure round-trip time (mesh only)
+    /trace @name — Estimate the mesh path (mesh only)
+    /pay <token> — Send a Cashu ecash token in this chat
+    /drop <message> — Pin a note to this place for 24h (needs location)
+    /help — Show this list
     """
 
     /// /drop <text> — a dead drop: pins a note to the current building-level
@@ -186,28 +186,28 @@ final class CommandProcessor {
     /// reads it.
     private func handleDrop(_ args: String) -> CommandResult {
         guard LocationNotesSettings.enabled else {
-            return .error(message: "location notes are off — enable them in the info screen")
+            return .error(message: "Location notes are off — enable them in the info screen")
         }
         guard let content = args.trimmedOrNilIfEmpty else {
-            return .error(message: "usage: /drop <message>")
+            return .error(message: "Usage: /drop <message>")
         }
         let location = LocationChannelManager.shared
         guard location.permissionState == .authorized else {
-            return .error(message: "leaving a note needs location — enable it in the info screen")
+            return .error(message: "Leaving a note needs location — enable it in the info screen")
         }
         guard let geohash = location.availableChannels.first(where: { $0.level == .building })?.geohash else {
             location.refreshChannels()
-            return .error(message: "still finding this place — try again in a moment")
+            return .error(message: "Still finding this place — try again in a moment")
         }
         guard let nickname = contextProvider?.nickname,
               LocationNotesManager.postDrop(content: content, nickname: nickname, geohash: geohash) else {
-            return .error(message: "no geo relays reachable — note not left")
+            return .error(message: "No geo relays reachable — note not left")
         }
         // Leaving a note is an explicit notes act: it unlocks the passive
         // nearby-notes counter (tap-to-reveal) so the sender sees their own
         // drop counted on the timeline.
         NearbyNotesCounter.shared.reveal()
-        return .success(message: "📍 note left here — it fades in 24h")
+        return .success(message: "📍 Note left here — it fades in 24h")
     }
 
     // MARK: - Command Handlers
@@ -215,7 +215,7 @@ final class CommandProcessor {
     private func handleMessage(_ args: String) -> CommandResult {
         let parts = args.split(separator: " ", maxSplits: 1, omittingEmptySubsequences: false)
         guard !parts.isEmpty else {
-            return .error(message: "usage: /msg @nickname [message]")
+            return .error(message: "Usage: /msg @nickname [message]")
         }
         
         let targetName = String(parts[0])
@@ -232,7 +232,7 @@ final class CommandProcessor {
             contextProvider?.sendPrivateMessage(message, to: peerID)
         }
         
-        return .success(message: "started private chat with \(nickname)")
+        return .success(message: "Started private chat with \(nickname)")
     }
     
     private func handleWho() -> CommandResult {
@@ -240,22 +240,22 @@ final class CommandProcessor {
         switch contextProvider?.activeChannel ?? .mesh {
         case .location(let ch):
             // Geohash context: show visible geohash participants (exclude self)
-            guard let vm = contextProvider else { return .success(message: "nobody around") }
+            guard let vm = contextProvider else { return .success(message: "Nobody around") }
             let myHex = (try? vm.idBridge.deriveIdentity(forGeohash: ch.geohash))?.publicKeyHex.lowercased()
             let people = vm.getVisibleGeoParticipants().filter { person in
                 if let me = myHex { return person.id.lowercased() != me }
                 return true
             }
             let names = people.map { $0.displayName }
-            if names.isEmpty { return .success(message: "no one else is online right now") }
-            return .success(message: "online: " + names.sorted().joined(separator: ", "))
+            if names.isEmpty { return .success(message: "No one else is online right now") }
+            return .success(message: "Online: " + names.sorted().joined(separator: ", "))
         case .mesh:
             // Mesh context: show connected peer nicknames
             guard let peers = meshService?.getPeerNicknames(), !peers.isEmpty else {
-                return .success(message: "no one else is online right now")
+                return .success(message: "No one else is online right now")
             }
             let onlineList = peers.values.sorted().joined(separator: ", ")
-            return .success(message: "online: \(onlineList)")
+            return .success(message: "Online: \(onlineList)")
         }
     }
     
@@ -271,14 +271,14 @@ final class CommandProcessor {
     private func handleEmote(_ args: String, command: String, action: String, emoji: String, suffix: String = "") -> CommandResult {
         let targetName = args.trimmed
         guard !targetName.isEmpty else {
-            return .error(message: "usage: /\(command) <nickname>")
+            return .error(message: "Usage: /\(command) <nickname>")
         }
         
         let nickname = targetName.hasPrefix("@") ? String(targetName.dropFirst()) : targetName
         
         guard let targetPeerID = contextProvider?.getPeerIDForNickname(nickname),
               let myNickname = contextProvider?.nickname else {
-            return .error(message: "cannot \(command) \(nickname): not found")
+            return .error(message: "Cannot \(command) \(nickname): not found")
         }
         
         let emoteContent = "* \(emoji) \(myNickname) \(action) \(nickname)\(suffix) *"
@@ -298,7 +298,7 @@ final class CommandProcessor {
                     default: return action.hasSuffix("e") ? action + "d" : action + "ed"
                     }
                 }()
-                let localText = "\(emoji) you \(pastAction) \(nickname)\(suffix)"
+                let localText = "\(emoji) You \(pastAction) \(nickname)\(suffix)"
                 contextProvider?.addLocalPrivateSystemMessage(localText, to: targetPeerID)
             }
         } else {
@@ -345,7 +345,7 @@ final class CommandProcessor {
 
             let meshList = blockedNicknames.isEmpty ? "none" : blockedNicknames.sorted().joined(separator: ", ")
             let geoList = geoNames.isEmpty ? "none" : geoNames.sorted().joined(separator: ", ")
-            return .success(message: "blocked peers: \(meshList) | geohash blocks: \(geoList)")
+            return .success(message: "Blocked peers: \(meshList) | geohash blocks: \(geoList)")
         }
         
         let nickname = targetName.hasPrefix("@") ? String(targetName.dropFirst()) : targetName
@@ -375,7 +375,7 @@ final class CommandProcessor {
             // Scrub their carried public messages now, while the peerID is
             // resolvable, so they can't resurface as archived echoes.
             meshArchive?.purgeArchivedPublicMessages(from: peerID)
-            return .success(message: "blocked \(nickname). you will no longer receive messages from them")
+            return .success(message: "Blocked \(nickname). You will no longer receive messages from them")
         }
         // Mesh lookup failed; try geohash (Nostr) participant by display name
         if let pub = contextProvider?.nostrPubkeyForDisplayName(nickname) {
@@ -383,16 +383,16 @@ final class CommandProcessor {
                 return .success(message: "\(nickname) is already blocked")
             }
             identityManager.setNostrBlocked(pub, isBlocked: true)
-            return .success(message: "blocked \(nickname) in geohash chats")
+            return .success(message: "Blocked \(nickname) in geohash chats")
         }
         
-        return .error(message: "cannot block \(nickname): not found or unable to verify identity")
+        return .error(message: "Cannot block \(nickname): not found or unable to verify identity")
     }
     
     private func handleUnblock(_ args: String) -> CommandResult {
         let targetName = args.trimmed
         guard !targetName.isEmpty else {
-            return .error(message: "usage: /unblock <nickname>")
+            return .error(message: "Usage: /unblock <nickname>")
         }
         
         let nickname = targetName.hasPrefix("@") ? String(targetName.dropFirst()) : targetName
@@ -403,7 +403,7 @@ final class CommandProcessor {
                 return .success(message: "\(nickname) is not blocked")
             }
             identityManager.setBlocked(fingerprint, isBlocked: false)
-            return .success(message: "unblocked \(nickname)")
+            return .success(message: "Unblocked \(nickname)")
         }
         // Try geohash unblock
         if let pub = contextProvider?.nostrPubkeyForDisplayName(nickname) {
@@ -411,12 +411,12 @@ final class CommandProcessor {
                 return .success(message: "\(nickname) is not blocked")
             }
             identityManager.setNostrBlocked(pub, isBlocked: false)
-            return .success(message: "unblocked \(nickname) in geohash chats")
+            return .success(message: "Unblocked \(nickname) in geohash chats")
         }
-        return .error(message: "cannot unblock \(nickname): not found")
+        return .error(message: "Cannot unblock \(nickname): not found")
     }
     
-    private static let groupUsage = "usage: /group create <name> · invite @name · remove @name · leave · list"
+    private static let groupUsage = "Usage: /group create <name> · invite @name · remove @name · leave · list"
 
     private func handleGroup(_ args: String) -> CommandResult {
         let parts = args.split(separator: " ", maxSplits: 1, omittingEmptySubsequences: true)
@@ -454,12 +454,12 @@ final class CommandProcessor {
     private func resolveMeshPeer(_ args: String, command: String) -> MeshPeerResolution {
         let targetName = args.trimmed
         guard !targetName.isEmpty else {
-            return .failed(.error(message: "usage: /\(command) <nickname>"))
+            return .failed(.error(message: "Usage: /\(command) <nickname>"))
         }
         let nickname = targetName.hasPrefix("@") ? String(targetName.dropFirst()) : targetName
         guard let peerID = contextProvider?.getPeerIDForNickname(nickname),
               !peerID.isGeoDM, !peerID.isGeoChat else {
-            return .failed(.error(message: "cannot \(command) \(nickname): not found on mesh"))
+            return .failed(.error(message: "Cannot \(command) \(nickname): not found on mesh"))
         }
         return .resolved(peerID: peerID, nickname: nickname)
     }
@@ -480,15 +480,15 @@ final class CommandProcessor {
         meshDiagnostics?.sendMeshPing(to: target.peerID) { [weak currentProvider] result in
             let provider = currentProvider
             guard let result else {
-                provider?.addCommandOutput("no reply from \(nickname)", to: destination)
+                provider?.addCommandOutput("No reply from \(nickname)", to: destination)
                 return
             }
             let hopText: String = result.hops.map { hops in
                 hops == 1 ? " · direct (1 hop)" : " · \(hops) hops"
             } ?? ""
-            provider?.addCommandOutput("pong from \(nickname): \(result.rttMs) ms\(hopText)", to: destination)
+            provider?.addCommandOutput("Pong from \(nickname): \(result.rttMs) ms\(hopText)", to: destination)
         }
-        return .success(message: "pinging \(nickname)…")
+        return .success(message: "Pinging \(nickname)…")
     }
 
     private func handleTrace(_ args: String) -> CommandResult {
@@ -500,7 +500,7 @@ final class CommandProcessor {
 
         guard let mesh = meshService,
               let intermediates = meshDiagnostics?.computeMeshPath(to: target.peerID) else {
-            return .success(message: "no known path to \(target.nickname)")
+            return .success(message: "No known path to \(target.nickname)")
         }
         // Graph-derived from gossiped neighbor claims, not route-recorded —
         // present it as an estimate.
@@ -509,7 +509,7 @@ final class CommandProcessor {
         }
         let chain = (["you"] + hopNames + [target.nickname]).joined(separator: " → ")
         let hops = intermediates.count + 1
-        return .success(message: "estimated path: \(chain) (\(hops) hop\(hops == 1 ? "" : "s"))")
+        return .success(message: "Estimated path: \(chain) (\(hops) hop\(hops == 1 ? "" : "s"))")
     }
 
     /// `/pay <cashu-token>` — validates the token decodes, then sends it as
@@ -520,44 +520,44 @@ final class CommandProcessor {
     private func handlePay(_ args: String) -> CommandResult {
         var parts = args.trimmed.split(separator: " ").map(String.init)
         guard !parts.isEmpty else {
-            return .success(message: "usage: /pay <token> — paste a cashu token: /pay cashuA…")
+            return .success(message: "Usage: /pay <token> — paste a Cashu token: /pay cashuA…")
         }
 
         let confirmedPublic = parts.count > 1 && parts.last?.lowercased() == "public"
         if confirmedPublic { parts.removeLast() }
 
         guard parts.count == 1, let token = CashuTokenDecoder.bareToken(from: parts[0]) else {
-            return .error(message: "that doesn't look like a cashu token — expected cashuA… or cashuB…")
+            return .error(message: "That doesn't look like a Cashu token — expected cashuA… or cashuB…")
         }
         guard let info = CashuTokenDecoder.decode(token, strict: true) else {
-            return .error(message: "invalid cashu token — it doesn't decode to a known token with an amount, not sending it")
+            return .error(message: "Invalid Cashu token — it doesn't decode to a known token with an amount, not sending it")
         }
 
-        let summary = info.displayAmount ?? "a cashu token"
+        let summary = info.displayAmount ?? "a Cashu token"
 
         if let peerID = contextProvider?.selectedPrivateChatPeer {
             contextProvider?.sendPrivateMessage(token, to: peerID)
-            return .success(message: "sent \(summary) — cashu is a bearer token; whoever redeems it first gets the funds")
+            return .success(message: "Sent \(summary) — Cashu is a bearer token; whoever redeems it first gets the funds")
         }
 
         guard confirmedPublic else {
-            return .error(message: "this is a public channel — anyone reading it can redeem the token. send anyway: /pay <token> public")
+            return .error(message: "This is a public channel — anyone reading it can redeem the token. Send anyway: /pay <token> public")
         }
 
         contextProvider?.sendPublicMessage(token)
-        return .success(message: "sent \(summary) to the public channel — anyone here can redeem it")
+        return .success(message: "Sent \(summary) to the public channel — anyone here can redeem it")
     }
 
     private func handleFavorite(_ args: String, add: Bool) -> CommandResult {
         let targetName = args.trimmed
         guard !targetName.isEmpty else {
-            return .error(message: "usage: /\(add ? "fav" : "unfav") <nickname>")
+            return .error(message: "Usage: /\(add ? "fav" : "unfav") <nickname>")
         }
 
         let nickname = targetName.hasPrefix("@") ? String(targetName.dropFirst()) : targetName
 
         guard let peerID = contextProvider?.getPeerIDForNickname(nickname) else {
-            return .error(message: "can't find peer: \(nickname)")
+            return .error(message: "Can't find peer: \(nickname)")
         }
 
         // Resolve current state by the peer's real noise key. The resolved
@@ -577,7 +577,7 @@ final class CommandProcessor {
         // toggleFavorite persists by the real noise key and notifies the peer.
         contextProvider?.toggleFavorite(peerID: peerID)
 
-        return .success(message: add ? "added \(nickname) to favorites" : "removed \(nickname) from favorites")
+        return .success(message: add ? "Added \(nickname) to favorites" : "Removed \(nickname) from favorites")
     }
     
 }

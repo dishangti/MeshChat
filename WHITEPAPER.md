@@ -147,4 +147,4 @@ Bare local counters (deposits, handovers, sprays, opens, outbox flushes and drop
 
 ---
 
-*This document describes the protocol as implemented in the current release. The implementation is free and unencumbered software released into the public domain.*
+*This document describes the protocol as implemented in the current release. The implementation is open-source software licensed under the [MIT License](LICENSE).*

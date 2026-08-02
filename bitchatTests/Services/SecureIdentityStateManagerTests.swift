@@ -359,6 +359,28 @@ final class SecureIdentityStateManagerTests: XCTestCase {
         XCTAssertTrue(unblocked)
     }
 
+    func test_getBlockedSocialIdentities_returnsOnlyBlockedPeople() {
+        let manager = SecureIdentityStateManager(MockKeychain())
+        let blockedFingerprint = String(repeating: "7a", count: 32)
+        let allowedFingerprint = String(repeating: "7b", count: 32)
+
+        manager.setBlocked(blockedFingerprint, isBlocked: true)
+        manager.updateSocialIdentity(
+            SocialIdentity(
+                fingerprint: allowedFingerprint,
+                localPetname: "Allowed",
+                claimedNickname: "Allowed",
+                trustLevel: .unknown,
+                isFavorite: false,
+                isBlocked: false,
+                notes: nil
+            )
+        )
+
+        let blocked = manager.getBlockedSocialIdentities()
+        XCTAssertEqual(blocked.map(\.fingerprint), [blockedFingerprint])
+    }
+
     func test_setVerified_false_downgradesTrustLevelToCasual() async {
         let manager = SecureIdentityStateManager(MockKeychain())
         let fingerprint = String(repeating: "89", count: 32)

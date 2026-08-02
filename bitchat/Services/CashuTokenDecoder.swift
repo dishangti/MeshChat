@@ -10,8 +10,7 @@
 // This parses attacker-controlled message content, so every path is
 // bounds-checked, size-capped, and returns nil instead of trapping.
 //
-// This is free and unencumbered software released into the public domain.
-// For more information, see <https://unlicense.org>
+// SPDX-License-Identifier: MIT
 //
 
 import Foundation

@@ -42,6 +42,7 @@ private struct SmokeFeatureModels {
     let peerListModel: PeerListModel
     let boardAlertsModel: BoardAlertsModel
     let sharedContentImportModel: SharedContentImportModel
+    let routeModel: AppRouteModel
 }
 
 @MainActor
@@ -101,7 +102,8 @@ private func makeSmokeFeatureModels(for viewModel: ChatViewModel) -> SmokeFeatur
         conversationUIModel: conversationUIModel,
         peerListModel: peerListModel,
         boardAlertsModel: boardAlertsModel,
-        sharedContentImportModel: SharedContentImportModel(store: nil)
+        sharedContentImportModel: SharedContentImportModel(store: nil),
+        routeModel: AppRouteModel()
     )
 }
 
@@ -121,6 +123,7 @@ private func installSmokeEnvironment<V: View>(
         .environmentObject(featureModels.peerListModel)
         .environmentObject(featureModels.boardAlertsModel)
         .environmentObject(featureModels.sharedContentImportModel)
+        .environmentObject(featureModels.routeModel)
 }
 
 @MainActor
@@ -503,7 +506,9 @@ struct ViewSmokeTests {
 
         // AppInfoView's settings pane reads LocationChannelsModel from the
         // environment, so it can only render mounted with one installed.
-        let appInfo = AppInfoView()
+        let appInfo = AppInfoView(notificationAuthorizationProvider: { completion in
+            completion(.denied)
+        })
             .environmentObject(LocationChannelsModel(manager: makeSmokeLocationManager()))
         let header = SectionHeader("app_info.features.title")
         let featureRow = FeatureRow(info: feature)
@@ -541,6 +546,12 @@ struct ViewSmokeTests {
             makeSnapshot(peerID: peerID, nickname: "Alice", noiseByte: 0x66)
         ])
         try? await Task.sleep(nanoseconds: 50_000_000)
+
+        // Both the compatibility shell and the adaptive MeshChat shell must
+        // mount with the full feature-model set. Missing any of those crashes
+        // NavigationSplitView/NavigationStack presentation on some iOS
+        // versions (#1558).
+        _ = mount(installSmokeEnvironment(MeshChatRootView(), featureModels: featureModels))
 
         // ContentView + people sheet must mount with the full feature-model
         // set (peerList / publicChat / privateInbox included). Missing any of

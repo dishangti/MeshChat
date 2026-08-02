@@ -2,8 +2,7 @@
 // ChannelShare.swift
 // bitchat
 //
-// This is free and unencumbered software released into the public domain.
-// For more information, see <https://unlicense.org>
+// SPDX-License-Identifier: MIT
 //
 
 import Foundation
@@ -32,7 +31,7 @@ enum ChannelShare {
         return String(
             format: String(
                 localized: "channel.share.payload",
-                defaultValue: "join the #%1$@ channel on bitchat: bitchat://geohash/%1$@ — new to bitchat? get it at %2$@ then type #%1$@ under location channels.",
+                defaultValue: "Join the #%1$@ channel on MeshChat: bitchat://geohash/%1$@ — new to MeshChat? Get it at %2$@ then type #%1$@ under location channels.",
                 comment: "Plain-text share payload for a location channel; %1$@ is the geohash, %2$@ is the App Store URL"
             ),
             locale: .current,

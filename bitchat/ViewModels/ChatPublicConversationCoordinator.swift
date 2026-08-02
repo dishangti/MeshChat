@@ -99,7 +99,7 @@ protocol ChatPublicConversationContext: AnyObject {
 
     // MARK: Notifications
     /// Posts the you-were-mentioned local notification.
-    func notifyMention(from sender: String, message: String)
+    func notifyMention(from sender: String, message: String, topic: NotificationTopic)
 }
 
 extension ChatViewModel: ChatPublicConversationContext {
@@ -162,8 +162,8 @@ extension ChatViewModel: ChatPublicConversationContext {
         _ = formatMessageAsText(message, colorScheme: currentColorScheme)
     }
 
-    func notifyMention(from sender: String, message: String) {
-        NotificationService.shared.sendMentionNotification(from: sender, message: message)
+    func notifyMention(from sender: String, message: String, topic: NotificationTopic) {
+        NotificationService.shared.sendMentionNotification(from: sender, message: message, topic: topic)
     }
 }
 
@@ -434,14 +434,19 @@ final class ChatPublicConversationCoordinator: PublicMessagePipelineDelegate {
         archivedEchoKeys.insert(Self.archivedEchoKey(senderPeerID: senderPeerID, timestamp: timestamp, content: content))
     }
 
+    func resetForPanic() {
+        archivedEchoKeys.removeAll(keepingCapacity: false)
+    }
+
     static func archivedEchoKey(senderPeerID: PeerID?, timestamp: Date, content: String) -> String {
         let ms = UInt64((timestamp.timeIntervalSince1970 * 1000).rounded())
         return "\(senderPeerID?.id ?? "")|\(ms)|\(content)"
     }
 
-    func handlePublicMessage(_ message: BitchatMessage, powBits: Int = 0) {
+    @discardableResult
+    func handlePublicMessage(_ message: BitchatMessage, powBits: Int = 0) -> Bool {
         let finalMessage = context.processActionMessage(message)
-        if context.isMessageBlocked(finalMessage) { return }
+        if context.isMessageBlocked(finalMessage) { return false }
 
         let isGeo = finalMessage.senderPeerID?.isGeoChat == true
         let isSystem = finalMessage.sender == "system"
@@ -450,15 +455,15 @@ final class ChatPublicConversationCoordinator: PublicMessagePipelineDelegate {
             let senderKey = normalizedSenderKey(for: finalMessage)
             let contentKey = context.normalizedContentKey(finalMessage.content)
             if !context.allowPublicMessage(senderKey: senderKey, contentKey: contentKey, powBits: powBits) {
-                return
+                return false
             }
         }
 
-        if !isSystem && finalMessage.content.count > 16000 { return }
+        if !isSystem && finalMessage.content.count > 16000 { return false }
         // Empty content never rendered before (the old visible-array enqueue
         // filtered it); with the store as the sole timeline it is dropped
         // outright instead of lingering invisibly in a backing buffer.
-        guard !finalMessage.content.trimmed.isEmpty else { return }
+        guard !finalMessage.content.trimmed.isEmpty else { return false }
 
         // Resolve the destination conversation. System messages surface on
         // the active channel (matching their old visible-only routing); geo
@@ -472,7 +477,7 @@ final class ChatPublicConversationCoordinator: PublicMessagePipelineDelegate {
         } else {
             destination = .mesh
         }
-        guard let destination else { return }
+        guard let destination else { return false }
 
         // A live copy of a message already rendered as an archived echo
         // (e.g. re-served by a peer's gossip sync) would duplicate the row.
@@ -482,7 +487,7 @@ final class ChatPublicConversationCoordinator: PublicMessagePipelineDelegate {
                 timestamp: finalMessage.timestamp,
                 content: finalMessage.content
             )
-            if archivedEchoKeys.contains(key) { return }
+            if archivedEchoKeys.contains(key) { return false }
         }
 
         let channelMatches: Bool = {
@@ -496,16 +501,35 @@ final class ChatPublicConversationCoordinator: PublicMessagePipelineDelegate {
             // Visible-channel arrivals are batched: the pipeline's ~80 ms
             // flush commits them to the store (which dedups by ID), keeping
             // the deliberate UI flush cadence.
-            guard !context.publicConversationContainsMessage(withID: finalMessage.id, in: destination) else { return }
+            guard !context.publicConversationContainsMessage(withID: finalMessage.id, in: destination) else {
+                return false
+            }
             context.enqueuePublicMessage(finalMessage, to: destination)
+            return true
         } else {
             // Background-channel arrivals have no rendering observers to
             // batch for; they land in the store immediately.
-            context.appendPublicMessage(finalMessage, to: destination)
+            let didCommit = context.appendPublicMessage(finalMessage, to: destination)
+            if didCommit {
+                handleCommittedPublicMessage(finalMessage)
+            }
+            return didCommit
         }
     }
 
+    /// Runs public-message feedback only after the row survived every reject
+    /// and dedup stage and was committed to the conversation store.
+    private func handleCommittedPublicMessage(_ message: BitchatMessage) {
+        checkForMentions(message)
+        sendHapticFeedback(for: message)
+    }
+
     func checkForMentions(_ message: BitchatMessage) {
+        // Defense in depth: every ingress path should reject blocked senders
+        // before reaching this method, but notifications must never become a
+        // side channel for content that the timeline discarded.
+        guard !context.isMessageBlocked(message) else { return }
+
         let myNickname = context.nickname.normalizedNickname
         var myTokens: Set<String> = [myNickname]
         let meshPeers = context.meshPeerNicknames()
@@ -518,12 +542,18 @@ final class ChatPublicConversationCoordinator: PublicMessagePipelineDelegate {
 
         if isMentioned && message.sender != context.nickname {
             SecureLogger.info("🔔 Mention from \(message.sender)", category: .session)
-            context.notifyMention(from: message.sender, message: message.content)
+            let topic: NotificationTopic = message.senderPeerID?.isGeoChat == true
+                ? .locationChannels
+                : .mesh
+            context.notifyMention(from: message.sender, message: message.content, topic: topic)
         }
     }
 
     func sendHapticFeedback(for message: BitchatMessage) {
         #if os(iOS)
+        // Match the mention defense: a sender rejected from the timeline must
+        // not retain a haptic side channel through any future ingress path.
+        guard !context.isMessageBlocked(message) else { return }
         guard UIApplication.shared.applicationState == .active else { return }
 
         var tokens: [String] = [context.nickname]
@@ -574,6 +604,10 @@ final class ChatPublicConversationCoordinator: PublicMessagePipelineDelegate {
 
     func pipeline(_: PublicMessagePipeline, commit message: BitchatMessage, to conversationID: ConversationID) -> Bool {
         context.appendPublicMessage(message, to: conversationID)
+    }
+
+    func pipeline(_: PublicMessagePipeline, didCommit message: BitchatMessage, to conversationID: ConversationID) {
+        handleCommittedPublicMessage(message)
     }
 
     func pipelinePrewarmMessage(_: PublicMessagePipeline, message: BitchatMessage) {

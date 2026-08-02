@@ -52,12 +52,14 @@ private final class MockChatPeerListContext: ChatPeerListContext {
     var unifiedPeers: [BitchatPeer] = []
     var connectedMeshPeers: Set<PeerID> = []
     var reachableMeshPeers: Set<PeerID> = []
+    var blockedMeshPeers: Set<PeerID> = []
     var activeMeshPeerCountValue = 0
     private(set) var registeredEphemeralSessions: [PeerID] = []
     private(set) var updateEncryptionStatusForPeersCount = 0
 
     func isPeerConnected(_ peerID: PeerID) -> Bool { connectedMeshPeers.contains(peerID) }
     func isPeerReachable(_ peerID: PeerID) -> Bool { reachableMeshPeers.contains(peerID) }
+    func isPeerBlocked(_ peerID: PeerID) -> Bool { blockedMeshPeers.contains(peerID) }
     func activeMeshPeerCount() -> Int { activeMeshPeerCountValue }
     func registerEphemeralSession(peerID: PeerID) { registeredEphemeralSessions.append(peerID) }
     func updateEncryptionStatusForPeers() { updateEncryptionStatusForPeersCount += 1 }
@@ -103,6 +105,58 @@ private func makeMessage(id: String, senderPeerID: PeerID? = nil) -> BitchatMess
 /// Exercises `ChatPeerListCoordinator` against `MockChatPeerListContext` with
 /// no `ChatViewModel`.
 struct ChatPeerListCoordinatorContextTests {
+
+    @Test @MainActor
+    func activeMeshPeerCount_excludesBlockedConnectedAndReachablePeers() {
+        let keychain = MockKeychain()
+        let identityManager = MockIdentityManager(keychain)
+        let transport = MockTransport()
+        let viewModel = ChatViewModel(
+            keychain: keychain,
+            idBridge: NostrIdentityBridge(keychain: MockKeychainHelper()),
+            identityManager: identityManager,
+            transport: transport
+        )
+        let blockedConnected = PeerID(str: "0011223344556677")
+        let blockedReachable = PeerID(str: "8899aabbccddeeff")
+        let allowedConnected = PeerID(str: "1021324354657687")
+        let blockedConnectedFingerprint = "blocked-connected"
+        let blockedReachableFingerprint = "blocked-reachable"
+
+        transport.peerFingerprints = [
+            blockedConnected: blockedConnectedFingerprint,
+            blockedReachable: blockedReachableFingerprint,
+            allowedConnected: "allowed-connected"
+        ]
+        transport.reachablePeers = [blockedReachable]
+        transport.updatePeerSnapshots([
+            TransportPeerSnapshot(
+                peerID: blockedConnected,
+                nickname: "Blocked Connected",
+                isConnected: true,
+                noisePublicKey: nil,
+                lastSeen: Date()
+            ),
+            TransportPeerSnapshot(
+                peerID: blockedReachable,
+                nickname: "Blocked Reachable",
+                isConnected: false,
+                noisePublicKey: nil,
+                lastSeen: Date()
+            ),
+            TransportPeerSnapshot(
+                peerID: allowedConnected,
+                nickname: "Allowed Connected",
+                isConnected: true,
+                noisePublicKey: nil,
+                lastSeen: Date()
+            )
+        ])
+        identityManager.setBlocked(blockedConnectedFingerprint, isBlocked: true)
+        identityManager.setBlocked(blockedReachableFingerprint, isBlocked: true)
+
+        #expect(viewModel.activeMeshPeerCount() == 1)
+    }
 
     @Test @MainActor
     func synchronousPeerListUpdate_appliesBeforeReturning() {
@@ -278,5 +332,27 @@ struct ChatPeerListCoordinatorContextTests {
         coordinator.didUpdatePeerList([peerA])
         await drainMainActorTasks()
         #expect(context.networkAvailableNotifications.isEmpty)
+    }
+
+    @Test @MainActor
+    func didUpdatePeerList_blockedOnlyThenAllowedPeerNotifiesAndRecordsOnlyAllowedPeer() async {
+        let context = MockChatPeerListContext()
+        let coordinator = ChatPeerListCoordinator(context: context)
+        let blockedPeer = PeerID(str: "0011223344556677")
+        let allowedPeer = PeerID(str: "8899aabbccddeeff")
+        context.connectedMeshPeers = [blockedPeer, allowedPeer]
+        context.blockedMeshPeers = [blockedPeer]
+
+        coordinator.didUpdatePeerList([blockedPeer])
+        await drainMainActorTasks()
+
+        #expect(context.networkAvailableNotifications.isEmpty)
+        #expect(context.recordedSightings.isEmpty)
+
+        coordinator.didUpdatePeerList([blockedPeer, allowedPeer])
+        await drainMainActorTasks()
+
+        #expect(context.networkAvailableNotifications == [1])
+        #expect(context.recordedSightings == [[allowedPeer]])
     }
 }

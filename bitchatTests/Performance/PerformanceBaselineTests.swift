@@ -648,6 +648,7 @@ private struct SeededGenerator: RandomNumberGenerator {
 /// the coordinator's own pipeline.
 @MainActor
 private final class PerfNostrContext: ChatNostrContext {
+    var isApplicationActiveForGeoNotifications = true
     var activeChannel: ChannelID = .location(GeohashChannel(level: .neighborhood, geohash: "u4pruyd"))
     var currentGeohash: String? = "u4pruyd"
     var geoSubscriptionID: String?
@@ -674,7 +675,10 @@ private final class PerfNostrContext: ChatNostrContext {
     func appendGeohashMessageIfAbsent(_ message: BitchatMessage, toGeohash geohash: String) -> Bool { true }
 
     private(set) var handledPublicMessageCount = 0
-    func handlePublicMessage(_ message: BitchatMessage, powBits: Int) { handledPublicMessageCount += 1 }
+    func handlePublicMessage(_ message: BitchatMessage, powBits: Int) -> Bool {
+        handledPublicMessageCount += 1
+        return true
+    }
     func checkForMentions(_ message: BitchatMessage) {}
     func sendHapticFeedback(for message: BitchatMessage) {}
     func parseMentions(from content: String) -> [String] {

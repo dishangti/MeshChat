@@ -2,42 +2,64 @@
 // Theme.swift
 // bitchat
 //
-// This is free and unencumbered software released into the public domain.
-// For more information, see <https://unlicense.org>
+// SPDX-License-Identifier: MIT
 //
 
+import Foundation
 import SwiftUI
 
 /// A user-selectable app-wide visual theme. Persisted by raw value.
 enum AppTheme: String, CaseIterable, Identifiable {
     case matrix
-    case liquidGlass
+    case aurora
 
     var id: String { rawValue }
 
     /// UserDefaults key backing the theme selection.
     static let storageKey = "appTheme"
+    /// One source of truth for fresh installs and invalid persisted values.
+    static let defaultTheme: AppTheme = .aurora
+
+    static func resolve(_ rawValue: String) -> AppTheme {
+        AppTheme(rawValue: rawValue) ?? defaultTheme
+    }
+
+    /// Normalizes a previously persisted selection to a current raw value.
+    /// Unknown values from older versions resolve to the current default and
+    /// are rewritten, so subsequent launches never retain obsolete storage.
+    @discardableResult
+    static func migratePersistedSelection(in defaults: UserDefaults = .standard) -> AppTheme {
+        guard let storedValue = defaults.string(forKey: storageKey) else {
+            return defaultTheme
+        }
+
+        let resolvedTheme = resolve(storedValue)
+        if storedValue != resolvedTheme.rawValue {
+            defaults.set(resolvedTheme.rawValue, forKey: storageKey)
+        }
+        return resolvedTheme
+    }
 
     var displayNameKey: LocalizedStringKey {
         switch self {
         case .matrix: return "app_info.appearance.matrix"
-        case .liquidGlass: return "app_info.appearance.liquid_glass"
+        case .aurora: return "app_info.appearance.aurora"
         }
     }
 
     /// Font design used for themed text. Matrix keeps the terminal monospace;
-    /// liquid glass uses the system default.
+    /// Aurora uses the system default.
     var bodyFontDesign: Font.Design {
         switch self {
         case .matrix: return .monospaced
-        case .liquidGlass: return .default
+        case .aurora: return .default
         }
     }
 
     /// Whether chrome surfaces (header/composer bars, input field) render as
     /// translucent glass/material instead of the flat matrix background.
     var usesGlassChrome: Bool {
-        self == .liquidGlass
+        self == .aurora
     }
 
     /// Discriminator mixed into per-message formatting caches so cached
@@ -46,7 +68,7 @@ enum AppTheme: String, CaseIterable, Identifiable {
     var formatCacheVariant: String {
         switch self {
         case .matrix: return ""
-        case .liquidGlass: return "lg:"
+        case .aurora: return "au:"
         }
     }
 
@@ -55,8 +77,8 @@ enum AppTheme: String, CaseIterable, Identifiable {
         switch self {
         case .matrix:
             return .matrix(colorScheme)
-        case .liquidGlass:
-            return .liquidGlass(colorScheme)
+        case .aurora:
+            return .aurora(colorScheme)
         }
     }
 }
@@ -96,7 +118,7 @@ struct ThemePalette {
         )
     }
 
-    static func liquidGlass(_: ColorScheme) -> ThemePalette {
+    static func aurora(_: ColorScheme) -> ThemePalette {
         ThemePalette(
             background: systemBackground,
             primary: .primary,
@@ -127,7 +149,7 @@ struct ThemePalette {
 }
 
 private struct AppThemeKey: EnvironmentKey {
-    static let defaultValue: AppTheme = .matrix
+    static let defaultValue: AppTheme = .defaultTheme
 }
 
 extension EnvironmentValues {
@@ -152,7 +174,7 @@ struct ThemedPalette: DynamicProperty {
 // MARK: - Themed view helpers
 
 /// Themed replacement for `.font(.bitchatSystem(size:weight:design: .monospaced))`:
-/// monospaced under matrix, system default under liquid glass.
+/// monospaced under Matrix, system default under Aurora.
 private struct ThemedFontModifier: ViewModifier {
     @Environment(\.appTheme) private var theme
     let size: CGFloat
@@ -202,7 +224,7 @@ struct ThemedRootBackground: View {
     }
 }
 
-/// Wraps glass-shape content in real Liquid Glass on OS 26+, with a material
+/// Wraps glass-shape content in native glass on OS 26+, with a material
 /// fallback below that keeps the frosted look.
 private struct GlassPanel<S: Shape>: ViewModifier {
     let shape: S
@@ -228,7 +250,7 @@ private struct GlassPanel<S: Shape>: ViewModifier {
 }
 
 /// Chrome surface for the header and composer. Matrix keeps the original flat
-/// edge-to-edge wash; glass floats the content as an inset Liquid Glass panel
+/// edge-to-edge wash; Aurora floats the content as an inset glass panel
 /// (content is expected to scroll underneath via safe-area insets).
 private struct ThemedChromePanelModifier: ViewModifier {
     @Environment(\.appTheme) private var theme
@@ -285,7 +307,7 @@ extension View {
     }
 
     /// Floating surface for popover-style boxes (autocomplete, command
-    /// suggestions): glass panel under liquid glass, the original flat
+    /// suggestions): glass panel under Aurora, the original flat
     /// background + hairline stroke under matrix.
     func themedOverlayPanel() -> some View {
         modifier(ThemedOverlayPanelModifier())

@@ -268,7 +268,13 @@ private extension ContentComposerView {
                 showImagePicker = true
             }
             .onLongPressGesture(minimumDuration: 0.3) {
-                imagePickerSourceType = .camera
+                // iPad simulators, Macs running the iOS app, and some managed
+                // devices have no camera source.  Falling back to the library
+                // keeps the long-press action safe instead of presenting an
+                // invalid UIImagePickerController configuration.
+                imagePickerSourceType = UIImagePickerController.isSourceTypeAvailable(.camera)
+                    ? .camera
+                    : .photoLibrary
                 showImagePicker = true
             }
             .accessibilityLabel(
@@ -281,7 +287,9 @@ private extension ContentComposerView {
             // The long-press → camera path is unreachable for VoiceOver users;
             // mirror it as a named action.
             .accessibilityAction(named: Text("content.accessibility.take_photo", comment: "Accessibility action name for taking a photo with the camera")) {
-                imagePickerSourceType = .camera
+                imagePickerSourceType = UIImagePickerController.isSourceTypeAvailable(.camera)
+                    ? .camera
+                    : .photoLibrary
                 showImagePicker = true
             }
         #else

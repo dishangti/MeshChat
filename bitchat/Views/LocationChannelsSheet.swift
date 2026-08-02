@@ -7,6 +7,7 @@ import AppKit
 #endif
 struct LocationChannelsSheet: View {
     @Binding var isPresented: Bool
+    var onOpenChannel: (ChannelID) -> Void = { _ in }
     @EnvironmentObject private var locationChannelsModel: LocationChannelsModel
     @EnvironmentObject private var peerListModel: PeerListModel
     @ThemedPalette private var palette
@@ -18,7 +19,7 @@ struct LocationChannelsSheet: View {
     @State private var activeSharePayload: ChannelSharePayload?
 
     private enum Strings {
-        static let title: LocalizedStringKey = "location_channels.title"
+        static let title: LocalizedStringKey = "location_channels.sheet_title"
         static let description: LocalizedStringKey = "location_channels.description"
         static let requestPermissions: LocalizedStringKey = "location_channels.action.request_permissions"
         static let permissionDenied: LocalizedStringKey = "location_channels.permission_denied"
@@ -28,17 +29,17 @@ struct LocationChannelsSheet: View {
         static let teleport: LocalizedStringKey = "location_channels.action.teleport"
         static let bookmarked: LocalizedStringKey = "location_channels.bookmarked_section_title"
 
-        static let quickJoinTitle = String(localized: "location_channels.quick_join.title", defaultValue: "quick join", comment: "Section header in the location channels sheet for the one-tap suggestion of the region channel derived from the device region")
+        static let quickJoinTitle = String(localized: "location_channels.quick_join.title", defaultValue: "Quick Join", comment: "Section header in the location channels sheet for the one-tap suggestion of the region channel derived from the device region")
         static func quickJoinDescription(_ regionName: String) -> String {
             String(
-                format: String(localized: "location_channels.quick_join.description", defaultValue: "the region channel where people from %@ tend to gather — the wide cell around the main population center, not your location. it's public and well-known, so assume it's watched: quick join saves typing a geohash; it doesn't hide you or bypass blocks.", comment: "Caption under the quick join row; %@ is the localized country/region name. States plainly that the cell is the main population center's (not the person's location), that the channel must be assumed watched, and that quick join is discovery, not circumvention"),
+                format: String(localized: "location_channels.quick_join.description", defaultValue: "The region channel where people from %@ tend to gather — the wide cell around the main population center, not your location. It's public and well-known, so assume it's watched: Quick Join saves typing a geohash; it doesn't hide you or bypass blocks.", comment: "Caption under the quick join row; %@ is the localized country/region name. States plainly that the cell is the main population center's (not the person's location), that the channel must be assumed watched, and that quick join is discovery, not circumvention"),
                 locale: .current,
                 regionName
             )
         }
         static func quickJoinLabel(_ regionName: String) -> String {
             String(
-                format: String(localized: "location_channels.quick_join.join_label", defaultValue: "join the %@ region channel", comment: "Accessibility label for the quick join row; %@ is the localized country/region name"),
+                format: String(localized: "location_channels.quick_join.join_label", defaultValue: "Join the %@ Region Channel", comment: "Accessibility label for the quick join row; %@ is the localized country/region name"),
                 locale: .current,
                 regionName
             )
@@ -48,10 +49,10 @@ struct LocationChannelsSheet: View {
         static let switchChannelHint = String(localized: "location_channels.accessibility.switch_hint", comment: "Accessibility hint on a channel row explaining activation switches to it")
         static let addBookmark = String(localized: "location_channels.accessibility.add_bookmark", comment: "Accessibility action name for bookmarking a channel")
         static let removeBookmark = String(localized: "location_channels.accessibility.remove_bookmark", comment: "Accessibility action name for removing a channel bookmark")
-        static let shareChannel = String(localized: "channel.share.action", defaultValue: "share channel", comment: "Context-menu / accessibility action that shares a location-channel invite")
-        static let sharePrecisionTitle = String(localized: "channel.share.precision_warning.title", defaultValue: "share a precise location channel?", comment: "Title of the confirmation before sharing a neighborhood-or-finer geohash invite")
-        static let sharePrecisionMessage = String(localized: "channel.share.precision_warning.message", defaultValue: "this channel covers a small area. an invite sent over sms or imessage is visible to the carrier and both handsets — it discloses interest in that place, not only that someone uses bitchat.", comment: "Body of the confirmation before sharing a fine-precision geohash invite")
-        static let shareAnyway = String(localized: "channel.share.precision_warning.confirm", defaultValue: "share anyway", comment: "Confirms sharing a fine-precision location channel after the OpSec warning")
+        static let shareChannel = String(localized: "channel.share.action", defaultValue: "Share Channel", comment: "Context-menu / accessibility action that shares a location-channel invite")
+        static let sharePrecisionTitle = String(localized: "channel.share.precision_warning.title", defaultValue: "Share a Precise Location Channel?", comment: "Title of the confirmation before sharing a neighborhood-or-finer geohash invite")
+        static let sharePrecisionMessage = String(localized: "channel.share.precision_warning.message", defaultValue: "This channel covers a small area. An invite sent over SMS or iMessage is visible to the carrier and both handsets — it discloses interest in that place, not only that someone uses MeshChat.", comment: "Body of the confirmation before sharing a fine-precision geohash invite")
+        static let shareAnyway = String(localized: "channel.share.precision_warning.confirm", defaultValue: "Share Anyway", comment: "Confirms sharing a fine-precision location channel after the OpSec warning")
 
         static func meshTitle(_ count: Int) -> String {
             let label = String(localized: "location_channels.mesh_label", comment: "Label for the mesh channel row")
@@ -229,8 +230,9 @@ struct LocationChannelsSheet: View {
     private var channelList: some View {
         ScrollView {
             LazyVStack(spacing: 0) {
-                channelRow(title: Strings.meshTitle(peerListModel.reachableMeshPeerCount), subtitlePrefix: Strings.subtitlePrefix(geohash: "bluetooth", coverage: bluetoothRangeString()), isSelected: isMeshSelected, titleColor: standardBlue, titleBold: peerListModel.reachableMeshPeerCount > 0) {
+                channelRow(title: Strings.meshTitle(peerListModel.reachableMeshPeerCount), subtitlePrefix: Strings.subtitle(prefix: "Bluetooth", name: bluetoothRangeString()), isSelected: isMeshSelected, titleColor: standardBlue, titleBold: peerListModel.reachableMeshPeerCount > 0) {
                     locationChannelsModel.select(ChannelID.mesh)
+                    onOpenChannel(.mesh)
                     isPresented = false
                 }
                 .padding(.vertical, 6)
@@ -267,6 +269,7 @@ struct LocationChannelsSheet: View {
                         ) {
                             locationChannelsModel.markTeleported(for: channel.geohash, false)
                             locationChannelsModel.select(ChannelID.location(channel))
+                            onOpenChannel(.location(channel))
                             isPresented = false
                         }
                         .contextMenu {
@@ -365,6 +368,8 @@ struct LocationChannelsSheet: View {
                     let gh = normalized
                     guard isValid else { customError = Strings.invalidGeohash; return }
                     locationChannelsModel.teleport(to: gh)
+                    let channel = GeohashChannel(level: levelForLength(gh.count), geohash: gh)
+                    onOpenChannel(.location(channel))
                     isPresented = false
                 }) {
                     HStack(spacing: 6) {
@@ -405,6 +410,11 @@ struct LocationChannelsSheet: View {
 
                 Button(action: {
                     locationChannelsModel.teleport(to: suggestion.geohash)
+                    let channel = GeohashChannel(
+                        level: levelForLength(suggestion.geohash.count),
+                        geohash: suggestion.geohash
+                    )
+                    onOpenChannel(.location(channel))
                     isPresented = false
                 }) {
                     HStack {
@@ -470,6 +480,7 @@ struct LocationChannelsSheet: View {
                             locationChannelsModel.markTeleported(for: gh, false)
                         }
                         locationChannelsModel.select(ChannelID.location(channel))
+                        onOpenChannel(.location(channel))
                         isPresented = false
                     }
                     .contextMenu {

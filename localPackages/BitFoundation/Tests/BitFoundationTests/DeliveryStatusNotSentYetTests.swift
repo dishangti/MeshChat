@@ -6,8 +6,7 @@
 // status from creation. Public messages start .notSentYet, private messages
 // keep their historical .sending default, and archives persisted while the
 // field was optional decode with the absent field mapped to .notSentYet.
-// This is free and unencumbered software released into the public domain.
-// For more information, see <https://unlicense.org>
+// SPDX-License-Identifier: MIT
 //
 
 import Testing

@@ -208,7 +208,7 @@ struct ContentPeopleSheetView: View {
             Button(
                 String(
                     localized: "content.private_media.legacy_warning.send",
-                    defaultValue: "send visible file",
+                    defaultValue: "Send Visible File",
                     comment: "Destructive confirmation action for one legacy clear private-media send"
                 ),
                 role: .destructive
@@ -420,7 +420,7 @@ private struct ContentPeopleListView: View {
 
 private extension ContentPeopleListView {
     var peopleSheetTitle: String {
-        String(localized: "content.header.people", comment: "Title for the people list sheet").lowercased()
+        String(localized: "content.header.people", comment: "Title for the people list sheet")
     }
 
 }

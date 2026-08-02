@@ -21,6 +21,10 @@ protocol PublicMessagePipelineDelegate: AnyObject {
     /// Returns `false` when the message was already present (ID dedup).
     @discardableResult
     func pipeline(_: PublicMessagePipeline, commit message: BitchatMessage, to conversationID: ConversationID) -> Bool
+    /// Runs only after the store accepted the row. Notification and haptic
+    /// side effects belong here so content-window and ID dedup cannot leak a
+    /// signal for a message the user never sees.
+    func pipeline(_: PublicMessagePipeline, didCommit message: BitchatMessage, to conversationID: ConversationID)
     func pipelinePrewarmMessage(_: PublicMessagePipeline, message: BitchatMessage)
     func pipelineSetBatchingState(_: PublicMessagePipeline, isBatching: Bool)
 }
@@ -78,6 +82,17 @@ final class PublicMessagePipeline {
     func flushIfNeeded() {
         flushBuffer()
     }
+
+    /// Synchronously releases uncommitted plaintext and prevents a scheduled
+    /// pre-wipe batch from repopulating the store after panic.
+    func resetForPanic() {
+        timer?.invalidate()
+        timer = nil
+        buffer.removeAll(keepingCapacity: false)
+        recentBatchSizes.removeAll(keepingCapacity: false)
+        dynamicFlushInterval = baseFlushInterval
+        delegate?.pipelineSetBatchingState(self, isBatching: false)
+    }
 }
 
 private extension PublicMessagePipeline {
@@ -129,14 +144,17 @@ private extension PublicMessagePipeline {
 
         pending.sort { $0.message.timestamp < $1.message.timestamp }
 
+        var committed: [(message: BitchatMessage, conversationID: ConversationID)] = []
         for item in pending {
             guard delegate.pipeline(self, commit: item.message, to: item.conversationID) else { continue }
             delegate.pipeline(self, recordContentKey: item.contentKey, timestamp: item.message.timestamp)
+            committed.append((item.message, item.conversationID))
+            delegate.pipeline(self, didCommit: item.message, to: item.conversationID)
         }
 
-        updateFlushInterval(withBatchSize: pending.count)
+        updateFlushInterval(withBatchSize: committed.count)
 
-        for item in pending {
+        for item in committed {
             delegate.pipelinePrewarmMessage(self, message: item.message)
         }
 

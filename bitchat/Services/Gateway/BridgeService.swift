@@ -2,8 +2,7 @@
 // BridgeService.swift
 // bitchat
 //
-// This is free and unencumbered software released into the public domain.
-// For more information, see <https://unlicense.org>
+// SPDX-License-Identifier: MIT
 //
 
 import BitFoundation
@@ -180,6 +179,10 @@ final class BridgeService: ObservableObject {
     var broadcastToMesh: (@MainActor (Data) -> Void)?
     /// Delivers a validated inbound bridge message to the mesh timeline.
     var injectInbound: (@MainActor (InboundBridgeMessage) -> Void)?
+    /// Checks the authenticated, full Nostr signer key before local delivery.
+    /// The bridge `PeerID` used by presentation is intentionally shortened for
+    /// compatibility and must never be used as the blocking identity.
+    var isSenderBlocked: (@MainActor (String) -> Bool)?
     /// Removes a previously injected bridge row when an authenticated radio
     /// copy arrives later. The UI hook also discards a not-yet-flushed row.
     var removeInjectedInbound: (@MainActor (String) -> Void)?
@@ -239,6 +242,10 @@ final class BridgeService: ObservableObject {
     private var downlinkDrainScheduled = false
     private var presenceTimerArmed = false
     private var lastPresenceAt = Date.distantPast
+    /// Invalidates delayed work armed before a panic reset. Clearing queues is
+    /// insufficient because an old timer could otherwise act on a later,
+    /// newly enabled bridge session.
+    private var lifecycleGeneration: UInt64 = 0
 
     /// pubkey -> (lastSeen, last known nickname).
     private var participants: [String: (lastSeen: Date, nickname: String?)] = [:]
@@ -284,6 +291,54 @@ final class BridgeService: ObservableObject {
         SecureLogger.info("🌉 Bridge mode \(enabled ? "enabled" : "disabled")", category: .session)
         refreshRendezvous()
         onEnabledChanged?(enabled)
+    }
+
+    /// Synchronously removes every bridge-derived identity and message trace
+    /// during a panic wipe. The persisted opt-in is removed as well: silently
+    /// reconnecting a freshly generated identity to the previous rendezvous
+    /// would reveal that the wiped device remained in the same area.
+    func resetForPanic() {
+        lifecycleGeneration &+= 1
+
+        if activeCell != nil || !subscribedCells.isEmpty {
+            closeSubscription?()
+        }
+
+        isEnabled = false
+        nearbyOnly = false
+        defaults.removeObject(forKey: Self.enabledKey)
+
+        activeCell = nil
+        subscribedCells.removeAll(keepingCapacity: false)
+        queuedUplinks.removeAll(keepingCapacity: false)
+        pendingDownlinks.removeAll(keepingCapacity: false)
+        uplinkDepositTimes.removeAll(keepingCapacity: false)
+        downlinkSendTimes.removeAll(keepingCapacity: false)
+        inboundEventTimes.removeAll(keepingCapacity: false)
+        inboundEventTimesBySigner.removeAll(keepingCapacity: false)
+
+        meshBroadcastEventIDs = BoundedIDSet(capacity: Limits.maxTrackedEventIDs)
+        publishedEventIDs = BoundedIDSet(capacity: Limits.maxTrackedEventIDs)
+        rebroadcastEventIDs = BoundedIDSet(capacity: Limits.maxTrackedEventIDs)
+        injectedMessageIDs = BoundedIDSet(capacity: Limits.maxTrackedEventIDs)
+        receivedEventIDs = BoundedIDSet(capacity: Limits.maxTrackedEventIDs)
+        observedRadioMessageIDs = BoundedIDSet(capacity: Limits.maxTrackedEventIDs)
+        injectedRadioAliases.removeAll(keepingCapacity: false)
+        injectedRadioAliasOrder.removeAll(keepingCapacity: false)
+
+        signatureVerificationTokens = Double(Limits.signatureVerificationAttemptsPerMinute)
+        signatureVerificationLastRefillAt = nil
+        downlinkDrainScheduled = false
+        presenceTimerArmed = false
+        lastPresenceAt = .distantPast
+
+        participants.removeAll(keepingCapacity: false)
+        bridgedPeerCount = 0
+        bridgedParticipants = []
+
+        onActiveCellChanged?(nil)
+        onEnabledChanged?(false)
+        SecureLogger.info("🌉 Bridge: panic reset cleared rendezvous state", category: .security)
     }
 
     /// Recomputes the active cell and (re)opens or closes the subscription.
@@ -400,8 +455,9 @@ final class BridgeService: ObservableObject {
     private func armPresenceTimerIfNeeded() {
         guard isEnabled, !presenceTimerArmed else { return }
         presenceTimerArmed = true
+        let generation = lifecycleGeneration
         let fire: @MainActor () -> Void = { [weak self] in
-            guard let self else { return }
+            guard let self, self.lifecycleGeneration == generation else { return }
             self.presenceTimerArmed = false
             self.publishPresence()
             self.pruneParticipants()
@@ -463,6 +519,10 @@ final class BridgeService: ObservableObject {
                 // already present, not that this Nostr signer authored it.
                 // Skip the duplicate row without changing signer locality.
                 SecureLogger.debug("🌉 Bridge: authenticated radio copy already present; bridge alias skipped", category: .session)
+            } else if isSenderBlocked?(message.senderPubkey.lowercased()) == true {
+                // Keep the authenticated participant visible so the user can
+                // reverse the block, but never deliver their content locally.
+                recordParticipant(event.pubkey, nickname: message.participantNickname)
             } else if inject(message) {
                 recordParticipant(event.pubkey, nickname: message.participantNickname)
             }
@@ -692,8 +752,9 @@ final class BridgeService: ObservableObject {
             delay = max(0.05, 60 - now().timeIntervalSince(oldest))
         }
         downlinkDrainScheduled = true
+        let generation = lifecycleGeneration
         let fire: @MainActor () -> Void = { [weak self] in
-            guard let self else { return }
+            guard let self, self.lifecycleGeneration == generation else { return }
             self.downlinkDrainScheduled = false
             self.drainPendingDownlinks()
         }
@@ -730,7 +791,9 @@ final class BridgeService: ObservableObject {
         guard case .message(let message)? = classify(event, cell: carrier.geohash) else {
             return
         }
-        if inject(message) {
+        if isSenderBlocked?(message.senderPubkey.lowercased()) == true {
+            recordParticipant(event.pubkey, nickname: message.participantNickname)
+        } else if inject(message) {
             recordParticipant(event.pubkey, nickname: message.participantNickname)
         }
     }
@@ -739,6 +802,9 @@ final class BridgeService: ObservableObject {
 
     @discardableResult
     private func inject(_ message: InboundBridgeMessage) -> Bool {
+        // Defense in depth for future ingress paths: block on the complete
+        // verified signer key before the compatibility `PeerID` truncates it.
+        guard isSenderBlocked?(message.senderPubkey.lowercased()) != true else { return false }
         guard injectedMessageIDs.insert(message.messageID) else { return false }
         guard !(message.radioMessageIDHint.map(radioCopyAlreadyPresent) ?? false) else {
             return false

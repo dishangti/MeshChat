@@ -10,6 +10,28 @@ import UIKit
 import AppKit
 #endif
 
+enum AppNotificationVisibilityPolicy {
+    static func shouldSuppress(
+        identifier: String,
+        userInfo: [AnyHashable: Any],
+        visibleConversation: AppVisibleConversation?
+    ) -> Bool {
+        if identifier.hasPrefix("private-"),
+           let peerID = PeerID(str: userInfo["peerID"] as? String) {
+            return visibleConversation == .direct(peerID)
+        }
+
+        if identifier.hasPrefix("geo-activity-"),
+           let deepLink = userInfo["deeplink"] as? String,
+           let url = URL(string: deepLink),
+           case .geohash(let geohash) = ChatURLScheme.route(for: url) {
+            return visibleConversation == .geohash(geohash)
+        }
+
+        return false
+    }
+}
+
 @MainActor
 final class AppRuntime: ObservableObject {
     let chatViewModel: ChatViewModel
@@ -28,6 +50,7 @@ final class AppRuntime: ObservableObject {
     let appChromeModel: AppChromeModel
     let boardAlertsModel: BoardAlertsModel
     let sharedContentImportModel: SharedContentImportModel
+    let routeModel = AppRouteModel()
 
     private let idBridge: NostrIdentityBridge
     private var cancellables = Set<AnyCancellable>()
@@ -175,8 +198,11 @@ final class AppRuntime: ObservableObject {
     func handleOpenURL(_ url: URL) {
         record(.openedURL(url.absoluteString))
 
-        if url.scheme == "bitchat", url.host == "share" {
+        guard let route = ChatURLScheme.route(for: url) else { return }
+        if route == .share {
             checkForSharedContent()
+        } else {
+            routeModel.enqueue(route)
         }
     }
 
@@ -264,11 +290,14 @@ final class AppRuntime: ObservableObject {
         if identifier.hasPrefix("private-"), let peerID = PeerID(str: userInfo["peerID"] as? String) {
             record(.notificationOpened(peerID: peerID))
             chatViewModel.startPrivateChat(with: peerID)
+            // Preserve the navigation intent across cold launch even if the
+            // conversation selection changes before MeshChatRootView mounts.
+            routeModel.enqueue(.user(peerID))
         }
 
         if let deepLink = userInfo["deeplink"] as? String, let url = URL(string: deepLink) {
             record(.deepLinkOpened(deepLink))
-            openExternalURL(url)
+            handleOpenURL(url)
         }
     }
 
@@ -276,18 +305,11 @@ final class AppRuntime: ObservableObject {
         forNotificationIdentifier identifier: String,
         userInfo: [AnyHashable: Any]
     ) async -> UNNotificationPresentationOptions {
-        if identifier.hasPrefix("private-"), let peerID = PeerID(str: userInfo["peerID"] as? String) {
-            if conversations.selectedPrivatePeerID == peerID {
-                return []
-            }
-            return [.banner, .sound]
-        }
-
-        if identifier.hasPrefix("geo-activity-"),
-           let deepLink = userInfo["deeplink"] as? String,
-           let geohash = deepLink.components(separatedBy: "/").last,
-           case .location(let channel) = locationChannelsModel.selectedChannel,
-           channel.geohash == geohash {
+        if AppNotificationVisibilityPolicy.shouldSuppress(
+            identifier: identifier,
+            userInfo: userInfo,
+            visibleConversation: routeModel.visibleConversation
+        ) {
             return []
         }
 

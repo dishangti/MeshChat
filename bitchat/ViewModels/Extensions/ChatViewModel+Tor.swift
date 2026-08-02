@@ -73,7 +73,7 @@ extension ChatViewModel {
             self.addGeohashOnlySystemMessage(
                 String(
                     localized: "system.tor.blocked",
-                    defaultValue: "tor could not connect — this network may be blocking it. mesh messaging still works; location channels and internet delivery are paused until tor gets through.",
+                    defaultValue: "Tor could not connect — this network may be blocking it. Mesh messaging still works; location channels and internet delivery are paused until Tor gets through.",
                     comment: "System message shown when Tor bootstrap runs out its deadline without connecting, which is what a network that blocks Tor looks like"
                 )
             )

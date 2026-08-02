@@ -13,6 +13,16 @@ import BitFoundation
 
 struct BLEServiceCoreTests {
 
+    @Test
+    func buildUsesExpectedBitChatDiscoveryUUIDs() {
+        #if BITCHAT_BLE_TESTNET
+        #expect(BLEService.serviceUUID.uuidString == "F47B5E2D-4A9E-4C5A-9B3F-8E1D2C3A4B5A")
+        #else
+        #expect(BLEService.serviceUUID.uuidString == "F47B5E2D-4A9E-4C5A-9B3F-8E1D2C3A4B5C")
+        #endif
+        #expect(BLEService.characteristicUUID.uuidString == "A1B2C3D4-E5F6-4A5B-8C9D-0E1F2A3B4C5D")
+    }
+
     /// Records ping completions (delivered on the main actor) so the
     /// injected-clock test can assert from its own thread.
     private final class MeshPingResultCollector: @unchecked Sendable {

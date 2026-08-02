@@ -2,8 +2,7 @@
 // BoundedIDSet.swift
 // bitchat
 //
-// This is free and unencumbered software released into the public domain.
-// For more information, see <https://unlicense.org>
+// SPDX-License-Identifier: MIT
 //
 
 /// Insertion-ordered string set with a fixed capacity; the oldest entry is

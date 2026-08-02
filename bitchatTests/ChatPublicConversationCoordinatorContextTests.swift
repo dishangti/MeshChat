@@ -59,7 +59,8 @@ private final class MockChatPublicConversationContext: ChatPublicConversationCon
     }
 
     func publicConversationContainsMessage(withID messageID: String, in conversationID: ConversationID) -> Bool {
-        conversations[conversationID]?.contains(where: { $0.id == messageID }) == true
+        conversations[conversationID]?.contains(where: { $0.id == messageID }) == true ||
+            enqueuedMessages.contains { $0.messageID == messageID && $0.conversationID == conversationID }
     }
 
     @discardableResult
@@ -234,10 +235,12 @@ private final class MockChatPublicConversationContext: ChatPublicConversationCon
     }
 
     // Notifications
-    private(set) var mentionNotifications: [(sender: String, message: String)] = []
+    private(set) var mentionNotifications: [
+        (sender: String, message: String, topic: NotificationTopic)
+    ] = []
 
-    func notifyMention(from sender: String, message: String) {
-        mentionNotifications.append((sender, message))
+    func notifyMention(from sender: String, message: String, topic: NotificationTopic) {
+        mentionNotifications.append((sender, message, topic))
     }
 
     static let dummyIdentity = NostrIdentity(
@@ -280,7 +283,7 @@ struct ChatPublicConversationCoordinatorContextTests {
         let coordinator = ChatPublicConversationCoordinator(context: context)
         let message = makePublicMessage(id: "mesh-msg-1", content: "Hello Mesh")
 
-        coordinator.handlePublicMessage(message)
+        #expect(coordinator.handlePublicMessage(message))
 
         // Visible-channel arrival: buffered for the batched pipeline flush
         // (which commits to the store), not appended directly.
@@ -293,7 +296,7 @@ struct ChatPublicConversationCoordinatorContextTests {
 
         // Already committed to the store: not re-enqueued.
         context.appendPublicMessage(message, to: .mesh)
-        coordinator.handlePublicMessage(message)
+        #expect(!coordinator.handlePublicMessage(message))
         #expect(context.enqueuedMessageIDs == ["mesh-msg-1"])
     }
 
@@ -304,17 +307,56 @@ struct ChatPublicConversationCoordinatorContextTests {
 
         // Blocked sender: dropped before rate limiting and storage.
         context.blockedMessageIDs = ["blocked-msg"]
-        coordinator.handlePublicMessage(makePublicMessage(id: "blocked-msg"))
+        #expect(!coordinator.handlePublicMessage(makePublicMessage(id: "blocked-msg")))
         #expect(context.rateLimitChecks.isEmpty)
         #expect(context.publicMessages(in: .mesh).isEmpty)
         #expect(context.enqueuedMessageIDs.isEmpty)
 
         // Rate limited: consulted, then dropped before storage.
         context.rateLimitAllowed = false
-        coordinator.handlePublicMessage(makePublicMessage(id: "limited-msg"))
+        #expect(!coordinator.handlePublicMessage(makePublicMessage(id: "limited-msg")))
         #expect(context.rateLimitChecks.count == 1)
         #expect(context.publicMessages(in: .mesh).isEmpty)
         #expect(context.enqueuedMessageIDs.isEmpty)
+    }
+
+    @Test @MainActor
+    func pipelineContentDedup_notifiesOnlyTheCommittedRow() {
+        let context = MockChatPublicConversationContext()
+        let coordinator = ChatPublicConversationCoordinator(context: context)
+        let pipeline = PublicMessagePipeline(baseFlushInterval: 60)
+        pipeline.delegate = coordinator
+        let timestamp = Date()
+        let senderPeerID = PeerID(str: "aabbccddeeff0011")
+        let first = BitchatMessage(
+            id: "same-content-1",
+            sender: "alice",
+            content: "hello @me",
+            timestamp: timestamp,
+            isRelay: false,
+            isPrivate: false,
+            senderPeerID: senderPeerID,
+            mentions: ["me"]
+        )
+        let duplicate = BitchatMessage(
+            id: "same-content-2",
+            sender: "alice",
+            content: "hello @me",
+            timestamp: timestamp.addingTimeInterval(0.1),
+            isRelay: false,
+            isPrivate: false,
+            senderPeerID: senderPeerID,
+            mentions: ["me"]
+        )
+
+        pipeline.enqueue(first, to: .mesh)
+        pipeline.enqueue(duplicate, to: .mesh)
+        pipeline.flushIfNeeded()
+
+        #expect(context.publicMessages(in: .mesh).map(\.id) == [first.id])
+        #expect(context.mentionNotifications.count == 1)
+        #expect(context.mentionNotifications.first?.message == first.content)
+        #expect(context.prewarmedMessageIDs == [first.id])
     }
 
     @Test @MainActor
@@ -530,6 +572,23 @@ struct ChatPublicConversationCoordinatorContextTests {
         #expect(context.mentionNotifications.count == 1)
         #expect(context.mentionNotifications.first?.sender == "alice")
         #expect(context.mentionNotifications.first?.message == "hey @me")
+        #expect(context.mentionNotifications.first?.topic == .mesh)
+
+        // Location-channel identities route their mentions through the
+        // independent #location notification switch.
+        coordinator.checkForMentions(
+            BitchatMessage(
+                id: "mention-location",
+                sender: "carol",
+                content: "hello @me",
+                timestamp: Date(),
+                isRelay: false,
+                senderPeerID: PeerID(nostr: String(repeating: "ab", count: 32)),
+                mentions: ["me"]
+            )
+        )
+        #expect(context.mentionNotifications.count == 2)
+        #expect(context.mentionNotifications.last?.topic == .locationChannels)
 
         // Mentioning someone else does not notify.
         coordinator.checkForMentions(
@@ -542,7 +601,7 @@ struct ChatPublicConversationCoordinatorContextTests {
                 mentions: ["bob"]
             )
         )
-        #expect(context.mentionNotifications.count == 1)
+        #expect(context.mentionNotifications.count == 2)
 
         // My own message mentioning myself does not notify.
         coordinator.checkForMentions(
@@ -555,7 +614,7 @@ struct ChatPublicConversationCoordinatorContextTests {
                 mentions: ["me"]
             )
         )
-        #expect(context.mentionNotifications.count == 1)
+        #expect(context.mentionNotifications.count == 2)
     }
 
 }

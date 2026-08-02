@@ -35,7 +35,8 @@ protocol NostrInboundPipelineContext: AnyObject {
     /// `powBits` is the validated NIP-13 difficulty of the source event
     /// (`NostrPoW.validatedDifficulty`); it relaxes the per-sender rate limit
     /// downstream.
-    func handlePublicMessage(_ message: BitchatMessage, powBits: Int)
+    @discardableResult
+    func handlePublicMessage(_ message: BitchatMessage, powBits: Int) -> Bool
     func checkForMentions(_ message: BitchatMessage)
     func sendHapticFeedback(for message: BitchatMessage)
     func parseMentions(from content: String) -> [String]
@@ -130,6 +131,13 @@ final class NostrInboundPipeline {
 
         context.recordProcessedNostrEvent(event.id)
 
+        // A block is an identity-wide visibility boundary. Reject the full
+        // signer key before nickname, mapping, participant, teleport, or
+        // notification state can be mutated.
+        guard !context.isNostrBlocked(pubkeyHexLowercased: event.pubkey.lowercased()) else {
+            return
+        }
+
         if let gh = context.currentGeohash,
            let myGeoIdentity = try? context.deriveNostrIdentity(forGeohash: gh),
            myGeoIdentity.publicKeyHex.lowercased() == event.pubkey.lowercased() {
@@ -184,12 +192,7 @@ final class NostrInboundPipeline {
 
         Task { @MainActor [weak context] in
             guard let context else { return }
-            let isBlocked = context.isNostrBlocked(pubkeyHexLowercased: event.pubkey.lowercased())
             context.handlePublicMessage(message, powBits: powBits)
-            if !isBlocked {
-                context.checkForMentions(message)
-                context.sendHapticFeedback(for: message)
-            }
         }
     }
 
@@ -280,8 +283,6 @@ final class NostrInboundPipeline {
         Task { @MainActor [weak context] in
             guard let context else { return }
             context.handlePublicMessage(message, powBits: powBits)
-            context.checkForMentions(message)
-            context.sendHapticFeedback(for: message)
         }
     }
 

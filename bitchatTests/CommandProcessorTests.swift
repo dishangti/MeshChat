@@ -13,7 +13,7 @@ struct CommandProcessorTests {
         let result = processor.process("/slap @system")
         switch result {
         case .error(let message):
-            #expect(message == "cannot slap system: not found")
+            #expect(message == "Cannot slap system: not found")
         default:
             Issue.record("Expected error result")
         }
@@ -26,7 +26,7 @@ struct CommandProcessorTests {
         let result = processor.process("/hug @system")
         switch result {
         case .error(let message):
-            #expect(message == "cannot hug system: not found")
+            #expect(message == "Cannot hug system: not found")
         default:
             Issue.record("Expected error result")
         }
@@ -39,7 +39,7 @@ struct CommandProcessorTests {
         let result = processor.process("/slap")
         switch result {
         case .error(let message):
-            #expect(message == "usage: /slap <nickname>")
+            #expect(message == "Usage: /slap <nickname>")
         default:
             Issue.record("Expected error result for usage message")
         }
@@ -59,7 +59,7 @@ struct CommandProcessorTests {
 
         switch result {
         case .success(let message):
-            #expect(message == "started private chat with alice")
+            #expect(message == "Started private chat with alice")
         default:
             Issue.record("Expected success result")
         }
@@ -86,7 +86,7 @@ struct CommandProcessorTests {
 
         switch result {
         case .success(let message):
-            #expect(message == "online: alice, bob")
+            #expect(message == "Online: alice, bob")
         default:
             Issue.record("Expected success result")
         }
@@ -112,7 +112,7 @@ struct CommandProcessorTests {
 
         switch result {
         case .success(let message):
-            #expect(message == "online: bob")
+            #expect(message == "Online: bob")
         default:
             Issue.record("Expected success result")
         }
@@ -187,7 +187,7 @@ struct CommandProcessorTests {
         }
         #expect(transport.sentPrivateMessages.count == 1)
         #expect(transport.sentPrivateMessages.first?.content == "* 🫂 me hugs you *")
-        #expect(context.localPrivateSystemMessages.first?.content == "🫂 you hugged bob")
+        #expect(context.localPrivateSystemMessages.first?.content == "🫂 You hugged bob")
         #expect(context.localPrivateSystemMessages.first?.peerID == peerID)
     }
 
@@ -234,7 +234,7 @@ struct CommandProcessorTests {
 
         switch result {
         case .success(let message):
-            #expect(message == "blocked peers: bob | geohash blocks: carol")
+            #expect(message == "Blocked peers: bob | geohash blocks: carol")
         default:
             Issue.record("Expected success result")
         }
@@ -255,7 +255,7 @@ struct CommandProcessorTests {
         }
         switch blockResult {
         case .success(let message):
-            #expect(message == "blocked bob. you will no longer receive messages from them")
+            #expect(message == "Blocked bob. You will no longer receive messages from them")
         default:
             Issue.record("Expected success result")
         }
@@ -266,7 +266,7 @@ struct CommandProcessorTests {
         }
         switch unblockResult {
         case .success(let message):
-            #expect(message == "unblocked bob")
+            #expect(message == "Unblocked bob")
         default:
             Issue.record("Expected success result")
         }
@@ -285,7 +285,7 @@ struct CommandProcessorTests {
         }
         switch blockResult {
         case .success(let message):
-            #expect(message == "blocked carol in geohash chats")
+            #expect(message == "Blocked carol in geohash chats")
         default:
             Issue.record("Expected success result")
         }
@@ -296,7 +296,7 @@ struct CommandProcessorTests {
         }
         switch unblockResult {
         case .success(let message):
-            #expect(message == "unblocked carol in geohash chats")
+            #expect(message == "Unblocked carol in geohash chats")
         default:
             Issue.record("Expected success result")
         }
@@ -324,7 +324,7 @@ struct CommandProcessorTests {
 
         switch result {
         case .success(let message):
-            #expect(message == "added alice to favorites")
+            #expect(message == "Added alice to favorites")
         default:
             Issue.record("Expected success result")
         }
@@ -364,7 +364,7 @@ struct CommandProcessorTests {
 
         switch result {
         case .error(let message):
-            #expect(message == "favorites are only for mesh peers in #mesh")
+            #expect(message == "Favorites are only for mesh peers in #mesh")
         default:
             Issue.record("Expected error result")
         }
@@ -377,7 +377,7 @@ struct CommandProcessorTests {
         let processor = makePayProcessor(context: MockCommandContextProvider())
         switch processor.process("/pay") {
         case .success(let message):
-            #expect(message?.contains("usage: /pay") == true)
+            #expect(message?.contains("Usage: /pay") == true)
         default:
             Issue.record("Expected success (usage) result")
         }
@@ -455,7 +455,7 @@ struct CommandProcessorTests {
         for bad in ["/pay \(truncatedV4)", "/pay \(junkV4)"] {
             switch processor.process(bad) {
             case .error(let message):
-                #expect(message.contains("invalid cashu token") == true)
+                #expect(message.contains("Invalid Cashu token") == true)
             default:
                 Issue.record("Expected error for \(bad)")
             }

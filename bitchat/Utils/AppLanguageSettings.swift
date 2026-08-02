@@ -22,7 +22,8 @@ enum AppLanguageSettings {
     static func endonym(for code: String) -> String {
         let locale = Locale(identifier: code)
         let name = locale.localizedString(forIdentifier: code) ?? code
-        return name.lowercased(with: locale)
+        guard let first = name.first else { return name }
+        return String(first).uppercased(with: locale) + name.dropFirst()
     }
 
     /// Persists the override (nil clears it). AppleLanguages drives the

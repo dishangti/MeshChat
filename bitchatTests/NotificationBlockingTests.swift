@@ -2,8 +2,7 @@
 // NotificationBlockingTests.swift
 // bitchatTests
 //
-// This is free and unencumbered software released into the public domain.
-// For more information, see <https://unlicense.org>
+// SPDX-License-Identifier: MIT
 //
 // BCH-01-012: Tests for notification blocking feature
 
@@ -107,5 +106,20 @@ struct NotificationBlockingTests {
         // Note: The API expects lowercased input, so callers must normalize
         // This test verifies the contract that pubkeys should be lowercased before checking
         // The fix in ChatViewModel+Nostr.swift normalizes via event.pubkey.lowercased()
+    }
+
+    @Test("Nostr blocking distinguishes full keys that share a bridge prefix")
+    func nostrBlocking_usesCompletePublicKey() {
+        let keychain = MockKeychain()
+        let manager = MockIdentityManager(keychain)
+        let sharedPrefix = "0123456789abcdef"
+        let blockedKey = sharedPrefix + String(repeating: "a", count: 48)
+        let allowedKey = sharedPrefix + String(repeating: "b", count: 48)
+
+        manager.setNostrBlocked(blockedKey, isBlocked: true)
+
+        #expect(manager.isNostrBlocked(pubkeyHexLowercased: blockedKey))
+        #expect(!manager.isNostrBlocked(pubkeyHexLowercased: allowedKey))
+        #expect(!manager.isNostrBlocked(pubkeyHexLowercased: sharedPrefix))
     }
 }

@@ -2,8 +2,7 @@
 // KeychainErrorHandlingTests.swift
 // bitchatTests
 //
-// This is free and unencumbered software released into the public domain.
-// For more information, see <https://unlicense.org>
+// SPDX-License-Identifier: MIT
 //
 // BCH-01-009: Tests for proper keychain error classification and handling
 

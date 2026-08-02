@@ -27,8 +27,9 @@ protocol ChatPeerListContext: AnyObject {
     var unifiedPeers: [BitchatPeer] { get }
     func isPeerConnected(_ peerID: PeerID) -> Bool
     func isPeerReachable(_ peerID: PeerID) -> Bool
+    func isPeerBlocked(_ peerID: PeerID) -> Bool
     /// Number of mesh peers currently connected or reachable, from the
-    /// transport's live peer snapshots.
+    /// transport's live peer snapshots, excluding blocked peers.
     func activeMeshPeerCount() -> Int
     func registerEphemeralSession(peerID: PeerID)
     func updateEncryptionStatusForPeers()
@@ -45,7 +46,8 @@ extension ChatViewModel: ChatPeerListContext {
     // `isConnected`, `privateMessages(for:)`, `unreadPrivateMessages`,
     // `hasTrackedPrivateChatSelection`, `updatePrivateChatPeerIfNeeded()`,
     // `cleanupOldReadReceipts()`, `unifiedPeers`, `isPeerConnected(_:)`,
-    // `isPeerReachable(_:)`, `registerEphemeralSession(peerID:)`, and
+    // `isPeerReachable(_:)`, `isPeerBlocked(_:)`,
+    // `registerEphemeralSession(peerID:)`, and
     // `updateEncryptionStatusForPeers()` are shared requirements with the
     // other contexts or satisfied by existing `ChatViewModel` members. The
     // member below flattens the nested transport access into an intent-named
@@ -55,7 +57,10 @@ extension ChatViewModel: ChatPeerListContext {
         meshService
             .currentPeerSnapshots()
             .filter { snapshot in
-                snapshot.isConnected || meshService.isPeerReachable(snapshot.peerID)
+                guard snapshot.isConnected || meshService.isPeerReachable(snapshot.peerID) else {
+                    return false
+                }
+                return !isPeerBlocked(snapshot.peerID)
             }
             .count
     }
@@ -116,11 +121,7 @@ private extension ChatPeerListCoordinator {
         context.isConnected = !peers.isEmpty
         cleanupStaleUnreadPeerIDs()
 
-        let meshPeers = peers.filter { peerID in
-            context.isPeerConnected(peerID) || context.isPeerReachable(peerID)
-        }
-
-        handleNetworkAvailability(meshPeers)
+        handleNetworkAvailability(peers)
 
         for peerID in peers {
             context.registerEphemeralSession(peerID: peerID)
@@ -134,7 +135,13 @@ private extension ChatPeerListCoordinator {
     }
 
     @MainActor
-    func handleNetworkAvailability(_ meshPeers: [PeerID]) {
+    func handleNetworkAvailability(_ peers: [PeerID]) {
+        let meshPeers = peers.filter { peerID in
+            guard context.isPeerConnected(peerID) || context.isPeerReachable(peerID) else {
+                return false
+            }
+            return !context.isPeerBlocked(peerID)
+        }
         let meshPeerSet = Set(meshPeers)
 
         if meshPeerSet.isEmpty {

@@ -6,8 +6,7 @@
 // bitfield widens from 1 to 2 bytes, and clients that don't know the bit
 // simply ignore it.
 //
-// This is free and unencumbered software released into the public domain.
-// For more information, see <https://unlicense.org>
+// SPDX-License-Identifier: MIT
 //
 
 import Foundation

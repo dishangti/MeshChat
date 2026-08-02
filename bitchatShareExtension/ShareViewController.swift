@@ -2,8 +2,7 @@
 // ShareViewController.swift
 // bitchatShareExtension
 //
-// This is free and unencumbered software released into the public domain.
-// For more information, see <https://unlicense.org>
+// SPDX-License-Identifier: MIT
 //
 
 import UIKit
@@ -13,7 +12,7 @@ import UniformTypeIdentifiers
 /// Avoids deprecated Social framework and SLComposeServiceViewController.
 final class ShareViewController: UIViewController {
     // Bundle.main.bundleIdentifier would get the extension's bundleID
-    private static let groupID = Bundle.main.object(forInfoDictionaryKey: "AppGroupID") as? String ?? "group.chat.bitchat"
+    private static let groupID = Bundle.main.object(forInfoDictionaryKey: "AppGroupID") as? String
 
     private enum Strings {
         static let nothingToShare = String(localized: "share.status.nothing_to_share", comment: "Shown when the share extension receives no content")
@@ -161,7 +160,8 @@ final class ShareViewController: UIViewController {
     }
 
     private func stageAndFinish(_ payload: SharedContentPayload) {
-        guard let defaults = UserDefaults(suiteName: Self.groupID) else {
+        guard let groupID = Self.groupID,
+              let defaults = UserDefaults(suiteName: groupID) else {
             finishWithMessage(Strings.failedToSave)
             return
         }

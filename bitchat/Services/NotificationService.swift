@@ -2,8 +2,7 @@
 // NotificationService.swift
 // bitchat
 //
-// This is free and unencumbered software released into the public domain.
-// For more information, see <https://unlicense.org>
+// SPDX-License-Identifier: MIT
 //
 
 import BitFoundation
@@ -23,11 +22,16 @@ protocol NotificationAuthorizing {
 }
 
 protocol NotificationRequestDelivering {
-    func add(_ request: UNNotificationRequest)
+    func add(_ request: UNNotificationRequest, completionHandler: @escaping () -> Void)
 }
 
 protocol NotificationCategoryRegistering {
     func setCategories(_ categories: Set<UNNotificationCategory>)
+}
+
+protocol NotificationClearing {
+    func removeAllDeliveredNotifications()
+    func removeAllPendingNotificationRequests()
 }
 
 private final class NotificationCenterAuthorizerAdapter: NotificationAuthorizing {
@@ -52,10 +56,8 @@ private final class NotificationCenterRequestDelivererAdapter: NotificationReque
         self.center = center
     }
 
-    func add(_ request: UNNotificationRequest) {
-        Task {
-            try? await center.add(request)
-        }
+    func add(_ request: UNNotificationRequest, completionHandler: @escaping () -> Void) {
+        center.add(request) { _ in completionHandler() }
     }
 }
 
@@ -71,6 +73,22 @@ private final class NotificationCenterCategoryRegistrarAdapter: NotificationCate
     }
 }
 
+private final class NotificationCenterClearingAdapter: NotificationClearing {
+    private let center: UNUserNotificationCenter
+
+    init(center: UNUserNotificationCenter) {
+        self.center = center
+    }
+
+    func removeAllDeliveredNotifications() {
+        center.removeAllDeliveredNotifications()
+    }
+
+    func removeAllPendingNotificationRequests() {
+        center.removeAllPendingNotificationRequests()
+    }
+}
+
 private struct NoopNotificationAuthorizer: NotificationAuthorizing {
     func requestAuthorization(
         options: UNAuthorizationOptions,
@@ -81,17 +99,24 @@ private struct NoopNotificationAuthorizer: NotificationAuthorizing {
 }
 
 private struct NoopNotificationRequestDeliverer: NotificationRequestDelivering {
-    func add(_ request: UNNotificationRequest) {}
+    func add(_ request: UNNotificationRequest, completionHandler: @escaping () -> Void) {
+        completionHandler()
+    }
 }
 
 private struct NoopNotificationCategoryRegistrar: NotificationCategoryRegistering {
     func setCategories(_ categories: Set<UNNotificationCategory>) {}
 }
 
+private struct NoopNotificationClearer: NotificationClearing {
+    func removeAllDeliveredNotifications() {}
+    func removeAllPendingNotificationRequests() {}
+}
+
 final class NotificationService {
     static let shared = NotificationService()
 
-    /// Category for the "bitchatters nearby" notification, carrying the wave quick action.
+    /// Category for the nearby MeshChat users notification, carrying the wave quick action.
     static let nearbyCategoryID = "chat.bitchat.category.nearby"
     static let waveActionID = "chat.bitchat.action.wave"
 
@@ -100,16 +125,50 @@ final class NotificationService {
     /// or disclosing which geohash it came from.
     private enum Redacted {
         static var directMessageTitle: String {
-            String(localized: "notification.redacted.dm.title", defaultValue: "🔒 new dm", comment: "Lock-screen notification title for a received direct message when message previews are hidden; deliberately names neither the sender nor the content")
+            String(localized: "notification.redacted.dm.title", defaultValue: "🔒 New DM", comment: "Lock-screen notification title for a received direct message when message previews are hidden; deliberately names neither the sender nor the content")
         }
         static var mentionTitle: String {
-            String(localized: "notification.redacted.mention.title", defaultValue: "🫵 you were mentioned", comment: "Lock-screen notification title telling someone they were mentioned when message previews are hidden; deliberately omits who mentioned them")
+            String(localized: "notification.redacted.mention.title", defaultValue: "🫵 You Were Mentioned", comment: "Lock-screen notification title telling someone they were mentioned when message previews are hidden; deliberately omits who mentioned them")
         }
         static var geohashActivityTitle: String {
-            String(localized: "notification.redacted.geohash.title", defaultValue: "📍 new activity nearby", comment: "Lock-screen notification title for activity in a location channel when message previews are hidden; deliberately omits the geohash")
+            String(localized: "notification.redacted.geohash.title", defaultValue: "📍 New Activity Nearby", comment: "Lock-screen notification title for activity in a location channel when message previews are hidden; deliberately omits the geohash")
         }
         static var body: String {
-            String(localized: "notification.redacted.body", defaultValue: "open bitchat to read", comment: "Lock-screen notification body shown in place of the message text when message previews are hidden")
+            String(localized: "notification.redacted.body", defaultValue: "Open MeshChat to read", comment: "Lock-screen notification body shown in place of the message text when message previews are hidden")
+        }
+        static var securityTitle: String {
+            String(localized: "notification.redacted.security.title", defaultValue: "Verify Encryption", comment: "Privacy-preserving title for a verification notification when previews are hidden")
+        }
+    }
+
+    /// Notification copy used only when the user has chosen to show previews.
+    private enum Visible {
+        static func directMessageTitle(sender: String) -> String {
+            String(
+                format: String(localized: "notification.dm.title", defaultValue: "🔒 DM from %@", comment: "Notification title for a visible direct-message preview; %@ is the sender name"),
+                locale: .current,
+                sender
+            )
+        }
+
+        static func mentionTitle(sender: String) -> String {
+            String(
+                format: String(localized: "notification.mention.title", defaultValue: "🫵 You were mentioned by %@", comment: "Notification title for a visible mention preview; %@ is the sender name"),
+                locale: .current,
+                sender
+            )
+        }
+
+        static var nearbyTitle: String {
+            String(localized: "notification.nearby.title", defaultValue: "👥 MeshChat users nearby!", comment: "Time-sensitive notification title announcing nearby MeshChat users")
+        }
+
+        static func nearbyBody(peerCount: Int) -> String {
+            if peerCount == 1 {
+                return String(localized: "notification.nearby.body.one", defaultValue: "1 person around", comment: "Notification body when exactly one MeshChat user is nearby")
+            }
+            let format = String(localized: "notification.nearby.body.other", defaultValue: "%lld people around", comment: "Notification body when multiple MeshChat users are nearby; %lld is the number of people")
+            return String(format: format, locale: .current, Int64(peerCount))
         }
     }
 
@@ -128,6 +187,30 @@ final class NotificationService {
     private let authorizer: NotificationAuthorizing
     private let requestDeliverer: NotificationRequestDelivering
     private let categoryRegistrar: NotificationCategoryRegistering
+    private let notificationClearer: NotificationClearing
+    private let notificationPolicyProvider: (NotificationTopic) -> Bool
+
+    private enum DeliveryOperation {
+        case deliver(
+            request: UNNotificationRequest,
+            topic: NotificationTopic,
+            generation: UInt64
+        )
+        case clear
+    }
+
+    /// Completion-aware FIFO for the system notification center. A pause or
+    /// panic increments the generation immediately, invalidating queued adds,
+    /// then runs its clear only after an add already accepted by the system
+    /// center has completed. This prevents an old alert from appearing after
+    /// the clear merely because `UNUserNotificationCenter.add` was in flight.
+    private let deliveryLock = NSLock()
+    private var deliveryGeneration: UInt64 = 0
+    private var deliveryOperations: [DeliveryOperation] = []
+    private var isProcessingDeliveryOperation = false
+    private var activeDeliveryToken: UInt64?
+    private var nextDeliveryToken: UInt64 = 0
+    private let deliveryCompletionTimeout: TimeInterval
 
     /// Returns true if running in test environment (XCTest, Swift Testing, or CI)
     private var isRunningTests: Bool {
@@ -148,12 +231,16 @@ final class NotificationService {
             self.authorizer = NoopNotificationAuthorizer()
             self.requestDeliverer = NoopNotificationRequestDeliverer()
             self.categoryRegistrar = NoopNotificationCategoryRegistrar()
+            self.notificationClearer = NoopNotificationClearer()
         } else {
             let center = UNUserNotificationCenter.current()
             self.authorizer = NotificationCenterAuthorizerAdapter(center: center)
             self.requestDeliverer = NotificationCenterRequestDelivererAdapter(center: center)
             self.categoryRegistrar = NotificationCenterCategoryRegistrarAdapter(center: center)
+            self.notificationClearer = NotificationCenterClearingAdapter(center: center)
         }
+        self.notificationPolicyProvider = { NotificationDeliverySettings.allows($0) }
+        self.deliveryCompletionTimeout = 5
     }
 
     internal init(
@@ -161,13 +248,19 @@ final class NotificationService {
         authorizer: NotificationAuthorizing,
         requestDeliverer: NotificationRequestDelivering,
         categoryRegistrar: NotificationCategoryRegistering = NoopNotificationCategoryRegistrar(),
-        hidePreviewsProvider: @escaping () -> Bool = { NotificationPrivacySettings.hideMessagePreviews }
+        hidePreviewsProvider: @escaping () -> Bool = { NotificationPrivacySettings.hideMessagePreviews },
+        notificationClearer: NotificationClearing = NoopNotificationClearer(),
+        notificationPolicyProvider: @escaping (NotificationTopic) -> Bool = { _ in true },
+        deliveryCompletionTimeout: TimeInterval = 5
     ) {
         self.isRunningTestsProvider = isRunningTestsProvider
         self.authorizer = authorizer
         self.requestDeliverer = requestDeliverer
         self.categoryRegistrar = categoryRegistrar
         self.hidePreviewsProvider = hidePreviewsProvider
+        self.notificationClearer = notificationClearer
+        self.notificationPolicyProvider = notificationPolicyProvider
+        self.deliveryCompletionTimeout = deliveryCompletionTimeout
     }
 
     func requestAuthorization() {
@@ -201,6 +294,7 @@ final class NotificationService {
         title: String,
         body: String,
         identifier: String,
+        topic: NotificationTopic,
         userInfo: [String: Any]? = nil,
         interruptionLevel: UNNotificationInterruptionLevel = .active,
         categoryIdentifier: String? = nil
@@ -225,26 +319,32 @@ final class NotificationService {
             trigger: nil // Deliver immediately
         )
 
-        requestDeliverer.add(request)
+        enqueueDelivery(request, topic: topic)
     }
     
-    func sendMentionNotification(from sender: String, message: String) {
-        let title = hidePreviews ? Redacted.mentionTitle : "🫵 you were mentioned by \(sender)"
+    func sendMentionNotification(from sender: String, message: String, topic: NotificationTopic) {
+        let title = hidePreviews ? Redacted.mentionTitle : Visible.mentionTitle(sender: sender)
         let body = hidePreviews ? Redacted.body : message
         let identifier = "mention-\(UUID().uuidString)"
 
-        sendLocalNotification(title: title, body: body, identifier: identifier)
+        sendLocalNotification(title: title, body: body, identifier: identifier, topic: topic)
     }
 
     func sendPrivateMessageNotification(from sender: String, message: String, peerID: PeerID) {
-        let title = hidePreviews ? Redacted.directMessageTitle : "🔒 DM from \(sender)"
+        let title = hidePreviews ? Redacted.directMessageTitle : Visible.directMessageTitle(sender: sender)
         let body = hidePreviews ? Redacted.body : message
         let identifier = "private-\(UUID().uuidString)"
         // Routing payload, not display copy: `userInfo` never reaches the lock
         // screen, and the conversation to open still has to be identifiable.
         let userInfo = ["peerID": peerID.id, "senderName": sender]
 
-        sendLocalNotification(title: title, body: body, identifier: identifier, userInfo: userInfo)
+        sendLocalNotification(
+            title: title,
+            body: body,
+            identifier: identifier,
+            topic: .directMessages,
+            userInfo: userInfo
+        )
     }
 
     // Geohash public chat notification with deep link to a specific geohash
@@ -256,12 +356,18 @@ final class NotificationService {
         let identifier = "geo-activity-\(geohash)-\(Date().timeIntervalSince1970)"
         let deeplink = "bitchat://geohash/\(geohash)"
         let userInfo: [String: Any] = ["deeplink": deeplink]
-        sendLocalNotification(title: title, body: body, identifier: identifier, userInfo: userInfo)
+        sendLocalNotification(
+            title: title,
+            body: body,
+            identifier: identifier,
+            topic: .locationChannels,
+            userInfo: userInfo
+        )
     }
 
     func sendNetworkAvailableNotification(peerCount: Int) {
-        let title = "👥 bitchatters nearby!"
-        let body = peerCount == 1 ? "1 person around" : "\(peerCount) people around"
+        let title = Visible.nearbyTitle
+        let body = Visible.nearbyBody(peerCount: peerCount)
         // Fixed identifier so iOS updates the existing notification instead of creating new ones
         let identifier = "network-available"
 
@@ -269,8 +375,164 @@ final class NotificationService {
             title: title,
             body: body,
             identifier: identifier,
+            topic: .mesh,
             interruptionLevel: .timeSensitive,
             categoryIdentifier: Self.nearbyCategoryID
         )
+    }
+
+    func sendSecurityNotification(title: String, body: String, identifier: String) {
+        sendLocalNotification(
+            title: hidePreviews ? Redacted.securityTitle : title,
+            body: hidePreviews ? Redacted.body : body,
+            identifier: identifier,
+            topic: .security
+        )
+    }
+
+    func clearAllNotifications() {
+        guard !isRunningTests else { return }
+        enqueueClear()
+    }
+
+    private func enqueueDelivery(_ request: UNNotificationRequest, topic: NotificationTopic) {
+        deliveryLock.lock()
+        let generation = deliveryGeneration
+        deliveryOperations.append(.deliver(request: request, topic: topic, generation: generation))
+        let shouldStart = !isProcessingDeliveryOperation
+        if shouldStart { isProcessingDeliveryOperation = true }
+        deliveryLock.unlock()
+
+        if shouldStart { processNextDeliveryOperation() }
+    }
+
+    private func enqueueClear() {
+        deliveryLock.lock()
+        deliveryGeneration &+= 1
+        // Panic/pause must release queued request bodies and routing metadata
+        // synchronously. Keep only the barrier; new-generation deliveries may
+        // be appended after the lock is released.
+        deliveryOperations.removeAll(keepingCapacity: false)
+        deliveryOperations.append(.clear)
+        let shouldStart = !isProcessingDeliveryOperation
+        if shouldStart { isProcessingDeliveryOperation = true }
+        deliveryLock.unlock()
+
+        if shouldStart {
+            // No add is in flight, so processing the barrier now is the
+            // immediate privacy clear.
+            processNextDeliveryOperation()
+        } else {
+            // Clear once immediately for privacy; the queued barrier clears
+            // again after an already accepted add completes.
+            clearSystemNotifications()
+        }
+    }
+
+    private func processNextDeliveryOperation() {
+        while true {
+            deliveryLock.lock()
+            guard !deliveryOperations.isEmpty else {
+                isProcessingDeliveryOperation = false
+                deliveryLock.unlock()
+                return
+            }
+            let operation = deliveryOperations.removeFirst()
+            let currentGeneration = deliveryGeneration
+            deliveryLock.unlock()
+
+            switch operation {
+            case .deliver(let request, let topic, let generation):
+                guard generation == currentGeneration,
+                      notificationPolicyProvider(topic) else {
+                    continue
+                }
+
+                deliveryLock.lock()
+                guard generation == deliveryGeneration else {
+                    deliveryLock.unlock()
+                    continue
+                }
+                nextDeliveryToken &+= 1
+                let token = nextDeliveryToken
+                activeDeliveryToken = token
+                deliveryLock.unlock()
+
+                // Test adapters may complete inline, while the system center
+                // completes asynchronously. Detect the inline case so a long
+                // skipped/synchronous backlog drains as a loop, not recursion.
+                let completionLock = NSLock()
+                var addReturned = false
+                var completedInline = false
+                requestDeliverer.add(request) { [weak self] in
+                    completionLock.lock()
+                    if addReturned {
+                        completionLock.unlock()
+                        self?.finishDeliveryOperation(
+                            token: token,
+                            generation: generation,
+                            reachedCenterCompletion: true
+                        )
+                    } else {
+                        completedInline = true
+                        completionLock.unlock()
+                    }
+                }
+                completionLock.lock()
+                addReturned = true
+                let shouldContinueInline = completedInline
+                completionLock.unlock()
+
+                if shouldContinueInline {
+                    deliveryLock.lock()
+                    if activeDeliveryToken == token {
+                        activeDeliveryToken = nil
+                    }
+                    deliveryLock.unlock()
+                    continue
+                }
+
+                DispatchQueue.global(qos: .utility).asyncAfter(
+                    deadline: .now() + deliveryCompletionTimeout
+                ) { [weak self] in
+                    self?.finishDeliveryOperation(
+                        token: token,
+                        generation: generation,
+                        reachedCenterCompletion: false
+                    )
+                }
+                return
+
+            case .clear:
+                clearSystemNotifications()
+                continue
+            }
+        }
+    }
+
+    /// Releases a stalled FIFO slot after a bounded wait. If the system add
+    /// callback arrives later and a pause/panic advanced the generation, it
+    /// performs one more clear so the late request cannot reappear.
+    private func finishDeliveryOperation(
+        token: UInt64,
+        generation: UInt64,
+        reachedCenterCompletion: Bool
+    ) {
+        deliveryLock.lock()
+        guard activeDeliveryToken == token else {
+            let shouldClearLateCompletion = reachedCenterCompletion && generation != deliveryGeneration
+            deliveryLock.unlock()
+            if shouldClearLateCompletion { clearSystemNotifications() }
+            return
+        }
+        activeDeliveryToken = nil
+        deliveryLock.unlock()
+
+        processNextDeliveryOperation()
+    }
+
+    private func clearSystemNotifications() {
+        notificationClearer.removeAllDeliveredNotifications()
+        notificationClearer.removeAllPendingNotificationRequests()
     }
 }

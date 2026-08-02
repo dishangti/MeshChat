@@ -26,6 +26,27 @@ final class VerificationServiceTests: XCTestCase {
         XCTAssertEqual(first, second)
     }
 
+    func test_verificationQR_keepsCanonicalSchemeAndAcceptsMeshChatAlias() throws {
+        let (_, noise) = makeService()
+        let canonicalString = try makeSignedQR(
+            noise: noise,
+            nickname: "alias-\(UUID().uuidString)",
+            npub: nil,
+            ts: Int64(Date().timeIntervalSince1970)
+        )
+        let canonicalURL = try XCTUnwrap(URL(string: canonicalString))
+
+        XCTAssertEqual(canonicalURL.scheme, ChatURLScheme.canonical)
+
+        var aliasComponents = try XCTUnwrap(
+            URLComponents(url: canonicalURL, resolvingAgainstBaseURL: false)
+        )
+        aliasComponents.scheme = ChatURLScheme.meshChatAlias
+        let aliasURL = try XCTUnwrap(aliasComponents.url)
+
+        XCTAssertNotNil(VerificationService.VerificationQR.fromURL(aliasURL))
+    }
+
     func test_verifyScannedQR_rejectsExpiredPayload() throws {
         let (service, noise) = makeService()
         let oldTimestamp = Int64(Date().addingTimeInterval(-3600).timeIntervalSince1970)

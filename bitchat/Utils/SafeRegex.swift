@@ -3,8 +3,7 @@
 // bitchat
 //
 // Non-trapping construction for the app's compiled-in regex patterns.
-// This is free and unencumbered software released into the public domain.
-// For more information, see <https://unlicense.org>
+// SPDX-License-Identifier: MIT
 //
 
 import BitLogger

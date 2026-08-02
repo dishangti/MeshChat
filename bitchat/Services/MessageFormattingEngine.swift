@@ -3,7 +3,7 @@
 // bitchat
 //
 // Handles message text formatting, including mentions, hashtags, URLs, and tokens.
-// This is free and unencumbered software released into the public domain.
+// SPDX-License-Identifier: MIT
 //
 
 import BitFoundation

@@ -6,7 +6,7 @@
 // a sonar shows the radio scanning, the daily sightings tally proves the
 // spot isn't dead, the liveliest nearby geohash conversation is one tap
 // away, and notes left at this place surface when there are any.
-// This is free and unencumbered software released into the public domain.
+// SPDX-License-Identifier: MIT
 //
 
 import SwiftUI

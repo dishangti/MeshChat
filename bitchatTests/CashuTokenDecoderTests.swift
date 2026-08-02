@@ -6,7 +6,7 @@
 // CBOR traversal, URI normalization, detection ranges, and adversarial
 // (truncated / garbage / huge) input. The decoder renders attacker-controlled
 // message content, so "never crash" matters as much as "decode correctly".
-// This is free and unencumbered software released into the public domain.
+// SPDX-License-Identifier: MIT
 //
 
 import Foundation

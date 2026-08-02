@@ -113,6 +113,18 @@ final class PeerListModel: ObservableObject {
         )
     }
 
+    func isBridgeUserBlocked(pubkeyHex: String) -> Bool {
+        chatViewModel.isBridgeUserBlocked(pubkeyHex: pubkeyHex)
+    }
+
+    func blockBridgeUser(pubkeyHex: String, displayName: String) {
+        chatViewModel.blockBridgeUser(pubkeyHex: pubkeyHex, displayName: displayName)
+    }
+
+    func unblockBridgeUser(pubkeyHex: String, displayName: String) {
+        chatViewModel.unblockBridgeUser(pubkeyHex: pubkeyHex, displayName: displayName)
+    }
+
     private func bind() {
         chatViewModel.$allPeers
             .receive(on: DispatchQueue.main)

@@ -21,6 +21,7 @@ private final class TestPipelineDelegate: PublicMessagePipelineDelegate {
     /// Message IDs the commit rejects (simulates the store's ID dedup).
     var rejectedMessageIDs: Set<String> = []
     private(set) var recordedContentKeys: [String] = []
+    private(set) var committedSideEffectMessageIDs: [String] = []
     private(set) var batchingStates: [Bool] = []
 
     func messages(in conversationID: ConversationID) -> [BitchatMessage] {
@@ -44,6 +45,10 @@ private final class TestPipelineDelegate: PublicMessagePipelineDelegate {
         guard !rejectedMessageIDs.contains(message.id) else { return false }
         committed.append((message, conversationID))
         return true
+    }
+
+    func pipeline(_: PublicMessagePipeline, didCommit message: BitchatMessage, to conversationID: ConversationID) {
+        committedSideEffectMessageIDs.append(message.id)
     }
 
     func pipelinePrewarmMessage(_: PublicMessagePipeline, message: BitchatMessage) {}
@@ -97,6 +102,7 @@ struct PublicMessagePipelineTests {
 
         #expect(delegate.messages(in: .mesh).count == 1)
         #expect(delegate.messages(in: .mesh).first?.content == "Same")
+        #expect(delegate.committedSideEffectMessageIDs == ["a"])
     }
 
     @Test @MainActor
@@ -127,6 +133,7 @@ struct PublicMessagePipelineTests {
 
         #expect(delegate.messages(in: .mesh).isEmpty)
         #expect(delegate.recordedContentKeys.isEmpty)
+        #expect(delegate.committedSideEffectMessageIDs.isEmpty)
     }
 
     @Test @MainActor

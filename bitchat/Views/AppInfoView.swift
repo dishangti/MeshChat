@@ -1,13 +1,21 @@
 import SwiftUI
+import UserNotifications
 
-/// The sheet behind the "bitchat/" logo: a segmented Settings/Info surface.
+enum AppInfoPane: String {
+    static let storageKey = "appInfo.selectedPane"
+    case settings
+    case info
+}
+
+/// The sheet behind the MeshChat logo: a segmented Settings/Info surface.
 /// Settings gathers every user preference (appearance, voice, connectivity
 /// toggles, panic wipe); Info keeps the about content (how-to, features,
 /// privacy, symbols legend).
 struct AppInfoView: View {
     @Environment(\.dismiss) var dismiss
+    @Environment(\.scenePhase) private var scenePhase
     @ThemedPalette private var palette
-    @AppStorage(AppTheme.storageKey) private var appThemeRawValue = AppTheme.matrix.rawValue
+    @AppStorage(AppTheme.storageKey) private var appThemeRawValue = AppTheme.defaultTheme.rawValue
     @EnvironmentObject private var locationChannelsModel: LocationChannelsModel
     @ObservedObject private var bridgeService = BridgeService.shared
 
@@ -17,31 +25,45 @@ struct AppInfoView: View {
     /// Wipes all local data. Nil (previews, missing wiring) hides the danger
     /// zone entirely.
     var onPanicWipe: (@MainActor () -> Void)?
+    /// Secure identity data stays behind the app model; Settings receives only
+    /// presentation rows and an explicit unblock intent.
+    var blockedPeopleProvider: (@MainActor () -> [BlockedPersonRow])?
+    var onUnblockPerson: (@MainActor (BlockedPersonRow) -> Void)?
+    /// Injectable because Swift Package view tests do not run inside an app
+    /// bundle, where `UNUserNotificationCenter.current()` is unavailable.
+    var notificationAuthorizationProvider: (@escaping (UNAuthorizationStatus) -> Void) -> Void = { completion in
+        UNUserNotificationCenter.current().getNotificationSettings { settings in
+            completion(settings.authorizationStatus)
+        }
+    }
 
     @State private var showTopology = false
     @State private var liveVoiceEnabled = PTTSettings.liveVoiceEnabled
     @State private var locationNotesEnabled = LocationNotesSettings.enabled
     @State private var hideMessagePreviews = NotificationPrivacySettings.hideMessagePreviews
+    @State private var directMessageNotifications = NotificationDeliverySettings.isEnabled(.directMessages)
+    @State private var locationNotifications = NotificationDeliverySettings.isEnabled(.locationChannels)
+    @State private var meshNotifications = NotificationDeliverySettings.isEnabled(.mesh)
+    @State private var securityNotifications = NotificationDeliverySettings.isEnabled(.security)
+    @State private var notificationPauseUntil = NotificationDeliverySettings.activePauseUntil()
+    @State private var notificationPauseTask: Task<Void, Never>?
+    @State private var notificationAuthorizationStatus: UNAuthorizationStatus?
+    @State private var blockedPeople: [BlockedPersonRow] = []
     @State private var customRelays = NostrRelaySettings.customRelays()
     @State private var relayInput = ""
     @State private var relayError: String?
     @ObservedObject private var locationManager = LocationChannelManager.shared
-    /// Sticky across opens: first-ever open lands on Info (the gentler
-    /// introduction), and afterwards the sheet reopens wherever it was left.
-    @AppStorage("appInfo.selectedPane") private var selectedPane: Pane = .info
+    /// The presenting entry point chooses Info (app logo) or Settings (gear)
+    /// by writing this shared selection before the sheet appears.
+    @AppStorage(AppInfoPane.storageKey) private var selectedPane: AppInfoPane = .info
     @State private var showPanicConfirmation = false
     @AppStorage(AppLanguageSettings.overrideKey) private var languageOverride = ""
     /// The override changed this session; localization resolves at process
     /// start, so surface the restart hint.
     @State private var showLanguageRestartNote = false
 
-    private enum Pane: String {
-        case settings
-        case info
-    }
-
     private var selectedTheme: AppTheme {
-        AppTheme(rawValue: appThemeRawValue) ?? .matrix
+        AppTheme.resolve(appThemeRawValue)
     }
 
     private var textColor: Color { palette.primary }
@@ -57,27 +79,27 @@ struct AppInfoView: View {
         /// New keys carry their English copy inline (defaultValue) until the
         /// i18n pass lands them in the catalog; moved keys keep their homes.
         enum Settings {
-            static let tabPickerLabel = String(localized: "app_info.tab.picker_label", defaultValue: "view", comment: "Accessibility label for the segmented control switching between the settings and info panes of the app info sheet")
-            static let tabSettings = String(localized: "app_info.tab.settings", defaultValue: "settings", comment: "Segmented control label for the settings pane of the app info sheet")
-            static let tabInfo = String(localized: "app_info.tab.info", defaultValue: "info", comment: "Segmented control label for the info pane of the app info sheet")
+            static let tabPickerLabel = String(localized: "app_info.tab.picker_label", defaultValue: "View", comment: "Accessibility label for the segmented control switching between the settings and info panes of the app info sheet")
+            static let tabSettings = String(localized: "app_info.tab.settings", defaultValue: "Settings", comment: "Segmented control label for the settings pane of the app info sheet")
+            static let tabInfo = String(localized: "app_info.tab.info", defaultValue: "Info", comment: "Segmented control label for the info pane of the app info sheet")
 
-            static let connectivityTitle = String(localized: "app_info.settings.connectivity.title", defaultValue: "CONNECTIVITY", comment: "Section header (uppercase) for the connectivity toggles: mesh bridge, internet gateway, tor routing")
+            static let connectivityTitle = String(localized: "app_info.settings.connectivity.title", defaultValue: "Connectivity", comment: "Section header for the connectivity toggles: mesh bridge, internet gateway, and Tor routing")
 
-            static let languageTitle = String(localized: "app_info.settings.language.title", defaultValue: "LANGUAGE", comment: "Section header (uppercase) for the app language picker in settings")
-            static let languagePickerLabel = String(localized: "app_info.settings.language.picker_label", defaultValue: "app language", comment: "Label of the app language picker row in settings")
-            static let languageSystem = String(localized: "app_info.settings.language.system", defaultValue: "system default", comment: "Menu option that clears the in-app language override so the app follows the device language")
-            static let languageRestartNote = String(localized: "app_info.settings.language.restart_note", defaultValue: "restart bitchat to apply the new language", comment: "Caption shown after the user picks a different app language; the change takes effect on next launch")
+            static let languageTitle = String(localized: "app_info.settings.language.title", defaultValue: "Language", comment: "Section header for the app language picker in settings")
+            static let languagePickerLabel = String(localized: "app_info.settings.language.picker_label", defaultValue: "App Language", comment: "Label of the app language picker row in settings")
+            static let languageSystem = String(localized: "app_info.settings.language.system", defaultValue: "System Default", comment: "Menu option that clears the in-app language override so the app follows the device language")
+            static let languageRestartNote = String(localized: "app_info.settings.language.restart_note", defaultValue: "Restart MeshChat to apply the new language.", comment: "Caption shown after the user picks a different app language; the change takes effect on next launch")
 
-            static let bridgeTitle = String(localized: "app_info.settings.bridge.title", defaultValue: "mesh bridge", comment: "Title of the mesh bridge toggle in settings")
-            static let bridgeSubtitle = String(localized: "app_info.settings.bridge.subtitle", defaultValue: "joins nearby mesh islands over the internet: what you say in the mesh channel also reaches people in your area beyond radio range, and their messages appear here marked with the network glyph. while you have internet, your device also carries bridge and location-channel traffic for phones around you that have none.", comment: "Subtitle explaining what the mesh bridge toggle does")
+            static let bridgeTitle = String(localized: "app_info.settings.bridge.title", defaultValue: "Mesh Bridge", comment: "Title of the mesh bridge toggle in settings")
+            static let bridgeSubtitle = String(localized: "app_info.settings.bridge.subtitle", defaultValue: "Joins nearby mesh islands over the internet: what you say in the mesh channel also reaches people in your area beyond radio range, and their messages appear here marked with the network glyph. While you have internet, your device also carries bridge and location-channel traffic for phones around you that have none.", comment: "Subtitle explaining what the mesh bridge toggle does")
             static func bridgeCell(_ cell: String) -> String {
                 String(
-                    format: String(localized: "app_info.settings.bridge.cell", defaultValue: "rendezvous cell: %@", comment: "Caption under the mesh bridge toggle showing the geohash cell the bridge is meeting on"),
+                    format: String(localized: "app_info.settings.bridge.cell", defaultValue: "Rendezvous cell: %@", comment: "Caption under the mesh bridge toggle showing the geohash cell the bridge is meeting on"),
                     locale: .current,
                     cell
                 )
             }
-            static let bridgeNoCell = String(localized: "app_info.settings.bridge.no_cell", defaultValue: "no rendezvous cell yet — needs location access or a nearby bridge peer", comment: "Caption under the mesh bridge toggle when the bridge is on but has no geohash cell to meet on")
+            static let bridgeNoCell = String(localized: "app_info.settings.bridge.no_cell", defaultValue: "No rendezvous cell yet — needs location access or a nearby bridge peer.", comment: "Caption under the mesh bridge toggle when the bridge is on but has no geohash cell to meet on")
 
             // Moved from LocationChannelsSheet; keys unchanged. (The former
             // internet-gateway toggle is gone: the bridge switch drives all
@@ -87,25 +109,25 @@ struct AppInfoView: View {
             // setting as location-channels-only. It covers private messages and
             // relay-directory refreshes too, and said nothing about the cost of
             // switching it off.
-            static let torSubtitle = String(localized: "app_info.settings.tor.subtitle", defaultValue: "sends internet traffic through tor, so relay operators see tor's address instead of yours. covers location channels and private messages delivered over the internet. recommended: on.", comment: "Subtitle for the tor routing toggle in settings, explaining what it covers")
-            static let torOffWarning = String(localized: "app_info.settings.tor.off_warning", defaultValue: "tor is off: every relay you connect to can see your IP address, including relays carrying your private messages.", comment: "Warning shown under the tor toggle while tor is switched off, stating that relay operators can see the device IP address")
+            static let torSubtitle = String(localized: "app_info.settings.tor.subtitle", defaultValue: "Sends internet traffic through Tor, so relay operators see Tor's address instead of yours. Covers location channels and private messages delivered over the internet. Recommended: on.", comment: "Subtitle for the Tor routing toggle in settings, explaining what it covers")
+            static let torOffWarning = String(localized: "app_info.settings.tor.off_warning", defaultValue: "Tor is off: every relay you connect to can see your IP address, including relays carrying your private messages.", comment: "Warning shown under the Tor toggle while Tor is switched off, stating that relay operators can see the device IP address")
 
-            static let relaysTitle = String(localized: "app_info.settings.relays.title", defaultValue: "private message relays", comment: "Title of the relay list editor in settings")
-            static let relaysSubtitle = String(localized: "app_info.settings.relays.subtitle", defaultValue: "when the mesh can't reach someone, private messages travel through these relays. the built-in ones are well-known addresses that a network filter can block, so you can add your own — including .onion addresses.", comment: "Subtitle explaining what the relay list is for and why someone would add a relay")
-            static let relayBuiltIn = String(localized: "app_info.settings.relays.built_in", defaultValue: "built in", comment: "Label marking a relay as one of the built-in relays, which cannot be removed")
+            static let relaysTitle = String(localized: "app_info.settings.relays.title", defaultValue: "Private Message Relays", comment: "Title of the relay list editor in settings")
+            static let relaysSubtitle = String(localized: "app_info.settings.relays.subtitle", defaultValue: "When the mesh can't reach someone, private messages travel through these relays. The built-in ones are well-known addresses that a network filter can block, so you can add your own — including .onion addresses.", comment: "Subtitle explaining what the relay list is for and why someone would add a relay")
+            static let relayBuiltIn = String(localized: "app_info.settings.relays.built_in", defaultValue: "Built-in", comment: "Label marking a relay as one of the built-in relays, which cannot be removed")
             static let relayPlaceholder = String(localized: "app_info.settings.relays.placeholder", defaultValue: "wss://relay.example.com", comment: "Placeholder text in the field for adding a relay address")
-            static let relayAdd = String(localized: "app_info.settings.relays.add", defaultValue: "add", comment: "Button that adds the typed relay address to the list")
-            static let relayRemove = String(localized: "app_info.settings.relays.remove", defaultValue: "remove relay", comment: "Accessibility label for the button that removes an added relay")
+            static let relayAdd = String(localized: "app_info.settings.relays.add", defaultValue: "Add", comment: "Button that adds the typed relay address to the list")
+            static let relayRemove = String(localized: "app_info.settings.relays.remove", defaultValue: "Remove Relay", comment: "Accessibility label for the button that removes an added relay")
 
             static func relayError(_ failure: NostrRelaySettings.AddFailure) -> String {
                 switch failure {
                 case .malformed:
-                    return String(localized: "app_info.settings.relays.error.malformed", defaultValue: "that doesn't look like a relay address. try wss://host.", comment: "Error shown when a typed relay address cannot be parsed")
+                    return String(localized: "app_info.settings.relays.error.malformed", defaultValue: "That doesn't look like a relay address. Try wss://host.", comment: "Error shown when a typed relay address cannot be parsed")
                 case .alreadyPresent:
-                    return String(localized: "app_info.settings.relays.error.duplicate", defaultValue: "that relay is already in the list.", comment: "Error shown when the typed relay address is already in the list")
+                    return String(localized: "app_info.settings.relays.error.duplicate", defaultValue: "That relay is already in the list.", comment: "Error shown when the typed relay address is already in the list")
                 case .limitReached:
                     return String(
-                        format: String(localized: "app_info.settings.relays.error.limit", defaultValue: "you can add up to %d relays.", comment: "Error shown when the relay list is already at its maximum size; %d is that maximum"),
+                        format: String(localized: "app_info.settings.relays.error.limit", defaultValue: "You can add up to %d relays.", comment: "Error shown when the relay list is already at its maximum size; %d is that maximum"),
                         locale: .current,
                         NostrRelaySettings.maxCustomRelays
                     )
@@ -114,15 +136,35 @@ struct AppInfoView: View {
             static let toggleOn: LocalizedStringKey = "common.toggle.on"
             static let toggleOff: LocalizedStringKey = "common.toggle.off"
 
-            static let privacyTitle = String(localized: "app_info.settings.privacy.title", defaultValue: "PRIVACY", comment: "Section header (uppercase) for privacy settings such as hiding notification previews")
-            static let hidePreviewsTitle = String(localized: "app_info.settings.hide_previews.title", defaultValue: "hide message previews", comment: "Title of the setting that keeps message text, sender names, and geohashes out of lock-screen notifications")
-            static let hidePreviewsSubtitle = String(localized: "app_info.settings.hide_previews.subtitle", defaultValue: "notifications say that something arrived without showing the message, who sent it, or which location channel it came from. anyone holding your locked phone learns nothing from the lock screen. on by default.", comment: "Subtitle explaining what hiding notification message previews does")
+            static let privacyTitle = String(localized: "app_info.settings.privacy.title", defaultValue: "Privacy", comment: "Section header for privacy settings such as hiding notification previews")
+            static let hidePreviewsTitle = String(localized: "app_info.settings.hide_previews.title", defaultValue: "Hide Message Previews", comment: "Title of the setting that keeps message text, sender names, and geohashes out of lock-screen notifications")
+            static let hidePreviewsSubtitle = String(localized: "app_info.settings.hide_previews.subtitle", defaultValue: "Notifications say that something arrived without showing the message, who sent it, or which location channel it came from. Anyone holding your locked phone learns nothing from the lock screen. On by default.", comment: "Subtitle explaining what hiding notification message previews does")
 
-            static let dangerTitle = String(localized: "app_info.settings.danger.title", defaultValue: "DANGER ZONE", comment: "Section header (uppercase) for destructive actions in settings")
-            static let panicButton = String(localized: "app_info.settings.danger.panic_button", defaultValue: "panic wipe", comment: "Button in the settings danger zone that erases all local data after confirmation")
-            static let panicNote = String(localized: "app_info.settings.danger.panic_note", defaultValue: "erases all messages, keys, and identity. triple-tapping the bitchat/ logo does the same, instantly.", comment: "Caption under the panic wipe button explaining what it does and the triple-tap shortcut")
-            static let panicConfirmTitle = String(localized: "app_info.settings.danger.panic_confirm_title", defaultValue: "wipe all data?", comment: "Title of the confirmation dialog before a panic wipe")
-            static let panicConfirmAction = String(localized: "app_info.settings.danger.panic_confirm_action", defaultValue: "wipe everything", comment: "Destructive confirmation button that performs the panic wipe")
+            static let notificationsTitle = String(localized: "app_info.settings.notifications.title", defaultValue: "Notifications", comment: "Section header for notification delivery preferences")
+            static let notificationsDeniedTitle = String(localized: "app_info.settings.notifications.denied.title", defaultValue: "Notifications Are Off in System Settings", comment: "Title of the warning shown when system notification permission has been denied")
+            static let notificationsDeniedMessage = String(localized: "app_info.settings.notifications.denied.message", defaultValue: "MeshChat cannot show alerts until notifications are allowed in System Settings. Your choices below will take effect when permission is restored.", comment: "Explanation shown when system notification permission has been denied")
+            static let notificationsDeniedOpenSettings = String(localized: "app_info.settings.notifications.denied.open_settings", defaultValue: "Open System Settings", comment: "Button opening this app's notification permission in system settings")
+            static let pauseAllNotifications = String(localized: "app_info.settings.notifications.pause_all", defaultValue: "Pause All Notifications", comment: "Menu label for temporarily pausing every local notification")
+            static let resumeNotifications = String(localized: "app_info.settings.notifications.resume", defaultValue: "Resume Notifications", comment: "Button that ends a temporary notification pause")
+            static let pausedUntil = String(localized: "app_info.settings.notifications.paused_until", defaultValue: "Paused until %@", comment: "Status text showing when notifications will automatically resume; parameter is a localized date and time")
+            static let pauseOneHour = String(localized: "app_info.settings.notifications.pause.1_hour", defaultValue: "1 hour", comment: "Notification pause duration of one hour")
+            static let pauseEightHours = String(localized: "app_info.settings.notifications.pause.8_hours", defaultValue: "8 hours", comment: "Notification pause duration of eight hours")
+            static let pauseOneDay = String(localized: "app_info.settings.notifications.pause.24_hours", defaultValue: "24 hours", comment: "Notification pause duration of twenty-four hours")
+            static let pauseOneWeek = String(localized: "app_info.settings.notifications.pause.1_week", defaultValue: "1 week", comment: "Notification pause duration of one week")
+            static let directNotificationsTitle = String(localized: "app_info.settings.notifications.direct.title", defaultValue: "Private Messages & Groups", comment: "Notification topic for direct and private group conversations")
+            static let directNotificationsSubtitle = String(localized: "app_info.settings.notifications.direct.subtitle", defaultValue: "Direct and group conversation alerts", comment: "Description of the private-message notification topic")
+            static let meshNotificationsTitle = String(localized: "app_info.settings.notifications.mesh.title", defaultValue: "Mesh Activity", comment: "Notification topic for nearby mesh activity")
+            static let meshNotificationsSubtitle = String(localized: "app_info.settings.notifications.mesh.subtitle", defaultValue: "Nearby peers and mesh events", comment: "Description of the mesh notification topic")
+            static let locationNotificationsTitle = String(localized: "app_info.settings.notifications.location.title", defaultValue: "#location Channels", comment: "Notification topic for location channels")
+            static let locationNotificationsSubtitle = String(localized: "app_info.settings.notifications.location.subtitle", defaultValue: "Messages from joined #location channels", comment: "Description of the location-channel notification topic")
+            static let securityNotificationsTitle = String(localized: "app_info.settings.notifications.security.title", defaultValue: "Security & Verification", comment: "Notification topic for encryption and verification events")
+            static let securityNotificationsSubtitle = String(localized: "app_info.settings.notifications.security.subtitle", defaultValue: "Encryption and verification alerts", comment: "Description of the security notification topic")
+
+            static let dangerTitle = String(localized: "app_info.settings.danger.title", defaultValue: "Danger Zone", comment: "Section header for destructive actions in settings")
+            static let panicButton = String(localized: "app_info.settings.danger.panic_button", defaultValue: "Panic Wipe", comment: "Button in the settings danger zone that erases all local data after confirmation")
+            static let panicNote = String(localized: "app_info.settings.danger.panic_note", defaultValue: "Erases all messages, keys, and identity. Triple-tapping the MeshChat logo does the same, instantly.", comment: "Caption under the panic wipe button explaining what it does and the triple-tap shortcut")
+            static let panicConfirmTitle = String(localized: "app_info.settings.danger.panic_confirm_title", defaultValue: "Wipe All Data?", comment: "Title of the confirmation dialog before a panic wipe")
+            static let panicConfirmAction = String(localized: "app_info.settings.danger.panic_confirm_action", defaultValue: "Wipe Everything", comment: "Destructive confirmation button that performs the panic wipe")
         }
 
         enum Features {
@@ -159,8 +201,8 @@ struct AppInfoView: View {
             )
             static let bridge = AppInfoFeatureInfo(
                 icon: "network",
-                resolvedTitle: String(localized: "app_info.features.bridge.title", defaultValue: "mesh bridging", comment: "Feature row title for the mesh bridge in the app info sheet"),
-                resolvedDescription: String(localized: "app_info.features.bridge.description", defaultValue: "links nearby mesh islands through the internet so one crowd isn't split by radio range", comment: "Feature row description for the mesh bridge in the app info sheet")
+                resolvedTitle: String(localized: "app_info.features.bridge.title", defaultValue: "Mesh Bridging", comment: "Feature row title for the mesh bridge in the app info sheet"),
+                resolvedDescription: String(localized: "app_info.features.bridge.description", defaultValue: "Links nearby mesh islands through the internet so one crowd isn't split by radio range.", comment: "Feature row description for the mesh bridge in the app info sheet")
             )
         }
 
@@ -173,7 +215,7 @@ struct AppInfoView: View {
                 ("antenna.radiowaves.left.and.right", nil, String(localized: "app_info.legend.mesh_connected")),
                 ("point.3.filled.connected.trianglepath.dotted", nil, String(localized: "app_info.legend.mesh_relayed")),
                 ("globe", nil, String(localized: "app_info.legend.nostr")),
-                ("network", Color.cyan, String(localized: "app_info.legend.bridged", defaultValue: "message arrived across a mesh bridge", comment: "Symbols legend entry for the cyan network glyph shown on messages carried across a mesh bridge")),
+                ("network", Color.cyan, String(localized: "app_info.legend.bridged", defaultValue: "Message arrived across a mesh bridge.", comment: "Symbols legend entry for the cyan network glyph shown on messages carried across a mesh bridge")),
                 ("person", nil, String(localized: "app_info.legend.offline")),
                 ("mappin.and.ellipse", nil, String(localized: "app_info.legend.location_nearby")),
                 ("face.dashed", nil, String(localized: "app_info.legend.teleported")),
@@ -279,6 +321,9 @@ struct AppInfoView: View {
                 MeshTopologyView(provider: topologyProvider)
             }
         }
+        .onAppear(perform: handleAppear)
+        .onDisappear(perform: handleDisappear)
+        .onChange(of: scenePhase, perform: handleScenePhaseChange)
         #else
         NavigationView {
             VStack(spacing: 0) {
@@ -302,6 +347,9 @@ struct AppInfoView: View {
                 MeshTopologyView(provider: topologyProvider)
             }
         }
+        .onAppear(perform: handleAppear)
+        .onDisappear(perform: handleDisappear)
+        .onChange(of: scenePhase, perform: handleScenePhaseChange)
         #endif
     }
 
@@ -309,8 +357,8 @@ struct AppInfoView: View {
 
     private var panePicker: some View {
         Picker(Strings.Settings.tabPickerLabel, selection: $selectedPane) {
-            Text(Strings.Settings.tabInfo).tag(Pane.info)
-            Text(Strings.Settings.tabSettings).tag(Pane.settings)
+            Text(Strings.Settings.tabInfo).tag(AppInfoPane.info)
+            Text(Strings.Settings.tabSettings).tag(AppInfoPane.settings)
         }
         .pickerStyle(.segmented)
         .labelsHidden()
@@ -543,6 +591,12 @@ struct AppInfoView: View {
                 }
             }
 
+            notificationSettingsSection
+
+            if !blockedPeople.isEmpty {
+                blockedPeopleSection
+            }
+
             // Danger zone
             if onPanicWipe != nil {
                 VStack(alignment: .leading, spacing: 12) {
@@ -564,7 +618,7 @@ struct AppInfoView: View {
                         titleVisibility: .visible
                     ) {
                         Button(Strings.Settings.panicConfirmAction, role: .destructive) {
-                            onPanicWipe?()
+                            performPanicWipe()
                         }
                         Button("common.cancel", role: .cancel) {}
                     }
@@ -577,6 +631,282 @@ struct AppInfoView: View {
             }
         }
         .padding()
+    }
+
+    @ViewBuilder
+    private var notificationSettingsSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            SectionHeader(verbatim: Strings.Settings.notificationsTitle)
+
+            settingsCard {
+                if notificationAuthorizationStatus == .denied {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Label(Strings.Settings.notificationsDeniedTitle, systemImage: "bell.slash.fill")
+                            .bitchatFont(size: 12, weight: .semibold)
+                            .foregroundColor(palette.alertRed)
+
+                        Text(verbatim: Strings.Settings.notificationsDeniedMessage)
+                            .bitchatFont(size: 11)
+                            .foregroundColor(secondaryTextColor)
+                            .fixedSize(horizontal: false, vertical: true)
+
+                        Button(action: SystemSettings.notifications.open) {
+                            Label(Strings.Settings.notificationsDeniedOpenSettings, systemImage: "gear")
+                                .bitchatFont(size: 12, weight: .semibold)
+                        }
+                        .buttonStyle(.plain)
+                        .foregroundColor(palette.accent)
+                        .padding(.top, 2)
+                    }
+
+                    Divider()
+                }
+
+                if let deadline = activeNotificationPauseUntil {
+                    Text(verbatim: pausedUntilText(deadline))
+                        .bitchatFont(size: 12, weight: .semibold)
+                        .foregroundColor(palette.accent)
+
+                    Button(action: resumeNotifications) {
+                        Label(Strings.Settings.resumeNotifications, systemImage: "bell.fill")
+                            .bitchatFont(size: 12, weight: .semibold)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 6)
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundColor(palette.accent)
+                } else {
+                    Menu {
+                        Button(Strings.Settings.pauseOneHour) { pauseNotifications(for: 60 * 60) }
+                        Button(Strings.Settings.pauseEightHours) { pauseNotifications(for: 8 * 60 * 60) }
+                        Button(Strings.Settings.pauseOneDay) { pauseNotifications(for: 24 * 60 * 60) }
+                        Button(Strings.Settings.pauseOneWeek) { pauseNotifications(for: 7 * 24 * 60 * 60) }
+                    } label: {
+                        Label(Strings.Settings.pauseAllNotifications, systemImage: "bell.slash")
+                            .bitchatFont(size: 12, weight: .semibold)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 6)
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundColor(palette.accent)
+                }
+
+                Divider()
+
+                notificationToggle(
+                    topic: .directMessages,
+                    title: Strings.Settings.directNotificationsTitle,
+                    subtitle: Strings.Settings.directNotificationsSubtitle,
+                    value: $directMessageNotifications
+                )
+                notificationToggle(
+                    topic: .mesh,
+                    title: Strings.Settings.meshNotificationsTitle,
+                    subtitle: Strings.Settings.meshNotificationsSubtitle,
+                    value: $meshNotifications
+                )
+                notificationToggle(
+                    topic: .locationChannels,
+                    title: Strings.Settings.locationNotificationsTitle,
+                    subtitle: Strings.Settings.locationNotificationsSubtitle,
+                    value: $locationNotifications
+                )
+                notificationToggle(
+                    topic: .security,
+                    title: Strings.Settings.securityNotificationsTitle,
+                    subtitle: Strings.Settings.securityNotificationsSubtitle,
+                    value: $securityNotifications
+                )
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var blockedPeopleSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            SectionHeader("mesh_peers.state.blocked")
+
+            settingsCard {
+                ForEach(blockedPeople) { person in
+                    HStack(spacing: 10) {
+                        Image(systemName: person.source == .mesh ? "antenna.radiowaves.left.and.right" : "globe")
+                            .foregroundColor(palette.secondary)
+                            .frame(width: 22)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(verbatim: person.displayName)
+                                .bitchatFont(size: 12, weight: .semibold)
+                                .lineLimit(1)
+                                .truncationMode(.middle)
+                            Text(verbatim: "\(blockedSourceLabel(person.source)) • \(person.identityHint)")
+                                .bitchatFont(size: 10)
+                                .foregroundColor(secondaryTextColor)
+                        }
+                        .accessibilityElement(children: .ignore)
+                        .accessibilityLabel(
+                            Text(verbatim: "\(person.displayName), \(blockedSourceLabel(person.source)), \(person.identityHint)")
+                        )
+                        Spacer()
+                        Button("geohash_people.action.unblock") {
+                            onUnblockPerson?(person)
+                            reloadBlockedPeople()
+                        }
+                        .buttonStyle(.plain)
+                        .bitchatFont(size: 11, weight: .semibold)
+                        .foregroundColor(palette.accent)
+                    }
+                }
+            }
+        }
+    }
+
+    private var activeNotificationPauseUntil: Date? {
+        guard let deadline = notificationPauseUntil, deadline > Date() else { return nil }
+        return deadline
+    }
+
+    private func pausedUntilText(_ deadline: Date) -> String {
+        let value = DateFormatter.localizedString(from: deadline, dateStyle: .short, timeStyle: .short)
+        return String(format: Strings.Settings.pausedUntil, locale: .current, value)
+    }
+
+    private func pauseNotifications(for seconds: TimeInterval) {
+        let deadline = Date().addingTimeInterval(seconds)
+        NotificationDeliverySettings.pause(until: deadline)
+        notificationPauseUntil = deadline
+        scheduleNotificationPauseExpiry(for: deadline)
+        NotificationService.shared.clearAllNotifications()
+    }
+
+    private func resumeNotifications() {
+        cancelNotificationPauseTask()
+        NotificationDeliverySettings.resume()
+        notificationPauseUntil = nil
+    }
+
+    private func handleAppear() {
+        reloadBlockedPeople()
+        reloadCustomRelays()
+        reloadNotificationSettings()
+        reloadNotificationAuthorizationStatus()
+    }
+
+    private func handleDisappear() {
+        cancelNotificationPauseTask()
+    }
+
+    private func reloadNotificationSettings() {
+        directMessageNotifications = NotificationDeliverySettings.isEnabled(.directMessages)
+        locationNotifications = NotificationDeliverySettings.isEnabled(.locationChannels)
+        meshNotifications = NotificationDeliverySettings.isEnabled(.mesh)
+        securityNotifications = NotificationDeliverySettings.isEnabled(.security)
+
+        let deadline = NotificationDeliverySettings.activePauseUntil()
+        notificationPauseUntil = deadline
+        scheduleNotificationPauseExpiry(for: deadline)
+    }
+
+    private func handleScenePhaseChange(_ phase: ScenePhase) {
+        guard phase == .active else { return }
+        reloadNotificationAuthorizationStatus()
+    }
+
+    /// System authorization can change while this sheet remains presented, so
+    /// refresh whenever the app becomes active after visiting System Settings.
+    private func reloadNotificationAuthorizationStatus() {
+        notificationAuthorizationProvider { status in
+            DispatchQueue.main.async {
+                notificationAuthorizationStatus = status
+            }
+        }
+    }
+
+    /// Keeps the pause banner accurate even when nothing else redraws the
+    /// settings sheet at the deadline.
+    private func scheduleNotificationPauseExpiry(for deadline: Date?) {
+        cancelNotificationPauseTask()
+        guard let deadline else { return }
+
+        notificationPauseTask = Task { @MainActor in
+            var currentDeadline = deadline
+            while !Task.isCancelled {
+                let remaining = max(0, currentDeadline.timeIntervalSinceNow)
+                do {
+                    try await Task<Never, Never>.sleep(
+                        nanoseconds: UInt64(remaining * 1_000_000_000)
+                    )
+                } catch {
+                    return
+                }
+                guard !Task.isCancelled else { return }
+
+                guard let refreshedDeadline = NotificationDeliverySettings.activePauseUntil() else {
+                    notificationPauseUntil = nil
+                    notificationPauseTask = nil
+                    return
+                }
+                // A system clock change or an external extension can move the
+                // deadline. Keep waiting for the value currently in storage.
+                notificationPauseUntil = refreshedDeadline
+                currentDeadline = refreshedDeadline
+            }
+        }
+    }
+
+    private func cancelNotificationPauseTask() {
+        notificationPauseTask?.cancel()
+        notificationPauseTask = nil
+    }
+
+    /// Clears sheet-owned copies before the model wipe so a dismiss animation
+    /// cannot leave identity or routing metadata visible for another frame.
+    private func performPanicWipe() {
+        cancelNotificationPauseTask()
+        showPanicConfirmation = false
+        showTopology = false
+        blockedPeople.removeAll(keepingCapacity: false)
+        customRelays.removeAll(keepingCapacity: false)
+        relayInput = ""
+        relayError = nil
+        showLanguageRestartNote = false
+
+        NotificationPrivacySettings.reset()
+        hideMessagePreviews = true
+        NotificationDeliverySettings.reset()
+        directMessageNotifications = true
+        locationNotifications = true
+        meshNotifications = true
+        securityNotifications = true
+        notificationPauseUntil = nil
+
+        onPanicWipe?()
+        dismiss()
+    }
+
+    private func notificationToggle(
+        topic: NotificationTopic,
+        title: String,
+        subtitle: String,
+        value: Binding<Bool>
+    ) -> some View {
+        settingToggle(
+            title: Text(verbatim: title),
+            subtitle: Text(verbatim: subtitle),
+            isOn: Binding(
+                get: { value.wrappedValue },
+                set: { enabled in
+                    value.wrappedValue = enabled
+                    NotificationDeliverySettings.setEnabled(enabled, for: topic)
+                }
+            )
+        )
+    }
+
+    private func reloadBlockedPeople() {
+        blockedPeople = blockedPeopleProvider?() ?? []
+    }
+
+    private func blockedSourceLabel(_ source: BlockedPersonRow.Source) -> String {
+        source == .mesh ? "#mesh" : "Nostr"
     }
 
     private func selectLanguage(_ code: String?) {

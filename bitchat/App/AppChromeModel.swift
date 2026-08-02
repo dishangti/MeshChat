@@ -3,6 +3,30 @@ import Combine
 import CoreBluetooth
 import Foundation
 
+struct BlockedPersonRow: Identifiable, Equatable {
+    enum Source: String {
+        case mesh
+        /// The persistent Nostr block set is shared by location channels,
+        /// bridge participants, and relay identities. Without durable origin
+        /// metadata, claiming a more specific source would be misleading.
+        case nostr
+    }
+
+    let source: Source
+    let stableID: String
+    let displayName: String
+
+    var id: String { "\(source.rawValue):\(stableID)" }
+
+    /// Human-checkable cryptographic suffix shown next to untrusted,
+    /// non-unique nicknames so the unblock target is never ambiguous.
+    var identityHint: String {
+        let normalized = stableID.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard normalized.count > 12 else { return normalized }
+        return "\(normalized.prefix(6))…\(normalized.suffix(6))"
+    }
+}
+
 @MainActor
 final class AppChromeModel: ObservableObject {
     @Published private(set) var hasUnreadPrivateMessages = false
@@ -71,8 +95,45 @@ final class AppChromeModel: ObservableObject {
         showingFingerprintFor = nil
     }
 
-    func presentAppInfo() {
+    func presentAppInfo(pane: AppInfoPane = .info) {
+        UserDefaults.standard.set(pane.rawValue, forKey: AppInfoPane.storageKey)
         isAppInfoPresented = true
+    }
+
+    func blockedPeople() -> [BlockedPersonRow] {
+        let meshRows = chatViewModel.identityManager.getBlockedSocialIdentities().map { identity in
+            let preferredName = identity.localPetname?.trimmedOrNilIfEmpty
+                ?? identity.claimedNickname.trimmedOrNilIfEmpty
+                ?? String(identity.fingerprint.prefix(12))
+            return BlockedPersonRow(
+                source: .mesh,
+                stableID: identity.fingerprint,
+                displayName: preferredName
+            )
+        }
+
+        let nostrRows = chatViewModel.identityManager.getBlockedNostrPubkeys().map { pubkey in
+            BlockedPersonRow(
+                source: .nostr,
+                stableID: pubkey,
+                displayName: chatViewModel.geoNicknames[pubkey]
+                    ?? "\(pubkey.prefix(12))…"
+            )
+        }
+
+        return (meshRows + nostrRows).sorted {
+            $0.displayName.localizedCaseInsensitiveCompare($1.displayName) == .orderedAscending
+        }
+    }
+
+    func unblock(_ person: BlockedPersonRow) {
+        switch person.source {
+        case .mesh:
+            chatViewModel.identityManager.setBlocked(person.stableID, isBlocked: false)
+        case .nostr:
+            chatViewModel.identityManager.setNostrBlocked(person.stableID, isBlocked: false)
+        }
+        NotificationCenter.default.post(name: Notification.Name("peerStatusUpdated"), object: nil)
     }
 
     func presentNotices(geoTab: Bool = false) {
@@ -111,7 +172,22 @@ final class AppChromeModel: ObservableObject {
         prepareForPanic = preparation
     }
 
+    /// Closes every model-owned transient surface before sensitive state is
+    /// erased. Internal visibility keeps this behavior directly testable.
+    func dismissTransientSurfacesForPanic() {
+        showingFingerprintFor = nil
+        isAppInfoPresented = false
+        isLocationChannelsSheetPresented = false
+        isNoticesSheetPresented = false
+        noticesSheetPrefersGeoTab = false
+        showBluetoothAlert = false
+        bluetoothAlertMessage = ""
+        showScreenshotPrivacyWarning = false
+    }
+
     func panicClearAllData() {
+        dismissTransientSurfacesForPanic()
+        defer { dismissTransientSurfacesForPanic() }
         prepareForPanic?()
         onPanicWipe()
         chatViewModel.panicClearAllData()

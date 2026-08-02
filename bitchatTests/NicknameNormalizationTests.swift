@@ -7,8 +7,7 @@
 // U+0301 are canonically equivalent but bytewise different, which broke
 // mention matching, DM resolution, and autocomplete (#214). Storage and
 // comparison both canonicalize to NFC via String.normalizedNickname.
-// This is free and unencumbered software released into the public domain.
-// For more information, see <https://unlicense.org>
+// SPDX-License-Identifier: MIT
 //
 
 import Foundation

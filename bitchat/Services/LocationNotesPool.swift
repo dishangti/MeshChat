@@ -6,7 +6,7 @@
 // surfaces watching the same place (the nearby-notes counter and the notices
 // sheet's geo tab) share one relay subscription instead of opening two
 // identical 9-cell REQs.
-// This is free and unencumbered software released into the public domain.
+// SPDX-License-Identifier: MIT
 //
 
 import Foundation

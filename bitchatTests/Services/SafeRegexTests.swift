@@ -6,8 +6,7 @@
 // degrade to a regex that matches nothing. The production-pattern test keeps
 // the compile-time guarantee try! used to provide - a typo in any bundled
 // pattern fails here instead of crashing the app at startup.
-// This is free and unencumbered software released into the public domain.
-// For more information, see <https://unlicense.org>
+// SPDX-License-Identifier: MIT
 //
 
 import Foundation

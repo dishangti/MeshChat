@@ -6,7 +6,7 @@
 // geohash so the empty mesh timeline can say "📍 3 notes left here". Only
 // subscribes while a view holds it active, and only when location notes are
 // enabled and location permission is already granted (it never prompts).
-// This is free and unencumbered software released into the public domain.
+// SPDX-License-Identifier: MIT
 //
 
 import Combine

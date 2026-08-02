@@ -141,7 +141,11 @@ extension ChatViewModel: ChatVerificationContext {
     }
 
     func postLocalNotification(title: String, body: String, identifier: String) {
-        NotificationService.shared.sendLocalNotification(title: title, body: body, identifier: identifier)
+        NotificationService.shared.sendSecurityNotification(
+            title: title,
+            body: body,
+            identifier: identifier
+        )
     }
 }
 
@@ -156,6 +160,32 @@ final class ChatVerificationCoordinator {
         let signKeyHex: String
         let nonceA: Data
         var sent: Bool
+    }
+
+    private enum NotificationCopy {
+        static var successTitle: String {
+            String(localized: "notification.verification.success.title", defaultValue: "Verified", comment: "Notification title after the user successfully verifies another person's encryption identity")
+        }
+
+        static func successBody(peerName: String) -> String {
+            String(
+                format: String(localized: "notification.verification.success.body", defaultValue: "You verified %@", comment: "Notification body after successful encryption verification; %@ is the other person's display name"),
+                locale: .current,
+                peerName
+            )
+        }
+
+        static var mutualTitle: String {
+            String(localized: "notification.verification.mutual.title", defaultValue: "Mutual verification", comment: "Notification title when two people have verified each other's encryption identities")
+        }
+
+        static func mutualBody(peerName: String) -> String {
+            String(
+                format: String(localized: "notification.verification.mutual.body", defaultValue: "You and %@ verified each other", comment: "Notification body when verification is mutual; %@ is the other person's display name"),
+                locale: .current,
+                peerName
+            )
+        }
     }
 
     private unowned let context: any ChatVerificationContext
@@ -332,7 +362,6 @@ final class ChatVerificationCoordinator {
                 maybeSendMutualVerificationNotification(
                     fingerprint: fingerprint,
                     peerID: peerID,
-                    title: "Mutual verification",
                     bodyName: context.unifiedPeer(for: peerID)?.nickname
                         ?? context.resolveNickname(for: peerID),
                     notificationPrefix: "verify-mutual"
@@ -374,8 +403,8 @@ final class ChatVerificationCoordinator {
         let peerName = context.unifiedPeer(for: peerID)?.nickname
             ?? context.resolveNickname(for: peerID)
         context.postLocalNotification(
-            title: "Verified",
-            body: "You verified \(peerName)",
+            title: NotificationCopy.successTitle,
+            body: NotificationCopy.successBody(peerName: peerName),
             identifier: "verify-success-\(peerID)-\(UUID().uuidString)"
         )
 
@@ -384,7 +413,6 @@ final class ChatVerificationCoordinator {
             maybeSendMutualVerificationNotification(
                 fingerprint: fingerprint,
                 peerID: peerID,
-                title: "Mutual verification",
                 bodyName: peerName,
                 notificationPrefix: "verify-mutual"
             )
@@ -400,7 +428,6 @@ private extension ChatVerificationCoordinator {
     func maybeSendMutualVerificationNotification(
         fingerprint: String,
         peerID: PeerID,
-        title: String,
         bodyName: String,
         notificationPrefix: String
     ) {
@@ -410,8 +437,8 @@ private extension ChatVerificationCoordinator {
 
         lastMutualToastAt[fingerprint] = now
         context.postLocalNotification(
-            title: title,
-            body: "You and \(bodyName) verified each other",
+            title: NotificationCopy.mutualTitle,
+            body: NotificationCopy.mutualBody(peerName: bodyName),
             identifier: "\(notificationPrefix)-\(peerID)-\(UUID().uuidString)"
         )
     }

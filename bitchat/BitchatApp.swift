@@ -2,8 +2,7 @@
 // BitchatApp.swift
 // bitchat
 //
-// This is free and unencumbered software released into the public domain.
-// For more information, see <https://unlicense.org>
+// SPDX-License-Identifier: MIT
 //
 
 import SwiftUI
@@ -11,11 +10,12 @@ import UserNotifications
 
 @main
 struct BitchatApp: App {
-    static let bundleID = Bundle.main.bundleIdentifier ?? "chat.bitchat"
-    static let groupID = "group.\(bundleID)"
+    static let bundleID = Bundle.main.bundleIdentifier ?? "chat.meshchat.F9LRFWZSBW"
+    static let groupID = Bundle.main.object(forInfoDictionaryKey: "AppGroupID") as? String
+        ?? "group.\(bundleID)"
 
     @StateObject private var runtime: AppRuntime
-    @AppStorage(AppTheme.storageKey) private var appThemeRawValue = AppTheme.matrix.rawValue
+    @AppStorage(AppTheme.storageKey) private var appThemeRawValue = AppTheme.defaultTheme.rawValue
     #if os(iOS)
     @Environment(\.scenePhase) var scenePhase
     @UIApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
@@ -24,14 +24,15 @@ struct BitchatApp: App {
     #endif
 
     init() {
+        AppTheme.migratePersistedSelection()
         _runtime = StateObject(wrappedValue: AppRuntime())
         UNUserNotificationCenter.current().delegate = NotificationDelegate.shared
     }
 
     var body: some Scene {
         WindowGroup {
-            ContentView()
-                .environment(\.appTheme, AppTheme(rawValue: appThemeRawValue) ?? .matrix)
+            MeshChatRootView()
+                .environment(\.appTheme, AppTheme.resolve(appThemeRawValue))
                 .environmentObject(runtime.publicChatModel)
                 .environmentObject(runtime.privateInboxModel)
                 .environmentObject(runtime.privateConversationModel)
@@ -42,6 +43,7 @@ struct BitchatApp: App {
                 .environmentObject(runtime.appChromeModel)
                 .environmentObject(runtime.boardAlertsModel)
                 .environmentObject(runtime.sharedContentImportModel)
+                .environmentObject(runtime.routeModel)
                 .onAppear {
                     appDelegate.runtime = runtime
                     runtime.start()

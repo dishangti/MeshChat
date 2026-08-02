@@ -1,41 +1,54 @@
-<img width="256" height="256" alt="icon_128x128@2x" src="https://github.com/user-attachments/assets/90133f83-b4f6-41c6-aab9-25d0859d2a47" />
+<img width="256" height="256" alt="MeshChat app icon" src="bitchat/Assets.xcassets/AppIcon.appiconset/icon_1024x1024.png" />
 
-## bitchat
+## MeshChat
 
-A decentralized peer-to-peer messaging app with dual transport architecture: local Bluetooth mesh networks for offline communication and internet-based Nostr protocol for global reach. No accounts, no phone numbers, no central servers. It's the side-groupchat.
+MeshChat is a native Swift, conversation-first messaging app for iOS, iPadOS,
+and macOS. It is a protocol- and security-compatible superset of BitChat: local
+Bluetooth mesh networks provide offline communication, while Nostr provides
+optional global reach. There are no accounts, phone numbers, or central
+messaging servers.
 
-[bitchat.free](http://bitchat.free)
+Existing BitChat wire identifiers, cryptographic protocol contexts, and
+canonical `bitchat://` links remain unchanged so MeshChat can communicate with
+existing clients. The app also accepts `meshchat://` links as a local alias.
 
-📲 [App Store](https://apps.apple.com/us/app/bitchat-mesh/id6748219622)
+[BitChat protocol site](http://bitchat.free)
 
-📲 [Play Store](https://play.google.com/store/apps/details?id=com.bitchat.droid)
+Compatible clients: [BitChat for Apple platforms](https://apps.apple.com/us/app/bitchat-mesh/id6748219622)
+and [BitChat for Android](https://play.google.com/store/apps/details?id=com.bitchat.droid).
 
 ### Getting a copy you can trust
 
-Install from the App Store, or build from source you have verified. A compiled build from anywhere else cannot be verified — see [Verifying bitchat](docs/VERIFYING-A-BUILD.md) for how to check source against the per-release hash manifest, and for what to do if that is the only build you can get.
+Build MeshChat from source you have verified. A compiled build from anywhere
+else cannot be verified — see [Verifying a build](docs/VERIFYING-A-BUILD.md) for
+how to check source against a per-release hash manifest, and for what to do if
+that is the only build you can get.
 
 This matters more than it usually would: this repository has been the target of takedown demands, and when a repository or releases page disappears, mirrors appear that nobody can check.
 
 ## License
 
-This project is released into the public domain. See the [LICENSE](LICENSE) file for details.
+This project is licensed under the [MIT License](LICENSE). Third-party dependencies and vendored components remain subject to their respective licenses.
 
 ## Features
 
 - **Dual Transport Architecture**: Bluetooth mesh for offline + Nostr protocol for internet-based messaging
+- **Conversation-First Interface**: Adaptive sidebar and chat layout inspired by familiar IM apps
+- **Responsive Navigation**: Compact navigation on iPhone and persistent split views on iPad and Mac
+- **Conversation Drafts**: Separate unsent drafts for mesh, location, private, and group conversations
 - **Location-Based Channels**: Geographic chat rooms using geohash coordinates over global Nostr relays
 - **Intelligent Message Routing**: Automatically chooses best transport (Bluetooth → Nostr fallback)
 - **Decentralized Mesh Network**: Automatic peer discovery and multi-hop message relay over Bluetooth LE
 - **Privacy First**: No accounts, no phone numbers, no servers. Note that the mesh does use a persistent per-device identifier derived from your identity key — see [the whitepaper](WHITEPAPER.md) on identity and metadata for what a nearby radio can observe
 - **Private Message End-to-End Encryption**: [Noise Protocol](https://noiseprotocol.org) for mesh, BitChat private envelopes for Nostr fallback
 - **IRC-Style Commands**: Familiar `/slap`, `/msg`, `/who` style interface
-- **Universal App**: Native support for iOS and macOS
+- **Universal App**: Native support for iOS, iPadOS, and macOS
 - **Emergency Wipe**: Triple-tap to instantly clear all data
 - **Performance Optimizations**: LZ4 message compression, adaptive battery modes, and optimized networking
 
 ## [Technical Architecture](https://deepwiki.com/permissionlesstech/bitchat)
 
-BitChat uses a **hybrid messaging architecture** with two complementary transport layers:
+MeshChat retains BitChat's **hybrid messaging architecture** with two complementary transport layers:
 
 ### Bluetooth Mesh Network (Offline)
 
@@ -104,6 +117,21 @@ Private messages use **intelligent transport selection**:
 For detailed protocol documentation, see the [Technical Whitepaper](WHITEPAPER.md).
 
 ## Setup
+
+The built products are `MeshChat.app` and `MeshChatShareExtension.appex`. Bundle
+and App Group identifiers include the configured Apple Developer Team ID; the
+tracked default resolves to `chat.meshchat.F9LRFWZSBW` and
+`group.chat.meshchat.F9LRFWZSBW`. The Xcode target names and Swift module remain
+`bitchat` so source-level protocol types and test imports stay stable. Canonical
+BitChat wire identifiers and `bitchat://` links are also retained for
+interoperability. The new Bundle Identifier intentionally gives MeshChat its
+own app container and default Keychain access group; it does not silently
+inherit data from an installed BitChat build.
+
+Debug and Release builds both use BitChat's canonical mainnet BLE service UUID
+so a normal Xcode Run can discover released BitChat clients. Developers who
+need an isolated radio test network can opt in with the
+`BITCHAT_BLE_TESTNET` Swift compilation condition.
 
 ### Option 1: Using Xcode
 

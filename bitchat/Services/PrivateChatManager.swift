@@ -3,7 +3,7 @@
 // bitchat
 //
 // Manages private chat sessions and messages
-// This is free and unencumbered software released into the public domain.
+// SPDX-License-Identifier: MIT
 //
 
 import BitLogger

@@ -2,8 +2,7 @@
 // BoardAlertsModel.swift
 // bitchat
 //
-// This is free and unencumbered software released into the public domain.
-// For more information, see <https://unlicense.org>
+// SPDX-License-Identifier: MIT
 //
 
 import Combine
@@ -60,7 +59,7 @@ final class BoardAlertsModel: ObservableObject {
     private enum Strings {
         static func urgentSingle(author: String, content: String) -> String {
             String(
-                format: String(localized: "notices.alert.urgent_single", defaultValue: "📌 urgent notice from @%@: %@", comment: "Local chat line when one urgent notice is pinned nearby"),
+                format: String(localized: "notices.alert.urgent_single", defaultValue: "📌 Urgent notice from @%@: %@", comment: "Local chat line when one urgent notice is pinned nearby"),
                 locale: .current,
                 author, content
             )

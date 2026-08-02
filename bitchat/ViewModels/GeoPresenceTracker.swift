@@ -14,6 +14,7 @@ protocol GeoPresenceContext: AnyObject {
     var lastGeoNotificationAt: [String: Date] { get set }
     var geoNicknames: [String: String] { get }
     var teleportedGeoCount: Int { get }
+    var isApplicationActiveForGeoNotifications: Bool { get }
 
     func deriveNostrIdentity(forGeohash geohash: String) throws -> NostrIdentity
     func isNostrBlocked(pubkeyHexLowercased: String) -> Bool
@@ -41,6 +42,16 @@ extension ChatViewModel: GeoPresenceContext {
 
     var teleportedGeoCount: Int {
         locationPresenceStore.teleportedGeo.count
+    }
+
+    var isApplicationActiveForGeoNotifications: Bool {
+        #if os(iOS)
+        UIApplication.shared.applicationState == .active
+        #elseif os(macOS)
+        NSApplication.shared.isActive
+        #else
+        true
+        #endif
     }
 
     func recordGeoParticipant(pubkeyHex: String, geohash: String) {
@@ -103,6 +114,9 @@ final class GeoPresenceTracker {
         else {
             return
         }
+        guard !context.isNostrBlocked(pubkeyHexLowercased: event.pubkey.lowercased()) else {
+            return
+        }
         // The signature was already verified (exactly once, off the main
         // actor) by NostrRelayManager before delivery.
         guard shouldProcessGeoSamplingEvent(event.id) else { return }
@@ -111,7 +125,6 @@ final class GeoPresenceTracker {
         context.recordGeoParticipant(pubkeyHex: event.pubkey, geohash: gh)
 
         guard let content = event.content.trimmedOrNilIfEmpty else { return }
-        if context.isNostrBlocked(pubkeyHexLowercased: event.pubkey.lowercased()) { return }
         if let my = try? context.deriveNostrIdentity(forGeohash: gh),
            my.publicKeyHex.lowercased() == event.pubkey.lowercased() {
             return
@@ -131,13 +144,8 @@ final class GeoPresenceTracker {
         let eventTime = Date(timeIntervalSince1970: TimeInterval(event.created_at))
         if Date().timeIntervalSince(eventTime) > 30 { return }
 
-        #if os(iOS)
-        guard UIApplication.shared.applicationState == .active else { return }
+        guard context.isApplicationActiveForGeoNotifications else { return }
         if case .location(let channel) = context.activeChannel, channel.geohash == gh { return }
-        #elseif os(macOS)
-        guard NSApplication.shared.isActive else { return }
-        if case .location(let channel) = context.activeChannel, channel.geohash == gh { return }
-        #endif
 
         cooldownPerGeohash(gh, content: content, event: event)
     }

@@ -492,6 +492,103 @@ struct ChatPrivateConversationCoordinatorContextTests {
     }
 
     @Test @MainActor
+    func nostrPrivateMessage_blockedNoiseFavoriteDropsBeforeAckAndDedup() async {
+        let context = MockChatPrivateConversationContext()
+        let coordinator = ChatPrivateConversationCoordinator(context: context)
+        let noiseKey = Data(repeating: 0xA6, count: 32)
+        let convKey = PeerID(hexData: noiseKey)
+        let senderPubkey = "feedface00112233"
+        context.blockedPeers = [convKey]
+        context.favoriteRelationshipsByNoiseKey[noiseKey] = makeFavoriteRelationship(
+            noiseKey: noiseKey,
+            nostrPublicKey: "npub1blocked",
+            nickname: "blocked favorite",
+            isFavorite: true,
+            theyFavoritedUs: true
+        )
+        let payload = NoisePayload(
+            type: .privateMessage,
+            data: PrivateMessagePacket(
+                messageID: "blocked-account-dm",
+                content: "relay bypass attempt"
+            ).encode()!
+        )
+
+        coordinator.handlePrivateMessage(
+            payload,
+            senderPubkey: senderPubkey,
+            convKey: convKey,
+            id: MockChatPrivateConversationContext.dummyIdentity,
+            messageTimestamp: Date()
+        )
+
+        #expect(context.geoDeliveryAcks.isEmpty)
+        #expect(context.sentGeoDeliveryAcks.isEmpty)
+        #expect(context.privateChats.isEmpty)
+        #expect(context.unreadPrivateMessages.isEmpty)
+        #expect(context.privateMessageNotifications.isEmpty)
+        #expect(context.notifyUIChangedCount == 0)
+
+        // The blocked attempt must not reserve the message ID. Once the same
+        // canonical identity is allowed, the exact retransmission is accepted
+        // through the normal ACK, store, unread, and notification path.
+        context.blockedPeers.remove(convKey)
+        coordinator.handlePrivateMessage(
+            payload,
+            senderPubkey: senderPubkey,
+            convKey: convKey,
+            id: MockChatPrivateConversationContext.dummyIdentity,
+            messageTimestamp: Date()
+        )
+
+        #expect(context.geoDeliveryAcks.map(\.messageID) == ["blocked-account-dm"])
+        #expect(context.sentGeoDeliveryAcks == ["blocked-account-dm"])
+        #expect(context.privateChats[convKey]?.map(\.id) == ["blocked-account-dm"])
+        #expect(context.unreadPrivateMessages == [convKey])
+        #expect(context.privateMessageNotifications.map(\.peerID) == [convKey])
+        #expect(context.notifyUIChangedCount == 1)
+    }
+
+    @Test @MainActor
+    func nostrPrivateMessage_blockedTransportKeyDropsBeforeAckAndDedup() async {
+        let context = MockChatPrivateConversationContext()
+        let coordinator = ChatPrivateConversationCoordinator(context: context)
+        let convKey = PeerID(str: "nostr_abcdef12")
+        let senderPubkey = "ABCDEF0011223344"
+        context.blockedNostrPubkeys = [senderPubkey.lowercased()]
+        let payload = NoisePayload(
+            type: .privateMessage,
+            data: PrivateMessagePacket(messageID: "blocked-geo-dm", content: "blocked").encode()!
+        )
+
+        coordinator.handlePrivateMessage(
+            payload,
+            senderPubkey: senderPubkey,
+            convKey: convKey,
+            id: MockChatPrivateConversationContext.dummyIdentity,
+            messageTimestamp: Date()
+        )
+
+        #expect(context.geoDeliveryAcks.isEmpty)
+        #expect(context.sentGeoDeliveryAcks.isEmpty)
+        #expect(context.privateChats.isEmpty)
+        #expect(context.unreadPrivateMessages.isEmpty)
+        #expect(context.privateMessageNotifications.isEmpty)
+
+        context.blockedNostrPubkeys.remove(senderPubkey.lowercased())
+        coordinator.handlePrivateMessage(
+            payload,
+            senderPubkey: senderPubkey,
+            convKey: convKey,
+            id: MockChatPrivateConversationContext.dummyIdentity,
+            messageTimestamp: Date()
+        )
+
+        #expect(context.geoDeliveryAcks.map(\.messageID) == ["blocked-geo-dm"])
+        #expect(context.privateChats[convKey]?.map(\.id) == ["blocked-geo-dm"])
+    }
+
+    @Test @MainActor
     func accountDM_handsOpenShortIDConversationToStableWhenOffline() async {
         let context = MockChatPrivateConversationContext()
         let coordinator = ChatPrivateConversationCoordinator(context: context)

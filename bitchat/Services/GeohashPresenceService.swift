@@ -5,7 +5,7 @@
 // Manages the broadcasting of ephemeral presence heartbeats (Kind 20001)
 // to geohash location channels.
 //
-// This is free and unencumbered software released into the public domain.
+// SPDX-License-Identifier: MIT
 //
 
 import Foundation

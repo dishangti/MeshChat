@@ -1,4 +1,4 @@
-# BitChat developer commands
+# MeshChat developer commands
 #
 # Builds use a repository-local, ignored DerivedData directory. No recipe
 # patches, restores, or removes tracked project/configuration files.
@@ -9,7 +9,7 @@ ios_scheme := "bitchat (iOS)"
 derived_data := ".DerivedData"
 
 default:
-    @echo "BitChat developer commands:"
+    @echo "MeshChat developer commands:"
     @echo "  just run                Build and run the macOS app"
     @echo "  just build              Build the macOS app without signing"
     @echo "  just test               Run the SwiftPM test suite"
@@ -31,11 +31,11 @@ check: check-clean-safety
     @echo "✅ Development environment ready (a signing identity is not required for just build)"
 
 build: check
-    @echo "Building BitChat for macOS..."
+    @echo "Building MeshChat for macOS..."
     @xcodebuild -project "{{project}}" -scheme "{{macos_scheme}}" -configuration Debug -derivedDataPath "{{derived_data}}" CODE_SIGNING_ALLOWED=NO build
 
 run: build
-    @app="{{derived_data}}/Build/Products/Debug/bitchat.app"; test -d "$app" || (echo "❌ Built app not found at $app" && exit 1); open "$app"
+    @app="{{derived_data}}/Build/Products/Debug/MeshChat.app"; test -d "$app" || (echo "❌ Built app not found at $app" && exit 1); open "$app"
 
 # Backward-compatible alias for the old quick-run recipe.
 dev-run: run
@@ -61,6 +61,6 @@ nuke: clean
     @echo "✅ Removed repository build caches; tracked files were untouched"
 
 info:
-    @echo "BitChat - decentralized mesh messaging"
+    @echo "MeshChat - decentralized mesh messaging"
     @echo "macOS 13+ and iOS 16+"
     @echo "Bluetooth mesh behavior requires physical Bluetooth-capable devices"

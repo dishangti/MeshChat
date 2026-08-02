@@ -3,7 +3,7 @@
 import PackageDescription
 
 let package = Package(
-    name: "bitchat",
+    name: "MeshChat",
     defaultLocalization: "en",
     platforms: [
         .iOS(.v16),
@@ -11,7 +11,7 @@ let package = Package(
     ],
     products: [
         .executable(
-            name: "bitchat",
+            name: "MeshChat",
             targets: ["bitchat"]
         )
     ],
@@ -33,6 +33,7 @@ let package = Package(
             path: "bitchat",
             exclude: [
                 "Info.plist",
+                "InfoPlist.xcstrings",
                 "Assets.xcassets",
                 "_PreviewHelpers/PreviewAssets.xcassets",
                 "bitchat.entitlements",

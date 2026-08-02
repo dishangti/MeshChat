@@ -300,7 +300,7 @@ final class GeohashSubscriptionManager {
             context.addPublicSystemMessage(
                 String(
                     localized: "system.gateway.sent_via_mesh",
-                    defaultValue: "sent via mesh gateway",
+                    defaultValue: "Sent via mesh gateway",
                     comment: "System message when a geohash message was handed to a mesh internet gateway because no relay is reachable"
                 )
             )

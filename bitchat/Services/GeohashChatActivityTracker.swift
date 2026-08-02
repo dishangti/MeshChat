@@ -5,7 +5,7 @@
 // Tracks actual chat-message activity per sampled geohash so the empty mesh
 // timeline can point at a nearby channel where a conversation is happening —
 // not merely where participants are present.
-// This is free and unencumbered software released into the public domain.
+// SPDX-License-Identifier: MIT
 //
 
 import Foundation

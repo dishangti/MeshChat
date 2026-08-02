@@ -5,8 +5,21 @@ IPHONEOS_DEPLOYMENT_TARGET = 16.0
 MACOSX_DEPLOYMENT_TARGET = 13.0
 SWIFT_VERSION = 5.0
 
-DEVELOPMENT_TEAM = L3N5LHJD5Y
+// MeshChat product branding and app identity. The Swift module stays named
+// bitchat so the protocol implementation and test imports remain stable.
+APP_DISPLAY_NAME = MeshChat
+APP_BUNDLE_NAME = MeshChat
+APP_PRODUCT_NAME = MeshChat
+APP_MODULE_NAME = bitchat
+SHARE_EXTENSION_PRODUCT_NAME = MeshChatShareExtension
+SHARE_EXTENSION_MODULE_NAME = bitchatShareExtension
+
+// Default signing identity for the Jifeng Luo development team. A developer
+// can override these values in the optional, untracked Local.xcconfig file.
+DEVELOPMENT_TEAM = F9LRFWZSBW
 CODE_SIGN_STYLE = Automatic
 
-PRODUCT_BUNDLE_IDENTIFIER = chat.bitchat
-APP_GROUP_ID = group.chat.bitchat
+PRODUCT_BUNDLE_IDENTIFIER = chat.meshchat.$(DEVELOPMENT_TEAM)
+APP_GROUP_ID = group.chat.meshchat.$(DEVELOPMENT_TEAM)
+
+#include? "Local.xcconfig"

@@ -42,7 +42,7 @@ struct ContentHeaderView: View {
 
     var body: some View {
         HStack(spacing: 0) {
-            Text(verbatim: "bitchat/")
+            Text(verbatim: "MeshChat")
                 .bitchatFont(size: 18, weight: .medium)
                 .lineLimit(1)
                 .foregroundColor(palette.primary)
@@ -61,7 +61,7 @@ struct ContentHeaderView: View {
                 // stays undiscoverable on purpose — it's destructive.)
                 .accessibilityAddTraits(.isButton)
                 .accessibilityHint(
-                    String(localized: "content.accessibility.app_info_hint", comment: "Accessibility hint on the bitchat/ logo explaining a tap opens app info")
+                    String(localized: "content.accessibility.app_info_hint", comment: "Accessibility hint on the MeshChat logo explaining a tap opens app info")
                 )
                 .accessibilityAction {
                     appChromeModel.presentAppInfo()
@@ -119,7 +119,7 @@ struct ContentHeaderView: View {
                 if locationChannelsModel.gatewayEnabled {
                     // The gateway toggle lives in the App Info settings pane
                     // now, so the indicator deep-links there.
-                    Button(action: { appChromeModel.presentAppInfo() }) {
+                    Button(action: { appChromeModel.presentAppInfo(pane: .settings) }) {
                         Image(systemName: "globe")
                             .font(.bitchatSystem(size: 12))
                             .foregroundColor(palette.secondary.opacity(0.8))
@@ -225,7 +225,7 @@ struct ContentHeaderView: View {
                     }
                     .buttonStyle(.plain)
                     .accessibilityLabel(
-                        String(localized: "channel.share.action", defaultValue: "share channel", comment: "Accessibility label for sharing the active location channel")
+                        String(localized: "channel.share.action", defaultValue: "Share Channel", comment: "Accessibility label for sharing the active location channel")
                     )
                 }
 
@@ -351,11 +351,11 @@ struct ContentHeaderView: View {
             Text("content.alert.screenshot.message")
         }
         .confirmationDialog(
-            String(localized: "channel.share.precision_warning.title", defaultValue: "share a precise location channel?", comment: "Title of the confirmation before sharing a neighborhood-or-finer geohash invite"),
+            String(localized: "channel.share.precision_warning.title", defaultValue: "Share a Precise Location Channel?", comment: "Title of the confirmation before sharing a neighborhood-or-finer geohash invite"),
             isPresented: $showSharePrecisionWarning,
             titleVisibility: .visible
         ) {
-            Button(String(localized: "channel.share.precision_warning.confirm", defaultValue: "share anyway", comment: "Confirms sharing a fine-precision location channel after the OpSec warning")) {
+            Button(String(localized: "channel.share.precision_warning.confirm", defaultValue: "Share Anyway", comment: "Confirms sharing a fine-precision location channel after the OpSec warning")) {
                 if let gh = pendingShareGeohash {
                     activeSharePayload = ChannelSharePayload(text: ChannelShare.payload(forGeohash: gh))
                 }
@@ -365,7 +365,7 @@ struct ContentHeaderView: View {
                 pendingShareGeohash = nil
             }
         } message: {
-            Text(String(localized: "channel.share.precision_warning.message", defaultValue: "this channel covers a small area. an invite sent over sms or imessage is visible to the carrier and both handsets — it discloses interest in that place, not only that someone uses bitchat.", comment: "Body of the confirmation before sharing a fine-precision geohash invite"))
+            Text(String(localized: "channel.share.precision_warning.message", defaultValue: "This channel covers a small area. An invite sent over SMS or iMessage is visible to the carrier and both handsets — it discloses interest in that place, not only that someone uses MeshChat.", comment: "Body of the confirmation before sharing a fine-precision geohash invite"))
         }
         .sheet(item: $activeSharePayload) { payload in
             ShareActivityView(text: payload.text)

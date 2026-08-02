@@ -6,7 +6,7 @@
 // center dot make it visible that the radio is broadcasting and scanning
 // even when nobody is in range. Purely decorative — hidden from
 // accessibility, static under Reduce Motion.
-// This is free and unencumbered software released into the public domain.
+// SPDX-License-Identifier: MIT
 //
 
 import SwiftUI

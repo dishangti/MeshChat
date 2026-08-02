@@ -170,7 +170,7 @@ final class ChatLifecycleCoordinator {
             )
         }
 
-        context.addSystemMessage("you took a screenshot")
+        context.addSystemMessage("You took a screenshot")
     }
 
     func saveIdentityState() {
@@ -317,7 +317,7 @@ private extension ChatLifecycleCoordinator {
     func appendPrivateScreenshotNotice(for peerID: PeerID) {
         let notice = BitchatMessage(
             sender: "system",
-            content: "you took a screenshot",
+            content: "You took a screenshot",
             timestamp: Date(),
             isRelay: false,
             originalSender: nil,

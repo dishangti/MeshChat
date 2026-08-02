@@ -2,8 +2,7 @@
 // FingerprintView.swift
 // bitchat
 //
-// This is free and unencumbered software released into the public domain.
-// For more information, see <https://unlicense.org>
+// SPDX-License-Identifier: MIT
 //
 
 import SwiftUI
@@ -30,17 +29,17 @@ struct FingerprintView: View {
         static let verifiedMessage: LocalizedStringKey = "fingerprint.message.verified"
         static let localAlias = String(
             localized: "fingerprint.local_alias.label",
-            defaultValue: "local alias",
+            defaultValue: "Local Alias",
             comment: "Label for the local-only alias field on the fingerprint sheet"
         )
         static let localAliasPlaceholder = String(
             localized: "fingerprint.local_alias.placeholder",
-            defaultValue: "name for this person",
+            defaultValue: "Name for this person",
             comment: "Placeholder for the local alias field on the fingerprint sheet"
         )
         static let localAliasHint = String(
             localized: "fingerprint.local_alias.hint",
-            defaultValue: "only on this device. leave blank to use their claimed nickname.",
+            defaultValue: "Only on this device. Leave blank to use their claimed nickname.",
             comment: "Explanation under the local alias field"
         )
         static func verifyHint(_ nickname: String) -> String {

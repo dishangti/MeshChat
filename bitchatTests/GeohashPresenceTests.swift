@@ -3,7 +3,7 @@
 // bitchatTests
 //
 // Tests for the Geohash Presence (Kind 20001) feature.
-// This is free and unencumbered software released into the public domain.
+// SPDX-License-Identifier: MIT
 //
 
 import Testing

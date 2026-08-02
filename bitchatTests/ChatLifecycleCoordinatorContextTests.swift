@@ -274,7 +274,7 @@ struct ChatLifecycleCoordinatorContextTests {
         // No established session: local notice only, no network send.
         coordinator.handleScreenshotCaptured()
         #expect(context.routedPrivateMessages.isEmpty)
-        #expect(context.privateChats[peerID]?.map(\.content) == ["you took a screenshot"])
+        #expect(context.privateChats[peerID]?.map(\.content) == ["You took a screenshot"])
         #expect(context.privateChats[peerID]?.first?.sender == "system")
 
         // Established session: the peer is notified too.
@@ -297,7 +297,7 @@ struct ChatLifecycleCoordinatorContextTests {
         coordinator.handleScreenshotCaptured()
 
         #expect(context.meshBroadcasts == ["* me took a screenshot *"])
-        #expect(context.systemMessages == ["you took a screenshot"])
+        #expect(context.systemMessages == ["You took a screenshot"])
         #expect(context.privateChats.isEmpty)
     }
 

@@ -6,8 +6,7 @@
 // (roster, name, epoch) as protected JSON in Application Support. Both are
 // dropped by the panic wipe.
 //
-// This is free and unencumbered software released into the public domain.
-// For more information, see <https://unlicense.org>
+// SPDX-License-Identifier: MIT
 //
 
 import BitFoundation

@@ -187,7 +187,9 @@ struct MessageListView: View {
                     jumpToLatestPill(proxy: proxy)
                 }
             }
-            .onOpenURL(perform: handleOpenURL)
+            // Inline sender links keep their message action sheet semantics;
+            // scene/cold-launch URLs are routed canonically by AppRuntime.
+            .environment(\.openURL, inlineOpenURLAction)
             .onTapGesture(count: 3) {
                 showClearConfirmation = true
             }
@@ -549,34 +551,31 @@ private extension MessageListView {
         }
     }
 
-    func handleOpenURL(_ url: URL) {
-        guard url.scheme == "bitchat" else { return }
-        switch url.host {
-        case "user":
-            let id = url.path.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
-            let peerID = PeerID(str: id.removingPercentEncoding ?? id)
-            selectedMessageSenderID = peerID
+    var inlineOpenURLAction: OpenURLAction {
+        OpenURLAction { url in
+            guard let route = ChatURLScheme.route(for: url) else { return .systemAction }
+            switch route {
+            case .user(let peerID):
+                selectedMessageSenderID = peerID
+                selectedMessageSender = conversationUIModel.senderDisplayName(
+                    for: peerID,
+                    fallbackMessages: conversationMessages(for: privatePeer)
+                )
+                if conversationUIModel.isSelfSender(peerID: peerID, displayName: selectedMessageSender) {
+                    selectedMessageSender = nil
+                    selectedMessageSenderID = nil
+                } else {
+                    showMessageActions = true
+                }
+                return .handled
 
-            selectedMessageSender = conversationUIModel.senderDisplayName(
-                for: peerID,
-                fallbackMessages: conversationMessages(for: privatePeer)
-            )
+            case .geohash(let geohash):
+                locationChannelsModel.openLocationChannel(for: geohash)
+                return .handled
 
-            if conversationUIModel.isSelfSender(peerID: peerID, displayName: selectedMessageSender) {
-                selectedMessageSender = nil
-                selectedMessageSenderID = nil
-            } else {
-                showMessageActions = true
+            case .share, .verification:
+                return .systemAction
             }
-
-        case "geohash":
-            let gh = url.path.trimmingCharacters(in: CharacterSet(charactersIn: "/")).lowercased()
-            let allowed = Set("0123456789bcdefghjkmnpqrstuvwxyz")
-            guard (2...12).contains(gh.count), gh.allSatisfy({ allowed.contains($0) }) else { return }
-            locationChannelsModel.openLocationChannel(for: gh)
-
-        default:
-            return
         }
     }
 

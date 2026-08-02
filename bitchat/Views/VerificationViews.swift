@@ -462,13 +462,13 @@ struct VerificationSheetView: View {
             VStack(spacing: 10) {
                 if showingScanner {
                     Button(action: { showingScanner = false }) {
-                        Label("show my qr", systemImage: "qrcode")
+                        Label("verification.my_qr.title", systemImage: "qrcode")
                             .bitchatFont(size: 13)
                     }
                     .buttonStyle(.bordered)
                 } else {
                     Button(action: { showingScanner = true }) {
-                        Label("scan someone else's qr", systemImage: "camera.viewfinder")
+                        Label("verification.scan.prompt_friend", systemImage: "camera.viewfinder")
                             .bitchatFont(size: 13, weight: .medium)
                     }
                     .buttonStyle(.bordered)
@@ -479,7 +479,7 @@ struct VerificationSheetView: View {
                 if let peerID = verificationModel.selectedPeerID,
                    verificationModel.isVerified(peerID: peerID) {
                     Button(action: { verificationModel.unverifyFingerprint(for: peerID) }) {
-                        Label("remove verification", systemImage: "minus.circle")
+                        Label("fingerprint.action.remove_verification", systemImage: "minus.circle")
                             .bitchatFont(size: 12)
                     }
                     .buttonStyle(.bordered)

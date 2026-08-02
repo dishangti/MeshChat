@@ -3,7 +3,7 @@
 // bitchat
 //
 // Tracks participants in geohash-based location channels.
-// This is free and unencumbered software released into the public domain.
+// SPDX-License-Identifier: MIT
 //
 
 import Foundation

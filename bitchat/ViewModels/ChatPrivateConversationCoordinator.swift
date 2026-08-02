@@ -489,6 +489,19 @@ final class ChatPrivateConversationCoordinator {
         messageTimestamp: Date
     ) {
         guard let pm = PrivateMessagePacket.decode(from: payload.data) else { return }
+
+        // Enforce both identity domains before acknowledging or consuming the
+        // message ID. Account-mailbox DMs from favorites resolve `convKey` to
+        // their canonical Noise key, so checking only the Nostr transport key
+        // would let a mesh-blocked person bypass the block via relay fallback.
+        // Keeping this ahead of ACK/dedup also avoids exposing a delivery side
+        // channel or letting blocked traffic reserve an allowed sender's ID.
+        guard !context.isNostrBlocked(pubkeyHexLowercased: senderPubkey.lowercased()),
+              !context.isPeerBlocked(convKey) else {
+            SecureLogger.debug("Dropping Nostr DM from blocked identity", category: .security)
+            return
+        }
+
         let messageId = pm.messageID
 
         // Ack before the dedup guard: a re-sent copy means the sender may not
@@ -499,10 +512,6 @@ final class ChatPrivateConversationCoordinator {
         guard markInboundGeoDMSeen(messageId) else { return }
 
         SecureLogger.info("GeoDM: recv PM <- sender=\(senderPubkey.prefix(8))… mid=\(messageId.prefix(8))…", category: .session)
-
-        if context.isNostrBlocked(pubkeyHexLowercased: senderPubkey) {
-            return
-        }
 
         // Prefer the favorite's stored nickname when the sender resolved to a
         // known noise key; the Nostr display name is a geohash-scoped

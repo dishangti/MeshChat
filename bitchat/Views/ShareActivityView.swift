@@ -2,8 +2,7 @@
 // ShareActivityView.swift
 // bitchat
 //
-// This is free and unencumbered software released into the public domain.
-// For more information, see <https://unlicense.org>
+// SPDX-License-Identifier: MIT
 //
 
 import SwiftUI
@@ -27,11 +26,11 @@ struct ShareActivityView: View {
                 Spacer()
                 ShareLink(item: text) {
                     Label(
-                        String(localized: "channel.share.action", defaultValue: "share channel", comment: "Button that opens the system share sheet for a location channel invite"),
+                        String(localized: "channel.share.action", defaultValue: "Share Channel", comment: "Button that opens the system share sheet for a location channel invite"),
                         systemImage: "square.and.arrow.up"
                     )
                 }
-                Button(String(localized: "common.done", defaultValue: "done", comment: "Dismisses a sheet")) {
+                Button(String(localized: "common.done", defaultValue: "Done", comment: "Dismisses a sheet")) {
                     dismiss()
                 }
                 .keyboardShortcut(.cancelAction)

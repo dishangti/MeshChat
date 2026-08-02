@@ -2,8 +2,7 @@
 // SecureIdentityStateManager.swift
 // bitchat
 //
-// This is free and unencumbered software released into the public domain.
-// For more information, see <https://unlicense.org>
+// SPDX-License-Identifier: MIT
 //
 
 ///
@@ -113,6 +112,7 @@ protocol SecureIdentityStateManagerProtocol {
     // MARK: Blocked Users Management
     func isBlocked(fingerprint: String) -> Bool
     func setBlocked(_ fingerprint: String, isBlocked: Bool)
+    func getBlockedSocialIdentities() -> [SocialIdentity]
     
     // MARK: Geohash (Nostr) Blocking
     func isNostrBlocked(pubkeyHexLowercased: String) -> Bool
@@ -599,6 +599,12 @@ final class SecureIdentityStateManager: SecureIdentityStateManagerProtocol {
                 self.cache.socialIdentities[fingerprint] = newIdentity
             }
             self.saveIdentityCache()
+        }
+    }
+
+    func getBlockedSocialIdentities() -> [SocialIdentity] {
+        queue.sync {
+            cache.socialIdentities.values.filter(\.isBlocked)
         }
     }
 

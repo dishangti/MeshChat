@@ -3,7 +3,7 @@
 // bitchatTests
 //
 // Mock Transport implementation for unit testing ChatViewModel.
-// This is free and unencumbered software released into the public domain.
+// SPDX-License-Identifier: MIT
 //
 
 import Foundation

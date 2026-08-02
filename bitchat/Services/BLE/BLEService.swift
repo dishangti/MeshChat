@@ -183,10 +183,13 @@ final class BLEService: NSObject {
     
     // MARK: - Constants
     
-    #if DEBUG
-    static let serviceUUID = CBUUID(string: "F47B5E2D-4A9E-4C5A-9B3F-8E1D2C3A4B5A") // testnet
+    // Development builds must remain discoverable by released BitChat clients.
+    // Radio isolation is opt-in so a normal Xcode Run never silently switches
+    // to the test network solely because Swift assertions are enabled.
+    #if BITCHAT_BLE_TESTNET
+    static let serviceUUID = CBUUID(string: "F47B5E2D-4A9E-4C5A-9B3F-8E1D2C3A4B5A")
     #else
-    static let serviceUUID = CBUUID(string: "F47B5E2D-4A9E-4C5A-9B3F-8E1D2C3A4B5C") // mainnet
+    static let serviceUUID = CBUUID(string: "F47B5E2D-4A9E-4C5A-9B3F-8E1D2C3A4B5C")
     #endif
     static let characteristicUUID = CBUUID(string: "A1B2C3D4-E5F6-4A5B-8C9D-0E1F2A3B4C5D")
     private static let centralRestorationID = "chat.bitchat.ble.central"

@@ -3,7 +3,7 @@
 // bitchatTests
 //
 // Tests for ChatViewModel using MockTransport for isolation.
-// This is free and unencumbered software released into the public domain.
+// SPDX-License-Identifier: MIT
 //
 
 import Testing
@@ -19,7 +19,10 @@ private func makeTestableViewModel(
     keychain injectedKeychain: MockKeychain? = nil,
     panicMediaWipe: (() throws -> Void)? = nil,
     panicRecoveryOperations: PanicRecoveryOperations? = nil,
-    panicNetworkLifecycle: PanicNetworkLifecycle = .noop
+    panicNetworkLifecycle: PanicNetworkLifecycle = .noop,
+    panicBridgeReset: @escaping @MainActor () -> Void = {
+        BridgeService.shared.resetForPanic()
+    }
 ) -> (viewModel: ChatViewModel, transport: MockTransport) {
     let keychain = injectedKeychain ?? MockKeychain()
     let keychainHelper = MockKeychainHelper()
@@ -34,7 +37,8 @@ private func makeTestableViewModel(
         transport: transport,
         panicMediaWipe: panicMediaWipe,
         panicRecoveryOperations: panicRecoveryOperations,
-        panicNetworkLifecycle: panicNetworkLifecycle
+        panicNetworkLifecycle: panicNetworkLifecycle,
+        panicBridgeReset: panicBridgeReset
     )
 
     return (viewModel, transport)
@@ -301,8 +305,8 @@ struct ChatViewModelCommandTests {
         viewModel.handleCommand("/bogus")
 
         let dmContents = viewModel.privateChats[peerID]?.map(\.content) ?? []
-        #expect(dmContents.contains { $0.hasPrefix("unknown command: /bogus") })
-        #expect(!viewModel.messages.contains { $0.content.hasPrefix("unknown command: /bogus") })
+        #expect(dmContents.contains { $0.hasPrefix("Unknown command: /bogus") })
+        #expect(!viewModel.messages.contains { $0.content.hasPrefix("Unknown command: /bogus") })
     }
 
     @Test @MainActor
@@ -311,7 +315,7 @@ struct ChatViewModelCommandTests {
 
         viewModel.handleCommand("/bogus")
 
-        #expect(viewModel.messages.last?.content.hasPrefix("unknown command: /bogus") == true)
+        #expect(viewModel.messages.last?.content.hasPrefix("Unknown command: /bogus") == true)
     }
 
     @Test @MainActor
@@ -327,8 +331,8 @@ struct ChatViewModelCommandTests {
         viewModel.handleCommand("/msg Alice")
 
         #expect(viewModel.selectedPrivateChatPeer == peerID)
-        #expect(viewModel.privateChats[peerID]?.last?.content == "started private chat with Alice")
-        #expect(!viewModel.messages.contains { $0.content == "started private chat with Alice" })
+        #expect(viewModel.privateChats[peerID]?.last?.content == "Started private chat with Alice")
+        #expect(!viewModel.messages.contains { $0.content == "Started private chat with Alice" })
     }
 }
 
@@ -438,7 +442,7 @@ struct ChatViewModelServiceLifecycleTests {
         viewModel.handleScreenshotCaptured()
 
         #expect(transport.sentPrivateMessages.isEmpty)
-        #expect(viewModel.privateChats[peerID]?.last?.content == "you took a screenshot")
+        #expect(viewModel.privateChats[peerID]?.last?.content == "You took a screenshot")
     }
 }
 
@@ -786,6 +790,46 @@ struct ChatViewModelRateLimitingTests {
 // MARK: - Public Conversation Tests
 
 struct ChatViewModelPublicConversationTests {
+
+    @Test @MainActor
+    func bridgeInjectionChecksTheFullNostrIdentityBeforeTimelineDelivery() throws {
+        let (viewModel, _) = makeTestableViewModel()
+        viewModel.nickname = "me"
+        let blockedIdentity = try NostrIdentity.generate()
+        let allowedIdentity = try NostrIdentity.generate()
+        let blockedKey = blockedIdentity.publicKeyHex.lowercased()
+        let blockedMessageID = "blocked-bridge-event"
+        let allowedMessageID = "allowed-bridge-event"
+
+        viewModel.blockBridgeUser(pubkeyHex: blockedKey, displayName: "same-name#0000")
+        #expect(viewModel.isBridgeUserBlocked(pubkeyHex: blockedKey))
+        // A shortened compatibility ID is never accepted by the block API.
+        #expect(!viewModel.isBridgeUserBlocked(pubkeyHex: String(blockedKey.prefix(16))))
+
+        viewModel.handleBridgeInboundMessage(BridgeService.InboundBridgeMessage(
+            messageID: blockedMessageID,
+            radioMessageIDHint: nil,
+            senderNickname: "same-name#0000",
+            participantNickname: "same-name",
+            senderPubkey: blockedKey,
+            content: "@me do not deliver",
+            timestamp: Date()
+        ))
+        viewModel.handleBridgeInboundMessage(BridgeService.InboundBridgeMessage(
+            messageID: allowedMessageID,
+            radioMessageIDHint: nil,
+            senderNickname: "same-name#0000",
+            participantNickname: "same-name",
+            senderPubkey: allowedIdentity.publicKeyHex,
+            content: "@me deliver this signer",
+            timestamp: Date()
+        ))
+        viewModel.publicMessagePipeline.flushIfNeeded()
+
+        #expect(!viewModel.publicConversationContainsMessage(withID: blockedMessageID, in: .mesh))
+        #expect(viewModel.publicConversationContainsMessage(withID: allowedMessageID, in: .mesh))
+        #expect(viewModel.messages.first(where: { $0.id == allowedMessageID })?.mentions == ["me"])
+    }
 
     @Test @MainActor
     func bridgeAliasReplacementDoesNotContentDedupAwayAuthenticatedRadioRow() {
@@ -2107,6 +2151,25 @@ struct ChatViewModelPanicTests {
     }
 
     @Test @MainActor
+    func panicClearAllData_resetsBridgeAfterStoppingNetwork() {
+        var events: [String] = []
+        let lifecycle = PanicNetworkLifecycle(
+            stop: { events.append("stop") },
+            restart: { events.append("restart") }
+        )
+        let (viewModel, _) = makeTestableViewModel(
+            panicMediaWipe: { events.append("wipe") },
+            panicNetworkLifecycle: lifecycle,
+            panicBridgeReset: { events.append("bridge") }
+        )
+
+        let completed = viewModel.panicClearAllData()
+
+        #expect(completed)
+        #expect(events == ["stop", "bridge", "wipe", "restart"])
+    }
+
+    @Test @MainActor
     func panicKeychainFailureKeepsRecoveryPendingAndServicesStopped() {
         let keychain = MockKeychain()
         keychain.simulatedDeleteAllResult = false
@@ -2265,6 +2328,28 @@ struct ChatViewModelPanicTests {
         #expect(viewModel.privateChats.isEmpty)
         #expect(viewModel.unreadPrivateMessages.isEmpty)
         #expect(viewModel.selectedPrivateChatPeer == nil)
+    }
+
+    @Test @MainActor
+    func panicClearAllData_discardsUncommittedPublicBatch() {
+        let (viewModel, _) = makeTestableViewModel()
+        let message = BitchatMessage(
+            id: "pending-before-panic",
+            sender: "alice",
+            content: "sensitive pending plaintext",
+            timestamp: Date(),
+            isRelay: false,
+            senderPeerID: PeerID(str: "aabbccdd00112233")
+        )
+
+        #expect(viewModel.handlePublicMessage(message))
+        #expect(viewModel.publicMessagePipeline.containsMessage(withID: message.id))
+
+        viewModel.panicClearAllData()
+        viewModel.publicMessagePipeline.flushIfNeeded()
+
+        #expect(!viewModel.publicMessagePipeline.containsMessage(withID: message.id))
+        #expect(viewModel.messages.isEmpty)
     }
 
     @Test @MainActor

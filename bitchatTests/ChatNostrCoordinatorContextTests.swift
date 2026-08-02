@@ -69,8 +69,12 @@ private final class MockChatNostrContext: ChatNostrContext {
     private(set) var handledPublicMessages: [BitchatMessage] = []
     private(set) var mentionCheckedMessageIDs: [String] = []
     private(set) var hapticMessageIDs: [String] = []
+    var acceptsPublicMessages = true
 
-    func handlePublicMessage(_ message: BitchatMessage, powBits: Int) { handledPublicMessages.append(message) }
+    func handlePublicMessage(_ message: BitchatMessage, powBits: Int) -> Bool {
+        handledPublicMessages.append(message)
+        return acceptsPublicMessages
+    }
     func checkForMentions(_ message: BitchatMessage) { mentionCheckedMessageIDs.append(message.id) }
     func sendHapticFeedback(for message: BitchatMessage) { hapticMessageIDs.append(message.id) }
     func parseMentions(from content: String) -> [String] { [] }
@@ -148,6 +152,7 @@ private final class MockChatNostrContext: ChatNostrContext {
     var geoNicknames: [String: String] = [:]
     private(set) var teleportedKeys: Set<String> = []
     var teleportedGeoCount: Int { teleportedKeys.count }
+    var isApplicationActiveForGeoNotifications = true
     private(set) var refreshTimerStartCount = 0
     private(set) var refreshTimerStopCount = 0
     private(set) var activeParticipantGeohashes: [String?] = []
@@ -279,8 +284,10 @@ struct ChatNostrCoordinatorContextTests {
         #expect(context.handledPublicMessages.map(\.id) == [event.id])
         #expect(context.handledPublicMessages.first?.sender == "alice#1234")
         #expect(context.handledPublicMessages.first?.content == "hello geohash")
-        #expect(context.mentionCheckedMessageIDs == [event.id])
-        #expect(context.hapticMessageIDs == [event.id])
+        // Public feedback is owned by the downstream store-commit callback,
+        // after content and ID dedup have completed.
+        #expect(context.mentionCheckedMessageIDs.isEmpty)
+        #expect(context.hapticMessageIDs.isEmpty)
 
         // A replay of the same event is dropped before any processing.
         coordinator.inbound.handleNostrEvent(event)
@@ -332,6 +339,65 @@ struct ChatNostrCoordinatorContextTests {
         #expect(context.recordedNostrEventIDs == [event.id])
         #expect(context.recordedParticipants.isEmpty)
         #expect(context.handledPublicMessages.isEmpty)
+    }
+
+    @Test @MainActor
+    func blockedSamplingTrafficCannotMutatePresenceOrSuppressAllowedActivity() async throws {
+        let context = MockChatNostrContext()
+        let coordinator = ChatNostrCoordinator(context: context)
+        let blockedSender = try NostrIdentity.generate()
+        let allowedSender = try NostrIdentity.generate()
+        let geohash = "u4pruyd"
+        context.blockedNostrPubkeys.insert(blockedSender.publicKeyHex.lowercased())
+
+        let blocked = try NostrProtocol.createEphemeralGeohashEvent(
+            content: "blocked activity",
+            geohash: geohash,
+            senderIdentity: blockedSender,
+            nickname: "blocked"
+        )
+        coordinator.inbound.subscribeNostrEvent(blocked)
+        coordinator.presence.subscribeNostrEvent(blocked, gh: geohash)
+        await drainMainQueue()
+
+        #expect(context.recordedNostrEventIDs == [blocked.id])
+        #expect(context.recordedParticipants.isEmpty)
+        #expect(context.recordedSampledParticipants.isEmpty)
+        #expect(context.nostrKeyMapping.isEmpty)
+        #expect(context.geohashActivityNotifications.isEmpty)
+
+        let allowed = try NostrProtocol.createEphemeralGeohashEvent(
+            content: "allowed activity",
+            geohash: geohash,
+            senderIdentity: allowedSender,
+            nickname: "allowed"
+        )
+        coordinator.presence.subscribeNostrEvent(allowed, gh: geohash)
+        await drainMainQueue()
+
+        #expect(context.recordedSampledParticipants.map(\.pubkeyHex) == [allowed.pubkey])
+        #expect(context.appendedGeohashMessages.map(\.message.id) == [allowed.id])
+        #expect(context.geohashActivityNotifications.map(\.geohash) == [geohash])
+    }
+
+    @Test @MainActor
+    func handleNostrEvent_rejectedPublicMessageHasNoMentionOrHapticSideEffects() async throws {
+        let context = MockChatNostrContext()
+        context.acceptsPublicMessages = false
+        let coordinator = ChatNostrCoordinator(context: context)
+        let sender = try NostrIdentity.generate()
+        let event = try NostrProtocol.createEphemeralGeohashEvent(
+            content: "@me rate limited",
+            geohash: "u4pruyd",
+            senderIdentity: sender
+        )
+
+        coordinator.inbound.handleNostrEvent(event)
+        await drainMainQueue()
+
+        #expect(context.handledPublicMessages.map(\.id) == [event.id])
+        #expect(context.mentionCheckedMessageIDs.isEmpty)
+        #expect(context.hapticMessageIDs.isEmpty)
     }
 
     @Test @MainActor

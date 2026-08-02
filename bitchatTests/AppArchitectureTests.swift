@@ -458,6 +458,95 @@ struct AppArchitectureTests {
         #expect(chromeModel.showingFingerprintFor == nil)
     }
 
+    @Test("Settings entry selects settings while the app logo selects info")
+    @MainActor
+    func appChromeModelSelectsRequestedInfoPane() {
+        let defaults = UserDefaults.standard
+        let previous = defaults.object(forKey: AppInfoPane.storageKey)
+        defer {
+            if let previous {
+                defaults.set(previous, forKey: AppInfoPane.storageKey)
+            } else {
+                defaults.removeObject(forKey: AppInfoPane.storageKey)
+            }
+        }
+        let viewModel = makeArchitectureViewModel()
+        let chromeModel = AppChromeModel(
+            chatViewModel: viewModel,
+            privateInboxModel: PrivateInboxModel(conversations: ConversationStore())
+        )
+
+        chromeModel.presentAppInfo(pane: .settings)
+        #expect(defaults.string(forKey: AppInfoPane.storageKey) == AppInfoPane.settings.rawValue)
+
+        chromeModel.presentAppInfo(pane: .info)
+        #expect(defaults.string(forKey: AppInfoPane.storageKey) == AppInfoPane.info.rawValue)
+    }
+
+    @Test("AppChromeModel closes every transient surface for panic")
+    @MainActor
+    func appChromeModelClosesTransientSurfacesForPanic() {
+        let viewModel = makeArchitectureViewModel()
+        let privateInboxModel = PrivateInboxModel(conversations: ConversationStore())
+        let chromeModel = AppChromeModel(chatViewModel: viewModel, privateInboxModel: privateInboxModel)
+
+        chromeModel.showFingerprint(for: PeerID(str: "peer-panic"))
+        chromeModel.isAppInfoPresented = true
+        chromeModel.isLocationChannelsSheetPresented = true
+        chromeModel.presentNotices(geoTab: true)
+        chromeModel.showBluetoothAlert = true
+        chromeModel.bluetoothAlertMessage = "sensitive transport state"
+        chromeModel.showScreenshotPrivacyWarning = true
+
+        chromeModel.dismissTransientSurfacesForPanic()
+
+        #expect(chromeModel.showingFingerprintFor == nil)
+        #expect(!chromeModel.isAppInfoPresented)
+        #expect(!chromeModel.isLocationChannelsSheetPresented)
+        #expect(!chromeModel.isNoticesSheetPresented)
+        #expect(!chromeModel.noticesSheetPrefersGeoTab)
+        #expect(!chromeModel.showBluetoothAlert)
+        #expect(chromeModel.bluetoothAlertMessage.isEmpty)
+        #expect(!chromeModel.showScreenshotPrivacyWarning)
+    }
+
+    @Test("AppChromeModel labels shared Nostr blocks without inventing a location source")
+    @MainActor
+    func appChromeModelUsesNeutralNostrBlockSource() {
+        let viewModel = makeArchitectureViewModel()
+        let privateInboxModel = PrivateInboxModel(conversations: ConversationStore())
+        let chromeModel = AppChromeModel(chatViewModel: viewModel, privateInboxModel: privateInboxModel)
+        let pubkey = String(repeating: "a", count: 64)
+        viewModel.identityManager.setNostrBlocked(pubkey, isBlocked: true)
+
+        let row = chromeModel.blockedPeople().first { $0.stableID == pubkey }
+        #expect(row?.source == .nostr)
+        #expect(row?.source != .mesh)
+
+        if let row {
+            chromeModel.unblock(row)
+        }
+        #expect(!viewModel.identityManager.isNostrBlocked(pubkeyHexLowercased: pubkey))
+    }
+
+    @Test("Blocked rows with the same claimed name remain identity-distinguishable")
+    func blockedRowsExposeDistinctCryptographicHints() {
+        let first = BlockedPersonRow(
+            source: .mesh,
+            stableID: "111111abcdef222222222222222222222222222222222222222222aaaaaa",
+            displayName: "alice"
+        )
+        let second = BlockedPersonRow(
+            source: .mesh,
+            stableID: "111111abcdef333333333333333333333333333333333333333333bbbbbb",
+            displayName: "alice"
+        )
+
+        #expect(first.displayName == second.displayName)
+        #expect(first.identityHint != second.identityHint)
+        #expect(first.id != second.id)
+    }
+
     @Test("PrivateConversationModel resolves canonical header state for the selected DM")
     @MainActor
     func privateConversationModelResolvesSelectedHeaderState() async {

@@ -14,7 +14,7 @@ final class ChatMessageFormatter {
         self.viewModel = viewModel
     }
 
-    func formatMessageAsText(_ message: BitchatMessage, colorScheme: ColorScheme, theme: AppTheme = .matrix) -> AttributedString {
+    func formatMessageAsText(_ message: BitchatMessage, colorScheme: ColorScheme, theme: AppTheme = .defaultTheme) -> AttributedString {
         let design = theme.bodyFontDesign
         let isSelf: Bool = {
             if let spid = message.senderPeerID {
@@ -348,7 +348,7 @@ final class ChatMessageFormatter {
         return result
     }
 
-    func formatMessageHeader(_ message: BitchatMessage, colorScheme: ColorScheme, theme: AppTheme = .matrix) -> AttributedString {
+    func formatMessageHeader(_ message: BitchatMessage, colorScheme: ColorScheme, theme: AppTheme = .defaultTheme) -> AttributedString {
         let design = theme.bodyFontDesign
         let isSelf: Bool = {
             if let spid = message.senderPeerID {

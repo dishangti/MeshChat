@@ -2,8 +2,7 @@
 // SystemSettings.swift
 // bitchat
 //
-// This is free and unencumbered software released into the public domain.
-// For more information, see <https://unlicense.org>
+// SPDX-License-Identifier: MIT
 //
 
 #if os(iOS)
@@ -16,28 +15,43 @@ enum SystemSettings {
     case bluetooth
     case location
     case microphone
+    case notifications
 
     #if os(macOS)
-    private static let baseURL = "x-apple.systempreferences:com.apple.preference.security"
-
-    private var macPrivacyAnchor: String {
+    private var macURLStrings: [String] {
         switch self {
-        case .bluetooth: "Privacy_Bluetooth"
-        case .location: "Privacy_LocationServices"
-        case .microphone: "Privacy_Microphone"
+        case .bluetooth:
+            ["x-apple.systempreferences:com.apple.preference.security?Privacy_Bluetooth"]
+        case .location:
+            ["x-apple.systempreferences:com.apple.preference.security?Privacy_LocationServices"]
+        case .microphone:
+            ["x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone"]
+        case .notifications:
+            [
+                "x-apple.systempreferences:com.apple.Notifications-Settings.extension",
+                "x-apple.systempreferences:"
+            ]
         }
     }
     #endif
 
     func open() {
         #if os(iOS)
-        if let url = URL(string: UIApplication.openSettingsURLString) {
+        let urlString: String
+        switch self {
+        case .notifications:
+            urlString = UIApplication.openNotificationSettingsURLString
+        case .bluetooth, .location, .microphone:
+            urlString = UIApplication.openSettingsURLString
+        }
+        if let url = URL(string: urlString) {
             UIApplication.shared.open(url)
         }
         #elseif os(macOS)
-        let urlString = "\(Self.baseURL)?\(macPrivacyAnchor)"
-        if let url = URL(string: urlString) {
-            NSWorkspace.shared.open(url)
+        for urlString in macURLStrings {
+            if let url = URL(string: urlString), NSWorkspace.shared.open(url) {
+                return
+            }
         }
         #endif
     }

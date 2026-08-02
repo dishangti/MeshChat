@@ -75,6 +75,7 @@ private final class MockChatTransportEventContext: ChatTransportEventContext {
     private(set) var handledPublicMessages: [BitchatMessage] = []
     private(set) var mentionCheckedMessageIDs: [String] = []
     private(set) var hapticMessageIDs: [String] = []
+    var acceptsPublicMessages = true
 
     func isMessageBlocked(_ message: BitchatMessage) -> Bool {
         blockedMessageIDs.contains(message.id)
@@ -84,8 +85,9 @@ private final class MockChatTransportEventContext: ChatTransportEventContext {
         handledPrivateMessages.append(message)
     }
 
-    func handlePublicMessage(_ message: BitchatMessage) {
+    func handlePublicMessage(_ message: BitchatMessage) -> Bool {
         handledPublicMessages.append(message)
+        return acceptsPublicMessages
     }
 
     func checkForMentions(_ message: BitchatMessage) {
@@ -244,8 +246,10 @@ struct ChatTransportEventCoordinatorContextTests {
         #expect(context.mentionCheckedMessageIDs.isEmpty)
         #expect(context.meshDeliveryAcks.isEmpty)
 
-        // Private goes to the private handler, public to the public handler;
-        // both get mention checks and haptics. Stable-media ACK authorization
+        // Private goes to the private handler, public to the public handler.
+        // DMs retain haptics but use their dedicated alert path; running them
+        // through public mention checks would bypass the DM notification
+        // preference. Stable-media ACK authorization
         // belongs to BLEFileTransferHandler after its durable commit and this
         // synchronous acceptance result, not to the generic UI coordinator.
         let stableMediaID = "media-\(String(repeating: "a", count: 32))"
@@ -268,17 +272,13 @@ struct ChatTransportEventCoordinatorContextTests {
             "pm-missing-sender"
         ])
         #expect(context.handledPublicMessages.map(\.id) == ["pub"])
-        #expect(context.mentionCheckedMessageIDs == [
-            stableMediaID,
-            "legacy-media",
-            "pm-missing-sender",
-            "pub"
-        ])
+        // Public feedback is emitted by the store-commit callback, not by the
+        // transport adapter before the batched pipeline has deduplicated it.
+        #expect(context.mentionCheckedMessageIDs.isEmpty)
         #expect(context.hapticMessageIDs == [
             stableMediaID,
             "legacy-media",
-            "pm-missing-sender",
-            "pub"
+            "pm-missing-sender"
         ])
         #expect(context.meshDeliveryAcks.isEmpty)
     }
@@ -308,6 +308,23 @@ struct ChatTransportEventCoordinatorContextTests {
     }
 
     @Test @MainActor
+    func synchronousPublicDeliveryStillAcknowledgesDedupAndRateLimitDrops() {
+        let context = MockChatTransportEventContext()
+        let coordinator = ChatTransportEventCoordinator(context: context)
+        context.acceptsPublicMessages = false
+
+        let duplicate = makeMessage(id: "already-stored")
+        let rateLimited = makeMessage(id: "rate-limited")
+
+        #expect(coordinator.didReceiveMessageSynchronously(duplicate))
+        #expect(coordinator.didReceiveMessageSynchronously(rateLimited))
+        #expect(context.handledPublicMessages.map(\.id) == [duplicate.id, rateLimited.id])
+
+        context.blockedMessageIDs.insert("blocked-public")
+        #expect(!coordinator.didReceiveMessageSynchronously(makeMessage(id: "blocked-public")))
+    }
+
+    @Test @MainActor
     func didReceivePublicMessage_trimsContentAndParsesMentions() async {
         let context = MockChatTransportEventContext()
         let coordinator = ChatTransportEventCoordinator(context: context)
@@ -327,7 +344,48 @@ struct ChatTransportEventCoordinatorContextTests {
         #expect(message.content == "hi @me")
         #expect(message.mentions == ["me"])
         #expect(message.senderPeerID == peerID)
-        #expect(context.hapticMessageIDs == ["m1"])
+        #expect(context.hapticMessageIDs.isEmpty)
+    }
+
+    @Test @MainActor
+    func blockedPublicMessageCannotTriggerMentionOrHapticSideEffects() async {
+        let context = MockChatTransportEventContext()
+        let coordinator = ChatTransportEventCoordinator(context: context)
+        let peerID = PeerID(str: "aabbccdd00112233")
+        context.blockedMessageIDs = ["blocked-mention"]
+
+        coordinator.didReceivePublicMessage(
+            from: peerID,
+            nickname: "blocked-user",
+            content: "@me should never notify",
+            timestamp: Date(),
+            messageID: "blocked-mention"
+        )
+        await drainMainActorTasks()
+
+        #expect(context.handledPublicMessages.isEmpty)
+        #expect(context.mentionCheckedMessageIDs.isEmpty)
+        #expect(context.hapticMessageIDs.isEmpty)
+    }
+
+    @Test @MainActor
+    func rejectedPublicMessageCannotTriggerMentionOrHapticSideEffects() async {
+        let context = MockChatTransportEventContext()
+        context.acceptsPublicMessages = false
+        let coordinator = ChatTransportEventCoordinator(context: context)
+
+        coordinator.didReceivePublicMessage(
+            from: PeerID(str: "aabbccdd00112233"),
+            nickname: "rate-limited-user",
+            content: "@me should never notify",
+            timestamp: Date(),
+            messageID: "rejected-mention"
+        )
+        await drainMainActorTasks()
+
+        #expect(context.handledPublicMessages.map(\.id) == ["rejected-mention"])
+        #expect(context.mentionCheckedMessageIDs.isEmpty)
+        #expect(context.hapticMessageIDs.isEmpty)
     }
 
     @Test @MainActor
@@ -479,5 +537,123 @@ struct ChatTransportEventCoordinatorContextTests {
         await drainMainActorTasks()
         #expect(context.handledPrivateMessages.count == 1)
         #expect(context.meshDeliveryAcks.count == 1)
+    }
+
+    @Test @MainActor
+    func blockedPeer_userVisibleNoisePayloadsNeverReachFeatureCoordinators() {
+        let context = MockChatTransportEventContext()
+        let coordinator = ChatTransportEventCoordinator(context: context)
+        let peerID = PeerID(str: "aabbccddeeff0011")
+        let timestamp = Date()
+        context.blockedPeers = [peerID]
+
+        coordinator.didReceiveNoisePayloadSynchronously(
+            from: peerID,
+            type: .verifyChallenge,
+            payload: Data([0x01]),
+            timestamp: timestamp
+        )
+        coordinator.didReceiveNoisePayloadSynchronously(
+            from: peerID,
+            type: .verifyResponse,
+            payload: Data([0x02]),
+            timestamp: timestamp
+        )
+        coordinator.didReceiveNoisePayloadSynchronously(
+            from: peerID,
+            type: .groupInvite,
+            payload: Data([0x03]),
+            timestamp: timestamp
+        )
+        coordinator.didReceiveNoisePayloadSynchronously(
+            from: peerID,
+            type: .vouch,
+            payload: Data([0x04]),
+            timestamp: timestamp
+        )
+        coordinator.didReceiveNoisePayloadSynchronously(
+            from: peerID,
+            type: .voiceFrame,
+            payload: Data([0x05]),
+            timestamp: timestamp
+        )
+
+        #expect(context.verifyChallengePayloads.isEmpty)
+        #expect(context.verifyResponsePayloads.isEmpty)
+        #expect(context.groupInvitePayloads.isEmpty)
+        #expect(context.vouchPayloads.isEmpty)
+        #expect(context.voiceFramePayloads.isEmpty)
+    }
+
+    @Test @MainActor
+    func blockedPeer_controlPayloadsAndAllowedPeerFlowsRemainCompatible() {
+        let context = MockChatTransportEventContext()
+        let coordinator = ChatTransportEventCoordinator(context: context)
+        let blockedPeerID = PeerID(str: "aabbccddeeff0011")
+        let allowedPeerID = PeerID(str: "1122334455667788")
+        let timestamp = Date()
+        context.blockedPeers = [blockedPeerID]
+
+        // Receipts remain correlated protocol acknowledgements, and signed
+        // group updates must reach the group coordinator for rotations or a
+        // creator-driven removal even when that creator is blocked locally.
+        coordinator.didReceiveNoisePayloadSynchronously(
+            from: blockedPeerID,
+            type: .delivered,
+            payload: Data("delivered-id".utf8),
+            timestamp: timestamp
+        )
+        coordinator.didReceiveNoisePayloadSynchronously(
+            from: blockedPeerID,
+            type: .readReceipt,
+            payload: Data("read-id".utf8),
+            timestamp: timestamp
+        )
+        coordinator.didReceiveNoisePayloadSynchronously(
+            from: blockedPeerID,
+            type: .groupKeyUpdate,
+            payload: Data([0x10]),
+            timestamp: timestamp
+        )
+
+        #expect(context.appliedDeliveryStatuses.map(\.messageID) == ["delivered-id", "read-id"])
+        #expect(context.groupKeyUpdatePayloads.map(\.peerID) == [blockedPeerID])
+
+        coordinator.didReceiveNoisePayloadSynchronously(
+            from: allowedPeerID,
+            type: .verifyChallenge,
+            payload: Data([0x21]),
+            timestamp: timestamp
+        )
+        coordinator.didReceiveNoisePayloadSynchronously(
+            from: allowedPeerID,
+            type: .verifyResponse,
+            payload: Data([0x22]),
+            timestamp: timestamp
+        )
+        coordinator.didReceiveNoisePayloadSynchronously(
+            from: allowedPeerID,
+            type: .groupInvite,
+            payload: Data([0x23]),
+            timestamp: timestamp
+        )
+        coordinator.didReceiveNoisePayloadSynchronously(
+            from: allowedPeerID,
+            type: .vouch,
+            payload: Data([0x24]),
+            timestamp: timestamp
+        )
+        coordinator.didReceiveNoisePayloadSynchronously(
+            from: allowedPeerID,
+            type: .voiceFrame,
+            payload: Data([0x25]),
+            timestamp: timestamp
+        )
+
+        #expect(context.verifyChallengePayloads.map(\.peerID) == [allowedPeerID])
+        #expect(context.verifyResponsePayloads.map(\.peerID) == [allowedPeerID])
+        #expect(context.groupInvitePayloads.map(\.peerID) == [allowedPeerID])
+        #expect(context.vouchPayloads.map(\.peerID) == [allowedPeerID])
+        #expect(context.voiceFramePayloads.map(\.peerID) == [allowedPeerID])
     }
 }

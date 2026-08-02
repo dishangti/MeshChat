@@ -7,7 +7,7 @@
 	<key>CFBundleDevelopmentRegion</key>
 	<string>$(DEVELOPMENT_LANGUAGE)</string>
 	<key>CFBundleDisplayName</key>
-	<string>bitchat</string>
+	<string>$(APP_DISPLAY_NAME)</string>
 	<key>CFBundleExecutable</key>
 	<string>$(EXECUTABLE_NAME)</string>
 	<key>CFBundleIdentifier</key>
@@ -15,7 +15,7 @@
 	<key>CFBundleInfoDictionaryVersion</key>
 	<string>6.0</string>
 	<key>CFBundleName</key>
-	<string>$(PRODUCT_NAME)</string>
+	<string>$(APP_BUNDLE_NAME)</string>
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>
@@ -23,8 +23,11 @@
 	<key>CFBundleURLTypes</key>
 	<array>
 		<dict>
+			<key>CFBundleURLName</key>
+			<string>chat.meshchat.interop</string>
 			<key>CFBundleURLSchemes</key>
 			<array>
+				<string>meshchat</string>
 				<string>bitchat</string>
 			</array>
 		</dict>
@@ -36,17 +39,17 @@
 	<key>LSMinimumSystemVersion</key>
 	<string>$(MACOSX_DEPLOYMENT_TARGET)</string>
 	<key>NSBluetoothAlwaysUsageDescription</key>
-	<string>bitchat uses Bluetooth to create a secure mesh network for chatting with nearby users.</string>
+	<string>MeshChat uses Bluetooth to create a secure mesh network for chatting with nearby users.</string>
 	<key>NSBluetoothPeripheralUsageDescription</key>
-	<string>bitchat uses Bluetooth to discover and connect with other bitchat users nearby.</string>
+	<string>MeshChat uses Bluetooth to discover and connect with other compatible mesh users nearby.</string>
 	<key>NSCameraUsageDescription</key>
-	<string>bitchat uses the camera to scan QR codes to verify peers.</string>
+	<string>MeshChat uses the camera to scan QR codes to verify peers.</string>
 	<key>NSLocationWhenInUseUsageDescription</key>
-	<string>bitchat uses your location to compute optional geohash channels, bridge cells, and nearby place labels. Exact coordinates are not included in bitchat messages.</string>
+	<string>MeshChat uses your location to compute optional geohash channels, bridge cells, and nearby place labels. Exact coordinates are not included in mesh messages.</string>
 	<key>NSMicrophoneUsageDescription</key>
-	<string>bitchat uses the microphone while you record voice notes or hold live push-to-talk, then sends that audio to your selected mesh conversation.</string>
+	<string>MeshChat uses the microphone while you record voice notes or hold live push-to-talk, then sends that audio to your selected mesh conversation.</string>
 	<key>NSPhotoLibraryUsageDescription</key>
-	<string>bitchat lets you pick images from your photo library to share with nearby peers.</string>
+	<string>MeshChat lets you pick images from your photo library to share with nearby peers.</string>
 	<key>UIBackgroundModes</key>
 	<array>
 		<string>bluetooth-central</string>
@@ -54,11 +57,18 @@
 	</array>
 	<key>UILaunchStoryboardName</key>
 	<string>LaunchScreen</string>
-	<key>UIRequiresFullScreen</key>
-	<true/>
 	<key>UISupportedInterfaceOrientations</key>
 	<array>
 		<string>UIInterfaceOrientationPortrait</string>
+		<string>UIInterfaceOrientationLandscapeLeft</string>
+		<string>UIInterfaceOrientationLandscapeRight</string>
+	</array>
+	<key>UISupportedInterfaceOrientations~ipad</key>
+	<array>
+		<string>UIInterfaceOrientationPortrait</string>
+		<string>UIInterfaceOrientationPortraitUpsideDown</string>
+		<string>UIInterfaceOrientationLandscapeLeft</string>
+		<string>UIInterfaceOrientationLandscapeRight</string>
 	</array>
 </dict>
 </plist>

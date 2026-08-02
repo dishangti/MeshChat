@@ -4,7 +4,7 @@
 //
 // Tests for /ping and /trace command handling and the topology snapshot
 // types backing the mesh topology map.
-// This is free and unencumbered software released into the public domain.
+// SPDX-License-Identifier: MIT
 //
 
 import Foundation
@@ -48,7 +48,7 @@ struct MeshDiagnosticsTests {
         let result = processor.process("/ping")
         switch result {
         case .error(let message):
-            #expect(message == "usage: /ping <nickname>")
+            #expect(message == "Usage: /ping <nickname>")
         default:
             Issue.record("Expected usage error")
         }
@@ -61,7 +61,7 @@ struct MeshDiagnosticsTests {
         let result = processor.process("/ping @ghost")
         switch result {
         case .error(let message):
-            #expect(message == "cannot ping ghost: not found on mesh")
+            #expect(message == "Cannot ping ghost: not found on mesh")
         default:
             Issue.record("Expected error result")
         }
@@ -75,7 +75,7 @@ struct MeshDiagnosticsTests {
         let result = processor.process("/ping @alice")
         switch result {
         case .error(let message):
-            #expect(message == "cannot ping alice: not found on mesh")
+            #expect(message == "Cannot ping alice: not found on mesh")
         default:
             Issue.record("Expected error for geo peer")
         }
@@ -93,14 +93,14 @@ struct MeshDiagnosticsTests {
         let result = processor.process("/ping @alice")
         switch result {
         case .success(let message):
-            #expect(message == "pinging alice…")
+            #expect(message == "Pinging alice…")
         default:
             Issue.record("Expected immediate 'pinging' feedback")
         }
         #expect(transport.sentMeshPings == [peerID])
 
         await waitForCommandOutput(context)
-        #expect(context.commandOutputs == ["pong from alice: 42 ms · 2 hops"])
+        #expect(context.commandOutputs == ["Pong from alice: 42 ms · 2 hops"])
     }
 
     @MainActor
@@ -113,7 +113,7 @@ struct MeshDiagnosticsTests {
 
         _ = processor.process("/ping alice")
         await waitForCommandOutput(context)
-        #expect(context.commandOutputs == ["pong from alice: 8 ms · direct (1 hop)"])
+        #expect(context.commandOutputs == ["Pong from alice: 8 ms · direct (1 hop)"])
     }
 
     @MainActor
@@ -126,7 +126,7 @@ struct MeshDiagnosticsTests {
 
         _ = processor.process("/ping @alice")
         await waitForCommandOutput(context)
-        #expect(context.commandOutputs == ["no reply from alice"])
+        #expect(context.commandOutputs == ["No reply from alice"])
     }
 
     @MainActor
@@ -181,7 +181,7 @@ struct MeshDiagnosticsTests {
         let result = processor.process("/trace @bob")
         switch result {
         case .success(let message):
-            #expect(message == "estimated path: you → bob (1 hop)")
+            #expect(message == "Estimated path: you → bob (1 hop)")
         default:
             Issue.record("Expected success result")
         }
@@ -202,7 +202,7 @@ struct MeshDiagnosticsTests {
         let result = processor.process("/trace bob")
         switch result {
         case .success(let message):
-            #expect(message == "estimated path: you → alice → dead00be… → bob (3 hops)")
+            #expect(message == "Estimated path: you → alice → dead00be… → bob (3 hops)")
         default:
             Issue.record("Expected success result")
         }
@@ -217,7 +217,7 @@ struct MeshDiagnosticsTests {
         let result = processor.process("/trace @bob")
         switch result {
         case .success(let message):
-            #expect(message == "no known path to bob")
+            #expect(message == "No known path to bob")
         default:
             Issue.record("Expected success result")
         }

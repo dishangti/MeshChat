@@ -2,8 +2,7 @@
 // BridgeServiceTests.swift
 // bitchat
 //
-// This is free and unencumbered software released into the public domain.
-// For more information, see <https://unlicense.org>
+// SPDX-License-Identifier: MIT
 //
 
 import BitFoundation
@@ -30,6 +29,7 @@ struct BridgeServiceTests {
         var bridgePeers: [PeerID] = []
         var sendSucceeds = true
         var locallySeenMessageIDs: Set<String> = []
+        var blockedSignerPubkeys: Set<String> = []
         var injectedPresenceOverride: ((String) -> Bool)?
         var nickname = "tester"
 
@@ -42,6 +42,7 @@ struct BridgeServiceTests {
         }
         private(set) var broadcasts: [Data] = []
         private(set) var injected: [BridgeService.InboundBridgeMessage] = []
+        private(set) var checkedBlockPubkeys: [String] = []
         private(set) var removedInjectedMessageIDs: [String] = []
         private(set) var uplinkSends: [(payload: Data, peer: PeerID)] = []
         private(set) var openedSubscriptions: [[String]] = []
@@ -94,6 +95,11 @@ struct BridgeServiceTests {
             }
             service.injectInbound = { [weak self] message in
                 self?.injected.append(message)
+            }
+            service.isSenderBlocked = { [weak self] pubkey in
+                guard let self else { return false }
+                checkedBlockPubkeys.append(pubkey)
+                return blockedSignerPubkeys.contains(pubkey)
             }
             service.removeInjectedInbound = { [weak self] messageID in
                 self?.removedInjectedMessageIDs.append(messageID)
@@ -222,6 +228,58 @@ struct BridgeServiceTests {
         #expect(fixture.closedSubscriptions >= 1)
         #expect(fixture.service.activeCell == nil)
         #expect(fixture.service.bridgedPeerCount == 0)
+    }
+
+    @Test func panicResetClearsIdentityQueuesAndDelayedBridgeWork() throws {
+        let fixture = Fixture(enabled: true)
+        fixture.service.refreshRendezvous()
+        let visibleEvent = try makeRemoteEvent(content: "visible before panic")
+
+        // Populate participant, dedup, alias, and pending-downlink state.
+        fixture.service.handleRendezvousEvent(visibleEvent)
+        #expect(fixture.service.bridgedPeerCount == 1)
+        #expect(!fixture.service.bridgedParticipants.isEmpty)
+
+        // Populate the sensitive gateway queue with a different signed event.
+        fixture.relaysConnected = false
+        let queuedEvent = try makeRemoteEvent(content: "queued before panic")
+        fixture.service.handleMeshCarrier(
+            try carrier(queuedEvent, direction: .toBridge),
+            from: PeerID(str: "aabbccdd00112233"),
+            directedToUs: true
+        )
+        #expect(fixture.service.queuedUplinks.count == 1)
+
+        fixture.service.resetForPanic()
+
+        #expect(!fixture.service.isEnabled)
+        #expect(fixture.service.activeCell == nil)
+        #expect(fixture.service.subscribedCells.isEmpty)
+        #expect(fixture.service.queuedUplinks.isEmpty)
+        #expect(fixture.service.bridgedPeerCount == 0)
+        #expect(fixture.service.bridgedParticipants.isEmpty)
+        #expect(fixture.defaults.object(forKey: "bridge.userEnabled") == nil)
+
+        // Work armed by the old lifecycle cannot broadcast after the wipe,
+        // even if its injected test scheduler fires later.
+        fixture.fireScheduledTimers()
+        #expect(fixture.broadcasts.isEmpty)
+
+        let relaunched = BridgeService(defaults: fixture.defaults)
+        #expect(!relaunched.isEnabled)
+
+        // Resetting the bounded caches removes pre-wipe event metadata too.
+        fixture.service.setEnabled(true)
+        fixture.service.handleRendezvousEvent(visibleEvent)
+        #expect(fixture.injected.map(\.messageID) == [visibleEvent.id, visibleEvent.id])
+
+        // Alias metadata is cleared as well: after another reset, a late
+        // authenticated radio row cannot remove either pre-wipe bridge row.
+        fixture.service.resetForPanic()
+        fixture.service.handleAuthenticatedRadioMessage(
+            messageID: stableID(content: "visible before panic")
+        )
+        #expect(fixture.removedInjectedMessageIDs.isEmpty)
     }
 
     @Test func togglePersistsAcrossInstances() {
@@ -367,6 +425,28 @@ struct BridgeServiceTests {
         let broadcast = try #require(fixture.broadcasts.first)
         let carrier = try #require(NostrCarrierPacket.decode(broadcast))
         #expect(carrier.direction == .fromBridge)
+    }
+
+    @Test func blockingUsesTheFullSignerKeyAndNeverTheNicknameOrShortPeerID() throws {
+        let fixture = Fixture(enabled: true)
+        fixture.service.refreshRendezvous()
+        let blockedIdentity = try NostrIdentity.generate()
+        let allowedIdentity = try NostrIdentity.generate()
+        let blockedEvent = try makeRemoteEvent(content: "blocked", identity: blockedIdentity)
+        let allowedEvent = try makeRemoteEvent(content: "allowed", identity: allowedIdentity)
+
+        // Both events carry the same "remote" nickname. Only the exact,
+        // complete signer key is blocked; the 16-character compatibility ID
+        // is deliberately not a security identity.
+        fixture.blockedSignerPubkeys = [blockedIdentity.publicKeyHex.lowercased()]
+        fixture.service.handleRendezvousEvent(blockedEvent)
+        fixture.service.handleRendezvousEvent(allowedEvent)
+
+        #expect(fixture.injected.map(\.messageID) == [allowedEvent.id])
+        #expect(fixture.checkedBlockPubkeys.contains(blockedIdentity.publicKeyHex.lowercased()))
+        #expect(fixture.checkedBlockPubkeys.contains(allowedIdentity.publicKeyHex.lowercased()))
+        #expect(fixture.checkedBlockPubkeys.allSatisfy { $0.count == 64 })
+        #expect(fixture.service.bridgedParticipants.contains { $0.pubkey == blockedIdentity.publicKeyHex })
     }
 
     @Test func jitterHoldoffSuppressesAlreadyBroadcastEvents() throws {

@@ -96,6 +96,12 @@ struct SharedContentHandoffTests {
             privateDisplayName: "alice",
             activeChannel: geohashChannel
         ) == .privateConversation(peerID: stalePeer, displayName: "alice"))
+        #expect(SharedContentDestination.resolve(
+            selectedPrivatePeerID: stalePeer,
+            privateDisplayName: "alice",
+            activeChannel: geohashChannel,
+            includesPrivateConversation: false
+        ) == .geohash("9q8yy"))
     }
 
     @Test("A destination change requires a new confirmation and never consumes on the stale tap")

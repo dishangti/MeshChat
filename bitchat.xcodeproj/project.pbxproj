@@ -7,7 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
-		17901751FD8010AFC8E750F2 /* bitchatShareExtension.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 61F92EBA29C47C0FCC482F1F /* bitchatShareExtension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		17901751FD8010AFC8E750F2 /* MeshChatShareExtension.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 61F92EBA29C47C0FCC482F1F /* MeshChatShareExtension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		3EE336D150427F736F32B56C /* P256K in Frameworks */ = {isa = PBXBuildFile; productRef = B1D9136AA0083366353BFA2F /* P256K */; };
 		885BBED78092484A5B069461 /* P256K in Frameworks */ = {isa = PBXBuildFile; productRef = 4EB6BA1B8464F1EA38F4E286 /* P256K */; };
 		A6BCF9482F80953E001CF9B9 /* BitFoundation in Frameworks */ = {isa = PBXBuildFile; productRef = A6BCF9472F80953E001CF9B9 /* BitFoundation */; };
@@ -50,7 +50,7 @@
 			dstPath = "";
 			dstSubfolder = PlugIns;
 			files = (
-				17901751FD8010AFC8E750F2 /* bitchatShareExtension.appex in Embed Foundation Extensions */,
+				17901751FD8010AFC8E750F2 /* MeshChatShareExtension.appex in Embed Foundation Extensions */,
 			);
 			name = "Embed Foundation Extensions";
 		};
@@ -58,9 +58,9 @@
 
 /* Begin PBXFileReference section */
 		03C57F452B55FD0FD8F51421 /* bitchatTests_macOS.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = bitchatTests_macOS.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
-		61F92EBA29C47C0FCC482F1F /* bitchatShareExtension.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = bitchatShareExtension.appex; sourceTree = BUILT_PRODUCTS_DIR; };
-		8F3A7C058C2C8E1A06C8CF8B /* bitchat.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = bitchat.app; sourceTree = BUILT_PRODUCTS_DIR; };
-		96D0D41CA19EE5A772AA8434 /* bitchat.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = bitchat.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		61F92EBA29C47C0FCC482F1F /* MeshChatShareExtension.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = MeshChatShareExtension.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		8F3A7C058C2C8E1A06C8CF8B /* MeshChat.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = MeshChat.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		96D0D41CA19EE5A772AA8434 /* MeshChat.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = MeshChat.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		A6F183FC2E948783006A9046 /* tor-nolzma.xcframework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcframework; name = "tor-nolzma.xcframework"; path = "localPackages/Tor/Frameworks/tor-nolzma.xcframework"; sourceTree = "<group>"; };
 		C0DB1DE27F0AAB5092663E8E /* bitchatTests_iOS.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = bitchatTests_iOS.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		E0A1B2C3D4E5F6012345678A /* relays/online_relays_gps.csv */ = {isa = PBXFileReference; lastKnownFileType = text; path = relays/online_relays_gps.csv; sourceTree = "<group>"; };
@@ -190,9 +190,9 @@
 		9F37F9F2C353B58AC809E93B /* Products */ = {
 			isa = PBXGroup;
 			children = (
-				96D0D41CA19EE5A772AA8434 /* bitchat.app */,
-				8F3A7C058C2C8E1A06C8CF8B /* bitchat.app */,
-				61F92EBA29C47C0FCC482F1F /* bitchatShareExtension.appex */,
+				96D0D41CA19EE5A772AA8434 /* MeshChat.app */,
+				8F3A7C058C2C8E1A06C8CF8B /* MeshChat.app */,
+				61F92EBA29C47C0FCC482F1F /* MeshChatShareExtension.appex */,
 				C0DB1DE27F0AAB5092663E8E /* bitchatTests_iOS.xctest */,
 				03C57F452B55FD0FD8F51421 /* bitchatTests_macOS.xctest */,
 			);
@@ -230,8 +230,8 @@
 				A6E3EA802E7706A80032EA8A /* Tor */,
 				A6BCF9492F809550001CF9B9 /* BitFoundation */,
 			);
-			productName = bitchat_macOS;
-			productReference = 8F3A7C058C2C8E1A06C8CF8B /* bitchat.app */;
+			productName = MeshChat;
+			productReference = 8F3A7C058C2C8E1A06C8CF8B /* MeshChat.app */;
 			productType = "com.apple.product-type.application";
 		};
 		47FF23248747DD7CB666CB91 /* bitchatTests_macOS */ = {
@@ -267,8 +267,8 @@
 				A6E32D212E762EAB0032EA8A /* bitchatShareExtension */,
 			);
 			name = bitchatShareExtension;
-			productName = bitchatShareExtension;
-			productReference = 61F92EBA29C47C0FCC482F1F /* bitchatShareExtension.appex */;
+			productName = MeshChatShareExtension;
+			productReference = 61F92EBA29C47C0FCC482F1F /* MeshChatShareExtension.appex */;
 			productType = "com.apple.product-type.app-extension";
 		};
 		6CB97DF2EA57234CB3E563B8 /* bitchatTests_iOS */ = {
@@ -315,8 +315,8 @@
 				A6E3EA7E2E7706720032EA8A /* Tor */,
 				A6BCF9472F80953E001CF9B9 /* BitFoundation */,
 			);
-			productName = bitchat_iOS;
-			productReference = 96D0D41CA19EE5A772AA8434 /* bitchat.app */;
+			productName = MeshChat;
+			productReference = 96D0D41CA19EE5A772AA8434 /* MeshChat.app */;
 			productType = "com.apple.product-type.application";
 		};
 /* End PBXNativeTarget section */
@@ -336,19 +336,33 @@
 				en,
 				es,
 				ar,
+				bn,
 				de,
 				fa,
+				fil,
 				fr,
 				he,
+				hi,
 				id,
 				it,
 				ja,
+				ko,
+				ms,
 				ne,
+				nl,
+				pl,
+				pt,
 				"pt-BR",
 				ru,
+				sv,
+				ta,
+				th,
 				tr,
 				uk,
+				ur,
+				vi,
 				"zh-Hans",
+				"zh-Hant",
 			);
 			mainGroup = 18198ED912AAF495D8AF7763;
 			minimizedProjectReferenceProxies = 1;
@@ -468,7 +482,7 @@
 				SDKROOT = iphoneos;
 				SWIFT_VERSION = "$(SWIFT_VERSION)";
 				TARGETED_DEVICE_FAMILY = "1,2";
-				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/bitchat.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/bitchat";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/$(APP_PRODUCT_NAME).app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/$(APP_PRODUCT_NAME)";
 			};
 			name = Debug;
 		};
@@ -492,7 +506,7 @@
 				SDKROOT = iphoneos;
 				SWIFT_VERSION = "$(SWIFT_VERSION)";
 				TARGETED_DEVICE_FAMILY = "1,2";
-				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/bitchat.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/bitchat";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/$(APP_PRODUCT_NAME).app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/$(APP_PRODUCT_NAME)";
 			};
 			name = Release;
 		};
@@ -517,7 +531,7 @@
 				PRODUCT_BUNDLE_IDENTIFIER = "$(PRODUCT_BUNDLE_IDENTIFIER).tests";
 				SDKROOT = macosx;
 				SWIFT_VERSION = "$(SWIFT_VERSION)";
-				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/bitchat.app/Contents/MacOS/bitchat";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/$(APP_PRODUCT_NAME).app/Contents/MacOS/$(APP_PRODUCT_NAME)";
 			};
 			name = Release;
 		};
@@ -532,7 +546,7 @@
 				CODE_SIGN_ENTITLEMENTS = bitchatShareExtension/bitchatShareExtension.entitlements;
 				CODE_SIGN_STYLE = "$(CODE_SIGN_STYLE)";
 				INFOPLIST_FILE = bitchatShareExtension/Info.plist;
-				INFOPLIST_KEY_CFBundleDisplayName = bitchat;
+				INFOPLIST_KEY_CFBundleDisplayName = "$(APP_DISPLAY_NAME)";
 				IPHONEOS_DEPLOYMENT_TARGET = "$(IPHONEOS_DEPLOYMENT_TARGET)";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
@@ -540,13 +554,15 @@
 					"@executable_path/../../Frameworks",
 				);
 				PRODUCT_BUNDLE_IDENTIFIER = "$(PRODUCT_BUNDLE_IDENTIFIER).ShareExtension";
+				PRODUCT_MODULE_NAME = "$(SHARE_EXTENSION_MODULE_NAME)";
+				PRODUCT_NAME = "$(SHARE_EXTENSION_PRODUCT_NAME)";
 				SDKROOT = iphoneos;
 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
 				SUPPORTS_MACCATALYST = NO;
 				SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD = NO;
 				SUPPORTS_XR_DESIGNED_FOR_IPHONE_IPAD = NO;
 				SWIFT_VERSION = "$(SWIFT_VERSION)";
-				TARGETED_DEVICE_FAMILY = 1;
+				TARGETED_DEVICE_FAMILY = "1,2";
 			};
 			name = Release;
 		};
@@ -564,7 +580,7 @@
 				DEVELOPMENT_ASSET_PATHS = bitchat/_PreviewHelpers;
 				ENABLE_PREVIEWS = NO;
 				INFOPLIST_FILE = bitchat/Info.plist;
-				INFOPLIST_KEY_CFBundleDisplayName = bitchat;
+				INFOPLIST_KEY_CFBundleDisplayName = "$(APP_DISPLAY_NAME)";
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.social-networking";
 				IPHONEOS_DEPLOYMENT_TARGET = "$(IPHONEOS_DEPLOYMENT_TARGET)";
 				LD_RUNPATH_SEARCH_PATHS = (
@@ -572,14 +588,15 @@
 					"@executable_path/Frameworks",
 				);
 				PRODUCT_BUNDLE_IDENTIFIER = "$(PRODUCT_BUNDLE_IDENTIFIER)";
-				PRODUCT_NAME = bitchat;
+				PRODUCT_MODULE_NAME = "$(APP_MODULE_NAME)";
+				PRODUCT_NAME = "$(APP_PRODUCT_NAME)";
 				SDKROOT = iphoneos;
 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
 				SUPPORTS_MACCATALYST = NO;
 				SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD = NO;
 				SUPPORTS_XR_DESIGNED_FOR_IPHONE_IPAD = NO;
 				SWIFT_VERSION = "$(SWIFT_VERSION)";
-				TARGETED_DEVICE_FAMILY = 1;
+				TARGETED_DEVICE_FAMILY = "1,2";
 			};
 			name = Debug;
 		};
@@ -604,7 +621,7 @@
 				PRODUCT_BUNDLE_IDENTIFIER = "$(PRODUCT_BUNDLE_IDENTIFIER).tests";
 				SDKROOT = macosx;
 				SWIFT_VERSION = "$(SWIFT_VERSION)";
-				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/bitchat.app/Contents/MacOS/bitchat";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/$(APP_PRODUCT_NAME).app/Contents/MacOS/$(APP_PRODUCT_NAME)";
 			};
 			name = Debug;
 		};
@@ -622,7 +639,7 @@
 				DEVELOPMENT_ASSET_PATHS = bitchat/_PreviewHelpers;
 				ENABLE_PREVIEWS = YES;
 				INFOPLIST_FILE = bitchat/Info.plist;
-				INFOPLIST_KEY_CFBundleDisplayName = bitchat;
+				INFOPLIST_KEY_CFBundleDisplayName = "$(APP_DISPLAY_NAME)";
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.social-networking";
 				IPHONEOS_DEPLOYMENT_TARGET = "$(IPHONEOS_DEPLOYMENT_TARGET)";
 				LD_RUNPATH_SEARCH_PATHS = (
@@ -630,14 +647,15 @@
 					"@executable_path/Frameworks",
 				);
 				PRODUCT_BUNDLE_IDENTIFIER = "$(PRODUCT_BUNDLE_IDENTIFIER)";
-				PRODUCT_NAME = bitchat;
+				PRODUCT_MODULE_NAME = "$(APP_MODULE_NAME)";
+				PRODUCT_NAME = "$(APP_PRODUCT_NAME)";
 				SDKROOT = iphoneos;
 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
 				SUPPORTS_MACCATALYST = NO;
 				SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD = NO;
 				SUPPORTS_XR_DESIGNED_FOR_IPHONE_IPAD = NO;
 				SWIFT_VERSION = "$(SWIFT_VERSION)";
-				TARGETED_DEVICE_FAMILY = 1;
+				TARGETED_DEVICE_FAMILY = "1,2";
 			};
 			name = Release;
 		};
@@ -656,7 +674,7 @@
 				DEAD_CODE_STRIPPING = YES;
 				ENABLE_PREVIEWS = YES;
 				INFOPLIST_FILE = bitchat/Info.plist;
-				INFOPLIST_KEY_CFBundleDisplayName = bitchat;
+				INFOPLIST_KEY_CFBundleDisplayName = "$(APP_DISPLAY_NAME)";
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.social-networking";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
@@ -664,7 +682,8 @@
 				);
 				MACOSX_DEPLOYMENT_TARGET = "$(MACOSX_DEPLOYMENT_TARGET)";
 				PRODUCT_BUNDLE_IDENTIFIER = "$(PRODUCT_BUNDLE_IDENTIFIER)";
-				PRODUCT_NAME = bitchat;
+				PRODUCT_MODULE_NAME = "$(APP_MODULE_NAME)";
+				PRODUCT_NAME = "$(APP_PRODUCT_NAME)";
 				REGISTER_APP_GROUPS = YES;
 				SDKROOT = macosx;
 				SWIFT_VERSION = "$(SWIFT_VERSION)";
@@ -748,7 +767,7 @@
 				DEAD_CODE_STRIPPING = YES;
 				ENABLE_PREVIEWS = NO;
 				INFOPLIST_FILE = bitchat/Info.plist;
-				INFOPLIST_KEY_CFBundleDisplayName = bitchat;
+				INFOPLIST_KEY_CFBundleDisplayName = "$(APP_DISPLAY_NAME)";
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.social-networking";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
@@ -756,7 +775,8 @@
 				);
 				MACOSX_DEPLOYMENT_TARGET = "$(MACOSX_DEPLOYMENT_TARGET)";
 				PRODUCT_BUNDLE_IDENTIFIER = "$(PRODUCT_BUNDLE_IDENTIFIER)";
-				PRODUCT_NAME = bitchat;
+				PRODUCT_MODULE_NAME = "$(APP_MODULE_NAME)";
+				PRODUCT_NAME = "$(APP_PRODUCT_NAME)";
 				REGISTER_APP_GROUPS = YES;
 				SDKROOT = macosx;
 				SWIFT_VERSION = "$(SWIFT_VERSION)";
@@ -843,7 +863,7 @@
 				CODE_SIGN_ENTITLEMENTS = bitchatShareExtension/bitchatShareExtension.entitlements;
 				CODE_SIGN_STYLE = "$(CODE_SIGN_STYLE)";
 				INFOPLIST_FILE = bitchatShareExtension/Info.plist;
-				INFOPLIST_KEY_CFBundleDisplayName = bitchat;
+				INFOPLIST_KEY_CFBundleDisplayName = "$(APP_DISPLAY_NAME)";
 				IPHONEOS_DEPLOYMENT_TARGET = "$(IPHONEOS_DEPLOYMENT_TARGET)";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
@@ -851,13 +871,15 @@
 					"@executable_path/../../Frameworks",
 				);
 				PRODUCT_BUNDLE_IDENTIFIER = "$(PRODUCT_BUNDLE_IDENTIFIER).ShareExtension";
+				PRODUCT_MODULE_NAME = "$(SHARE_EXTENSION_MODULE_NAME)";
+				PRODUCT_NAME = "$(SHARE_EXTENSION_PRODUCT_NAME)";
 				SDKROOT = iphoneos;
 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
 				SUPPORTS_MACCATALYST = NO;
 				SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD = NO;
 				SUPPORTS_XR_DESIGNED_FOR_IPHONE_IPAD = NO;
 				SWIFT_VERSION = "$(SWIFT_VERSION)";
-				TARGETED_DEVICE_FAMILY = 1;
+				TARGETED_DEVICE_FAMILY = "1,2";
 			};
 			name = Debug;
 		};

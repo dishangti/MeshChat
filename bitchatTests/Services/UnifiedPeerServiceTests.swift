@@ -241,6 +241,10 @@ private final class TestIdentityManager: SecureIdentityStateManagerProtocol {
         socialIdentities[fingerprint] = identity
     }
 
+    func getBlockedSocialIdentities() -> [SocialIdentity] {
+        socialIdentities.values.filter(\.isBlocked)
+    }
+
     func isNostrBlocked(pubkeyHexLowercased: String) -> Bool {
         blockedNostr.contains(pubkeyHexLowercased)
     }

@@ -85,20 +85,26 @@ final class ChatPeerListCoordinator: @unchecked Sendable {
     // a confirmed-empty reset, so brief link flaps stay silent.
     private var meshWasEmpty = true
     private var lastNetworkNotificationTime = Date.distantPast
+    private var pendingNetworkNotificationPeers: Set<PeerID> = []
+    private var networkNotificationTimer: Timer?
     private var networkResetTimer: Timer?
     private var networkEmptyTimer: Timer?
     private let networkResetGraceSeconds = TransportConfig.networkResetGraceSeconds
     private let notificationCooldownSeconds: TimeInterval
+    private let notificationAggregationSeconds: TimeInterval
 
     init(
         context: any ChatPeerListContext,
-        notificationCooldownSeconds: TimeInterval = TransportConfig.networkNotificationCooldownSeconds
+        notificationCooldownSeconds: TimeInterval = TransportConfig.networkNotificationCooldownSeconds,
+        notificationAggregationSeconds: TimeInterval = TransportConfig.networkNotificationAggregationSeconds
     ) {
         self.context = context
         self.notificationCooldownSeconds = notificationCooldownSeconds
+        self.notificationAggregationSeconds = notificationAggregationSeconds
     }
 
     deinit {
+        networkNotificationTimer?.invalidate()
         networkResetTimer?.invalidate()
         networkEmptyTimer?.invalidate()
     }
@@ -145,12 +151,20 @@ private extension ChatPeerListCoordinator {
         let meshPeerSet = Set(meshPeers)
 
         if meshPeerSet.isEmpty {
+            pendingNetworkNotificationPeers.removeAll()
             scheduleNetworkEmptyTimer()
             return
         }
 
         invalidateNetworkEmptyTimer()
         context.recordMeshSightings(peerIDs: meshPeers)
+
+        // BLE links from the same discovery pass settle independently. Keep
+        // the pending notification aligned with the latest complete peer set
+        // while the short aggregation window is open.
+        if networkNotificationTimer != nil {
+            pendingNetworkNotificationPeers = meshPeerSet
+        }
 
         let newPeers = meshPeerSet.subtracting(recentlySeenPeers)
         // Record every sighted peer even when no notification fires. A peer
@@ -165,15 +179,48 @@ private extension ChatPeerListCoordinator {
         guard cameFromEmpty, !newPeers.isEmpty else { return }
 
         if Date().timeIntervalSince(lastNetworkNotificationTime) >= notificationCooldownSeconds {
-            lastNetworkNotificationTime = Date()
-            context.notifyNetworkAvailable(peerCount: meshPeers.count)
-            SecureLogger.info(
-                "👥 Sent bitchatters nearby notification for \(meshPeers.count) mesh peers (new: \(newPeers.count))",
-                category: .session
-            )
+            scheduleNetworkNotification(for: meshPeerSet)
         }
 
         scheduleNetworkResetTimer()
+    }
+
+    @MainActor
+    func scheduleNetworkNotification(for peers: Set<PeerID>) {
+        pendingNetworkNotificationPeers = peers
+        networkNotificationTimer?.invalidate()
+
+        guard notificationAggregationSeconds > 0 else {
+            deliverPendingNetworkNotification()
+            return
+        }
+
+        networkNotificationTimer = Timer.scheduledTimer(
+            withTimeInterval: notificationAggregationSeconds,
+            repeats: false
+        ) { [weak self] _ in
+            MainActor.assumeIsolated { [weak self] in
+                self?.deliverPendingNetworkNotification()
+            }
+        }
+    }
+
+    @MainActor
+    func deliverPendingNetworkNotification() {
+        networkNotificationTimer?.invalidate()
+        networkNotificationTimer = nil
+
+        let snapshotCount = context.activeMeshPeerCount()
+        let peerCount = max(snapshotCount, pendingNetworkNotificationPeers.count)
+        pendingNetworkNotificationPeers.removeAll()
+        guard peerCount > 0 else { return }
+
+        lastNetworkNotificationTime = Date()
+        context.notifyNetworkAvailable(peerCount: peerCount)
+        SecureLogger.info(
+            "👥 Sent MeshChat users nearby notification for \(peerCount) mesh peers",
+            category: .session
+        )
     }
 
     @MainActor

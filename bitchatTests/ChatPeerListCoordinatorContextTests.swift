@@ -255,7 +255,10 @@ struct ChatPeerListCoordinatorContextTests {
     @Test @MainActor
     func didUpdatePeerList_notifiesNetworkAvailableOncePerCooldownForNewMeshPeers() async {
         let context = MockChatPeerListContext()
-        let coordinator = ChatPeerListCoordinator(context: context)
+        let coordinator = ChatPeerListCoordinator(
+            context: context,
+            notificationAggregationSeconds: 0
+        )
         let peerA = PeerID(str: "0011223344556677")
         let peerB = PeerID(str: "8899aabbccddeeff")
         context.connectedMeshPeers = [peerA, peerB]
@@ -282,7 +285,11 @@ struct ChatPeerListCoordinatorContextTests {
         // new peer joining while already meshed must stay silent even with
         // the cooldown long expired (the sitting-idle re-notify bug).
         let context = MockChatPeerListContext()
-        let coordinator = ChatPeerListCoordinator(context: context, notificationCooldownSeconds: 0)
+        let coordinator = ChatPeerListCoordinator(
+            context: context,
+            notificationCooldownSeconds: 0,
+            notificationAggregationSeconds: 0
+        )
         let peerA = PeerID(str: "0011223344556677")
         let peerB = PeerID(str: "8899aabbccddeeff")
         context.connectedMeshPeers = [peerA, peerB]
@@ -305,7 +312,11 @@ struct ChatPeerListCoordinatorContextTests {
     @Test @MainActor
     func didUpdatePeerList_briefMeshFlapDoesNotRenotify() async {
         let context = MockChatPeerListContext()
-        let coordinator = ChatPeerListCoordinator(context: context, notificationCooldownSeconds: 0)
+        let coordinator = ChatPeerListCoordinator(
+            context: context,
+            notificationCooldownSeconds: 0,
+            notificationAggregationSeconds: 0
+        )
         let peerA = PeerID(str: "0011223344556677")
         context.connectedMeshPeers = [peerA]
 
@@ -325,7 +336,10 @@ struct ChatPeerListCoordinatorContextTests {
     @Test @MainActor
     func didUpdatePeerList_meshInactivePeersNeverNotify() async {
         let context = MockChatPeerListContext()
-        let coordinator = ChatPeerListCoordinator(context: context)
+        let coordinator = ChatPeerListCoordinator(
+            context: context,
+            notificationAggregationSeconds: 0
+        )
         let peerA = PeerID(str: "0011223344556677")
 
         // Peer present but neither connected nor reachable: no notification.
@@ -337,7 +351,10 @@ struct ChatPeerListCoordinatorContextTests {
     @Test @MainActor
     func didUpdatePeerList_blockedOnlyThenAllowedPeerNotifiesAndRecordsOnlyAllowedPeer() async {
         let context = MockChatPeerListContext()
-        let coordinator = ChatPeerListCoordinator(context: context)
+        let coordinator = ChatPeerListCoordinator(
+            context: context,
+            notificationAggregationSeconds: 0
+        )
         let blockedPeer = PeerID(str: "0011223344556677")
         let allowedPeer = PeerID(str: "8899aabbccddeeff")
         context.connectedMeshPeers = [blockedPeer, allowedPeer]
@@ -354,5 +371,30 @@ struct ChatPeerListCoordinatorContextTests {
 
         #expect(context.networkAvailableNotifications == [1])
         #expect(context.recordedSightings == [[allowedPeer]])
+    }
+
+    @Test @MainActor
+    func didUpdatePeerList_aggregatesPeersBeforeSendingNearbyNotification() async {
+        let context = MockChatPeerListContext()
+        let coordinator = ChatPeerListCoordinator(
+            context: context,
+            notificationCooldownSeconds: 0,
+            notificationAggregationSeconds: 0.02
+        )
+        let peerA = PeerID(str: "0011223344556677")
+        let peerB = PeerID(str: "8899aabbccddeeff")
+        context.connectedMeshPeers = [peerA, peerB]
+
+        coordinator.didUpdatePeerListSynchronously([peerA])
+        #expect(context.networkAvailableNotifications.isEmpty)
+
+        coordinator.didUpdatePeerListSynchronously([peerA, peerB])
+        let delivered = await TestHelpers.waitUntil(
+            { context.networkAvailableNotifications == [2] },
+            timeout: TestConstants.settleTimeout
+        )
+
+        #expect(delivered)
+        #expect(context.networkAvailableNotifications == [2])
     }
 }

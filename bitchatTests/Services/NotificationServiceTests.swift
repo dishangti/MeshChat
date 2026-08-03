@@ -139,6 +139,30 @@ final class NotificationServiceTests: XCTestCase {
         XCTAssertEqual(deliverer.requests[2].content.body, "3 people around")
     }
 
+    func test_nearbyNotification_removesOnlyItselfAfterItsLifetime() {
+        let clearer = RecordingNotificationClearer()
+        let service = NotificationService(
+            isRunningTestsProvider: { false },
+            authorizer: RecordingNotificationAuthorizer(),
+            requestDeliverer: RecordingNotificationRequestDeliverer(),
+            notificationClearer: clearer,
+            nearbyNotificationLifetime: 0.02
+        )
+
+        service.sendNetworkAvailableNotification(peerCount: 2)
+
+        XCTAssertEqual(
+            clearer.targetedRemoval.wait(
+                timeout: .now() + TestConstants.settleTimeout
+            ),
+            .success
+        )
+        XCTAssertEqual(clearer.deliveredIdentifiers, [["network-available"]])
+        XCTAssertEqual(clearer.pendingIdentifiers, [["network-available"]])
+        XCTAssertEqual(clearer.deliveredClearCount, 0)
+        XCTAssertEqual(clearer.pendingClearCount, 0)
+    }
+
     func test_topicPolicy_suppressesOnlyTheDisabledTopic() {
         let deliverer = RecordingNotificationRequestDeliverer()
         let service = NotificationService(
@@ -299,6 +323,9 @@ private final class RecordingNotificationRequestDeliverer: NotificationRequestDe
 private final class RecordingNotificationClearer: NotificationClearing {
     private(set) var deliveredClearCount = 0
     private(set) var pendingClearCount = 0
+    private(set) var deliveredIdentifiers: [[String]] = []
+    private(set) var pendingIdentifiers: [[String]] = []
+    let targetedRemoval = DispatchSemaphore(value: 0)
 
     func removeAllDeliveredNotifications() {
         deliveredClearCount += 1
@@ -306,6 +333,15 @@ private final class RecordingNotificationClearer: NotificationClearing {
 
     func removeAllPendingNotificationRequests() {
         pendingClearCount += 1
+    }
+
+    func removeDeliveredNotifications(withIdentifiers identifiers: [String]) {
+        deliveredIdentifiers.append(identifiers)
+    }
+
+    func removePendingNotificationRequests(withIdentifiers identifiers: [String]) {
+        pendingIdentifiers.append(identifiers)
+        targetedRemoval.signal()
     }
 }
 

@@ -32,6 +32,13 @@ protocol NotificationCategoryRegistering {
 protocol NotificationClearing {
     func removeAllDeliveredNotifications()
     func removeAllPendingNotificationRequests()
+    func removeDeliveredNotifications(withIdentifiers identifiers: [String])
+    func removePendingNotificationRequests(withIdentifiers identifiers: [String])
+}
+
+extension NotificationClearing {
+    func removeDeliveredNotifications(withIdentifiers identifiers: [String]) {}
+    func removePendingNotificationRequests(withIdentifiers identifiers: [String]) {}
 }
 
 private final class NotificationCenterAuthorizerAdapter: NotificationAuthorizing {
@@ -86,6 +93,14 @@ private final class NotificationCenterClearingAdapter: NotificationClearing {
 
     func removeAllPendingNotificationRequests() {
         center.removeAllPendingNotificationRequests()
+    }
+
+    func removeDeliveredNotifications(withIdentifiers identifiers: [String]) {
+        center.removeDeliveredNotifications(withIdentifiers: identifiers)
+    }
+
+    func removePendingNotificationRequests(withIdentifiers identifiers: [String]) {
+        center.removePendingNotificationRequests(withIdentifiers: identifiers)
     }
 }
 
@@ -189,12 +204,19 @@ final class NotificationService {
     private let categoryRegistrar: NotificationCategoryRegistering
     private let notificationClearer: NotificationClearing
     private let notificationPolicyProvider: (NotificationTopic) -> Bool
+    private let nearbyNotificationLifetime: TimeInterval
+
+    private struct NotificationExpiry {
+        let token: UInt64
+        let delay: TimeInterval
+    }
 
     private enum DeliveryOperation {
         case deliver(
             request: UNNotificationRequest,
             topic: NotificationTopic,
-            generation: UInt64
+            generation: UInt64,
+            expiry: NotificationExpiry?
         )
         case clear
     }
@@ -210,6 +232,8 @@ final class NotificationService {
     private var isProcessingDeliveryOperation = false
     private var activeDeliveryToken: UInt64?
     private var nextDeliveryToken: UInt64 = 0
+    private var notificationExpiryTokens: [String: UInt64] = [:]
+    private var nextNotificationExpiryToken: UInt64 = 0
     private let deliveryCompletionTimeout: TimeInterval
 
     /// Returns true if running in test environment (XCTest, Swift Testing, or CI)
@@ -240,6 +264,7 @@ final class NotificationService {
             self.notificationClearer = NotificationCenterClearingAdapter(center: center)
         }
         self.notificationPolicyProvider = { NotificationDeliverySettings.allows($0) }
+        self.nearbyNotificationLifetime = TransportConfig.networkNotificationLifetimeSeconds
         self.deliveryCompletionTimeout = 5
     }
 
@@ -251,6 +276,7 @@ final class NotificationService {
         hidePreviewsProvider: @escaping () -> Bool = { NotificationPrivacySettings.hideMessagePreviews },
         notificationClearer: NotificationClearing = NoopNotificationClearer(),
         notificationPolicyProvider: @escaping (NotificationTopic) -> Bool = { _ in true },
+        nearbyNotificationLifetime: TimeInterval = TransportConfig.networkNotificationLifetimeSeconds,
         deliveryCompletionTimeout: TimeInterval = 5
     ) {
         self.isRunningTestsProvider = isRunningTestsProvider
@@ -260,6 +286,7 @@ final class NotificationService {
         self.hidePreviewsProvider = hidePreviewsProvider
         self.notificationClearer = notificationClearer
         self.notificationPolicyProvider = notificationPolicyProvider
+        self.nearbyNotificationLifetime = nearbyNotificationLifetime
         self.deliveryCompletionTimeout = deliveryCompletionTimeout
     }
 
@@ -297,7 +324,8 @@ final class NotificationService {
         topic: NotificationTopic,
         userInfo: [String: Any]? = nil,
         interruptionLevel: UNNotificationInterruptionLevel = .active,
-        categoryIdentifier: String? = nil
+        categoryIdentifier: String? = nil,
+        expiresAfter: TimeInterval? = nil
     ) {
         guard !isRunningTests else { return }
         let content = UNMutableNotificationContent()
@@ -319,7 +347,7 @@ final class NotificationService {
             trigger: nil // Deliver immediately
         )
 
-        enqueueDelivery(request, topic: topic)
+        enqueueDelivery(request, topic: topic, expiresAfter: expiresAfter)
     }
     
     func sendMentionNotification(from sender: String, message: String, topic: NotificationTopic) {
@@ -377,7 +405,8 @@ final class NotificationService {
             identifier: identifier,
             topic: .mesh,
             interruptionLevel: .timeSensitive,
-            categoryIdentifier: Self.nearbyCategoryID
+            categoryIdentifier: Self.nearbyCategoryID,
+            expiresAfter: nearbyNotificationLifetime
         )
     }
 
@@ -395,10 +424,33 @@ final class NotificationService {
         enqueueClear()
     }
 
-    private func enqueueDelivery(_ request: UNNotificationRequest, topic: NotificationTopic) {
+    private func enqueueDelivery(
+        _ request: UNNotificationRequest,
+        topic: NotificationTopic,
+        expiresAfter: TimeInterval?
+    ) {
         deliveryLock.lock()
         let generation = deliveryGeneration
-        deliveryOperations.append(.deliver(request: request, topic: topic, generation: generation))
+        // A replacement with the same identifier invalidates an older expiry
+        // before either request reaches the system notification center.
+        notificationExpiryTokens.removeValue(forKey: request.identifier)
+        let expiry: NotificationExpiry?
+        if let expiresAfter, expiresAfter > 0 {
+            nextNotificationExpiryToken &+= 1
+            let token = nextNotificationExpiryToken
+            notificationExpiryTokens[request.identifier] = token
+            expiry = NotificationExpiry(token: token, delay: expiresAfter)
+        } else {
+            expiry = nil
+        }
+        deliveryOperations.append(
+            .deliver(
+                request: request,
+                topic: topic,
+                generation: generation,
+                expiry: expiry
+            )
+        )
         let shouldStart = !isProcessingDeliveryOperation
         if shouldStart { isProcessingDeliveryOperation = true }
         deliveryLock.unlock()
@@ -409,6 +461,7 @@ final class NotificationService {
     private func enqueueClear() {
         deliveryLock.lock()
         deliveryGeneration &+= 1
+        notificationExpiryTokens.removeAll()
         // Panic/pause must release queued request bodies and routing metadata
         // synchronously. Keep only the barrier; new-generation deliveries may
         // be appended after the lock is released.
@@ -442,15 +495,17 @@ final class NotificationService {
             deliveryLock.unlock()
 
             switch operation {
-            case .deliver(let request, let topic, let generation):
+            case .deliver(let request, let topic, let generation, let expiry):
                 guard generation == currentGeneration,
                       notificationPolicyProvider(topic) else {
+                    invalidateNotificationExpiry(expiry, identifier: request.identifier)
                     continue
                 }
 
                 deliveryLock.lock()
                 guard generation == deliveryGeneration else {
                     deliveryLock.unlock()
+                    invalidateNotificationExpiry(expiry, identifier: request.identifier)
                     continue
                 }
                 nextDeliveryToken &+= 1
@@ -477,6 +532,9 @@ final class NotificationService {
                         completedInline = true
                         completionLock.unlock()
                     }
+                }
+                if let expiry {
+                    scheduleNotificationExpiry(expiry, identifier: request.identifier)
                 }
                 completionLock.lock()
                 addReturned = true
@@ -508,6 +566,43 @@ final class NotificationService {
                 continue
             }
         }
+    }
+
+    private func invalidateNotificationExpiry(
+        _ expiry: NotificationExpiry?,
+        identifier: String
+    ) {
+        guard let expiry else { return }
+        deliveryLock.lock()
+        if notificationExpiryTokens[identifier] == expiry.token {
+            notificationExpiryTokens.removeValue(forKey: identifier)
+        }
+        deliveryLock.unlock()
+    }
+
+    private func scheduleNotificationExpiry(
+        _ expiry: NotificationExpiry,
+        identifier: String
+    ) {
+        DispatchQueue.global(qos: .utility).asyncAfter(
+            deadline: .now() + expiry.delay
+        ) { [weak self] in
+            self?.expireNotification(identifier: identifier, token: expiry.token)
+        }
+    }
+
+    private func expireNotification(identifier: String, token: UInt64) {
+        deliveryLock.lock()
+        guard notificationExpiryTokens[identifier] == token else {
+            deliveryLock.unlock()
+            return
+        }
+        notificationExpiryTokens.removeValue(forKey: identifier)
+        deliveryLock.unlock()
+
+        let identifiers = [identifier]
+        notificationClearer.removeDeliveredNotifications(withIdentifiers: identifiers)
+        notificationClearer.removePendingNotificationRequests(withIdentifiers: identifiers)
     }
 
     /// Releases a stalled FIFO slot after a bounded wait. If the system add

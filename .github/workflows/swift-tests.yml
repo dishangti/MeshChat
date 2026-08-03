@@ -44,10 +44,13 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ${{ matrix.path }}/.build
-          key: ${{ runner.os }}-${{ steps.swift-version.outputs.version }}-${{ matrix.name }}-${{ hashFiles(format('{0}/**/*.swift', matrix.path), format('{0}/**/Package.resolved', matrix.path)) }}
+          # Swift module caches embed the checkout's absolute path. Include
+          # the repository name so a rename cannot restore incompatible PCM
+          # files produced under the previous workspace directory.
+          key: ${{ runner.os }}-${{ github.event.repository.name }}-${{ steps.swift-version.outputs.version }}-${{ matrix.name }}-${{ hashFiles(format('{0}/**/*.swift', matrix.path), format('{0}/**/Package.resolved', matrix.path)) }}
           restore-keys: |
-            ${{ runner.os }}-${{ steps.swift-version.outputs.version }}-${{ matrix.name }}-${{ hashFiles(format('{0}/**/Package.resolved', matrix.path)) }}
-            ${{ runner.os }}-${{ steps.swift-version.outputs.version }}-${{ matrix.name }}-
+            ${{ runner.os }}-${{ github.event.repository.name }}-${{ steps.swift-version.outputs.version }}-${{ matrix.name }}-${{ hashFiles(format('{0}/**/Package.resolved', matrix.path)) }}
+            ${{ runner.os }}-${{ github.event.repository.name }}-${{ steps.swift-version.outputs.version }}-${{ matrix.name }}-
 
       - name: Build tests
         # Built separately so the hang watchdog below times only test

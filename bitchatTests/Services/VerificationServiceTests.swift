@@ -12,6 +12,7 @@ final class VerificationServiceTests: XCTestCase {
 
         XCTAssertEqual(parsed.nickname, nickname)
         XCTAssertEqual(parsed.npub, npub)
+        XCTAssertEqual(parsed.routableNpub, npub)
         XCTAssertEqual(parsed.noiseKeyHex, noise.getStaticPublicKeyData().hexEncodedString())
         XCTAssertEqual(parsed.signKeyHex, noise.getSigningPublicKeyData().hexEncodedString())
     }
@@ -50,6 +51,34 @@ final class VerificationServiceTests: XCTestCase {
         let second = try XCTUnwrap(service.buildMyQRString(nickname: nickname, npub: nil))
 
         XCTAssertEqual(first, second)
+    }
+
+    func test_buildMyQRString_refreshesBeforeBitchatFreshnessExpires() throws {
+        var instant = Date(timeIntervalSince1970: 1_700_000_000)
+        let transport = MockTransport()
+        let service = VerificationService(now: { instant })
+        service.configure(with: transport)
+
+        let first = try XCTUnwrap(
+            service.buildMyQRString(nickname: "Alice", npub: nil)
+        )
+        instant.addTimeInterval(59)
+        XCTAssertEqual(
+            service.buildMyQRString(nickname: "Alice", npub: nil),
+            first
+        )
+
+        instant.addTimeInterval(2)
+        let refreshed = try XCTUnwrap(
+            service.buildMyQRString(nickname: "Alice", npub: nil)
+        )
+        XCTAssertNotEqual(refreshed, first)
+        let refreshedQR = try XCTUnwrap(
+            VerificationService.VerificationQR.fromURL(
+                XCTUnwrap(URL(string: refreshed))
+            )
+        )
+        XCTAssertEqual(refreshedQR.ts, 1_700_000_061)
     }
 
     func test_buildMyQRString_cacheIsScopedToTheCurrentIdentity() throws {
@@ -391,21 +420,48 @@ final class VerificationServiceTests: XCTestCase {
         )
     }
 
-    func test_verifyScannedQR_requiresCanonicalNpubWhenPresent() throws {
+    func test_verifyScannedQR_acceptsOriginalBitchatOpaqueNpubWithoutRoutingIt() throws {
         let (service, noise) = makeService()
         let timestamp = Int64(Date().timeIntervalSince1970)
-        let wrongHRP = try Bech32.encode(hrp: "nsec", data: Data(repeating: 0x22, count: 32))
-        let wrongLength = try Bech32.encode(hrp: "npub", data: Data(repeating: 0x33, count: 31))
-
-        for npub in ["npub1not-valid", wrongHRP, wrongLength] {
-            let qrString = try makeSignedQR(
-                noise: noise,
-                nickname: "invalid-npub-\(UUID().uuidString)",
-                npub: npub,
-                ts: timestamp
+        let originalOpaqueNpub = "npub1testvalue"
+        XCTAssertNil(
+            service.buildMyQRString(
+                nickname: "local-emission-\(UUID().uuidString)",
+                npub: originalOpaqueNpub
             )
-            XCTAssertNil(service.verifyScannedQR(qrString), "Accepted invalid npub: \(npub)")
-        }
+        )
+        let qrString = try makeSignedQR(
+            noise: noise,
+            nickname: "opaque-npub-\(UUID().uuidString)",
+            npub: originalOpaqueNpub,
+            ts: timestamp
+        )
+
+        let parsed = try XCTUnwrap(service.verifyScannedQR(qrString))
+        XCTAssertEqual(parsed.npub, originalOpaqueNpub)
+        XCTAssertNil(parsed.routableNpub)
+    }
+
+    func test_verifyScannedQR_acceptsEmptyOpaqueNpubButRejectsOversizedValue() throws {
+        let (service, noise) = makeService()
+        let timestamp = Int64(Date().timeIntervalSince1970)
+        let empty = try makeSignedQR(
+            noise: noise,
+            nickname: "empty-npub-\(UUID().uuidString)",
+            npub: "",
+            ts: timestamp
+        )
+        let parsed = try XCTUnwrap(service.verifyScannedQR(empty))
+        XCTAssertEqual(parsed.npub, "")
+        XCTAssertNil(parsed.routableNpub)
+
+        let oversized = try makeSignedQR(
+            noise: noise,
+            nickname: "oversized-npub-\(UUID().uuidString)",
+            npub: String(repeating: "n", count: 256),
+            ts: timestamp
+        )
+        XCTAssertNil(service.verifyScannedQR(oversized))
     }
 
     func test_buildVerifyChallenge_roundTripsThroughNoisePayload() throws {

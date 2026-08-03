@@ -6,6 +6,14 @@ final class VerificationService {
     static let shared = VerificationService()
     private static let maximumScannedURLByteCount = 2_048
 
+    enum QRValidationFailure: Error, Equatable {
+        case malformed
+        case signatureMismatch
+        case expired
+        case clockSkew
+        case verifierUnavailable
+    }
+
     private struct QRCacheEntry {
         let nickname: String
         let npub: String?
@@ -20,6 +28,12 @@ final class VerificationService {
     // so the raw NoiseEncryptionService is never exposed.
     private var transport: Transport?
     private var qrCache: QRCacheEntry?
+    private let now: () -> Date
+
+    init(now: @escaping () -> Date = Date.init) {
+        self.now = now
+    }
+
     func configure(with transport: Transport) { self.transport = transport }
 
     /// Encapsulates the data encoded into a verification QR
@@ -112,21 +126,40 @@ final class VerificationService {
             return qr.hasValidStructure ? qr : nil
         }
 
-        fileprivate var hasValidUnsignedFields: Bool {
+        /// Fields that can be accepted from an original Bitchat QR without
+        /// introducing the one-byte canonical-field truncation ambiguity.
+        /// The optional Nostr value remains opaque here because Bitchat v1
+        /// signed it as metadata without validating its Bech32 structure.
+        fileprivate var hasValidEnvelopeFields: Bool {
             guard v == Self.currentVersion,
                   Self.exactHexData(noiseKeyHex, byteCount: Self.publicKeyByteCount) != nil,
                   Self.exactHexData(signKeyHex, byteCount: Self.publicKeyByteCount) != nil,
                   Self.decodeNonce(nonceB64)?.count == Self.nonceByteCount,
                   Self.normalizedProtocolNickname(nickname) != nil,
-                  Self.isValidNpub(npub) else {
+                  Self.isSafeOpaqueNpub(npub) else {
                 return false
             }
             return true
         }
 
+        /// Locally emitted QRs must never propagate malformed Nostr metadata,
+        /// even though the compatibility parser can preserve it for signature
+        /// verification of an original Bitchat QR.
+        fileprivate var hasValidLocalEmissionFields: Bool {
+            hasValidEnvelopeFields && (npub == nil || routableNpub != nil)
+        }
+
         fileprivate var hasValidStructure: Bool {
-            hasValidUnsignedFields
+            hasValidEnvelopeFields
                 && Self.exactHexData(sigHex, byteCount: Self.signatureByteCount) != nil
+        }
+
+        /// Nostr metadata is routable only when it is the canonical lowercase
+        /// encoding of one 32-byte public key. The raw `npub` remains in the QR
+        /// so its original signed canonical bytes are never rewritten.
+        var routableNpub: String? {
+            guard let npub, Self.isCanonicalNpub(npub) else { return nil }
+            return npub
         }
 
         private static func exactHexData(_ value: String, byteCount: Int) -> Data? {
@@ -194,8 +227,14 @@ final class VerificationService {
             return trimmed
         }
 
-        private static func isValidNpub(_ value: String?) -> Bool {
+        private static func isSafeOpaqueNpub(_ value: String?) -> Bool {
             guard let value else { return true }
+            // An explicit empty value is wire-equivalent to Bitchat v1's
+            // absent optional field and remains non-routable.
+            return value.utf8.count <= maximumCanonicalFieldByteCount
+        }
+
+        private static func isCanonicalNpub(_ value: String) -> Bool {
             guard let decoded = try? Bech32.decode(value),
                   decoded.hrp == "npub",
                   decoded.data.count == publicKeyByteCount,
@@ -211,11 +250,12 @@ final class VerificationService {
     /// Build a signed QR string for the current identity
     func buildMyQRString(nickname: String, npub: String?) -> String? {
         guard let transport = transport else { return nil }
+        let generatedAt = now()
         let noiseKeyData = transport.noiseStaticPublicKeyData()
         let signingKeyData = transport.noiseSigningPublicKeyData()
         let noiseKey = noiseKeyData.hexEncodedString()
         let signKey = signingKeyData.hexEncodedString()
-        let ts = Int64(Date().timeIntervalSince1970)
+        let ts = Int64(generatedAt.timeIntervalSince1970)
         var nonce = Data(count: 16)
         let nonceLength = nonce.count
         let randomStatus = nonce.withUnsafeMutableBytes {
@@ -224,15 +264,15 @@ final class VerificationService {
         guard randomStatus == errSecSuccess else { return nil }
         let nonceB64 = nonce.base64EncodedString().replacingOccurrences(of: "+", with: "-").replacingOccurrences(of: "/", with: "_").replacingOccurrences(of: "=", with: "")
         let payload = VerificationQR(v: 1, noiseKeyHex: noiseKey, signKeyHex: signKey, npub: npub, nickname: nickname, ts: ts, nonceB64: nonceB64, sigHex: "")
-        guard payload.hasValidUnsignedFields else { return nil }
+        guard payload.hasValidLocalEmissionFields else { return nil }
 
         if let cached = qrCache,
            cached.nickname == nickname,
            cached.npub == npub,
            cached.noiseKey == noiseKeyData,
            cached.signingKey == signingKeyData,
-           Date().timeIntervalSince(cached.builtAt) >= 0,
-           Date().timeIntervalSince(cached.builtAt) < 60 {
+           generatedAt.timeIntervalSince(cached.builtAt) >= 0,
+           generatedAt.timeIntervalSince(cached.builtAt) < 60 {
             return cached.value
         }
 
@@ -253,32 +293,63 @@ final class VerificationService {
             npub: npub,
             noiseKey: noiseKeyData,
             signingKey: signingKeyData,
-            builtAt: Date(),
+            builtAt: generatedAt,
             value: out
         )
         return out
     }
 
-    /// Verify a scanned QR and return the parsed payload if valid (signature + freshness checks)
-    func verifyScannedQR(_ urlString: String, maxAge: TimeInterval = TransportConfig.verificationQRMaxAgeSeconds) -> VerificationQR? {
+    /// Validates a scanned QR while retaining a precise failure reason for UI
+    /// guidance and diagnostics. An expiry result is returned only after the
+    /// embedded Ed25519 signature succeeds, so forged timestamps cannot be
+    /// presented to the user as a merely stale Bitchat code.
+    func validateScannedQR(
+        _ urlString: String,
+        maxAge: TimeInterval = TransportConfig.verificationQRMaxAgeSeconds
+    ) -> Result<VerificationQR, QRValidationFailure> {
         guard urlString.utf8.count <= Self.maximumScannedURLByteCount,
               maxAge.isFinite, maxAge >= 0,
               let url = URL(string: urlString),
-              let qr = VerificationQR.fromURL(url) else { return nil }
-        // Freshness
-        let now = Date().timeIntervalSince1970
-        let age = now - Double(qr.ts)
+              let qr = VerificationQR.fromURL(url),
+              let sig = Data(hexString: qr.sigHex),
+              let signKey = Data(hexString: qr.signKeyHex) else {
+            return .failure(.malformed)
+        }
+        guard let transport else {
+            return .failure(.verifierUnavailable)
+        }
+        guard transport.noiseVerifySignature(
+            sig,
+            for: qr.canonicalBytes(),
+            publicKey: signKey
+        ) else {
+            return .failure(.signatureMismatch)
+        }
+
+        let age = now().timeIntervalSince1970 - Double(qr.ts)
         let boundedMaxAge = min(maxAge, TransportConfig.verificationQRMaxAgeSeconds)
         // Bitchat v1 signs the timestamp but does not transmit a clock-offset
         // negotiation. Accept symmetric skew within the same bounded QR
         // lifetime so two honest devices remain interoperable without
         // restoring the original implementation's unbounded future dates.
-        guard age.isFinite, abs(age) <= boundedMaxAge else { return nil }
-        // Verify signature using embedded ed25519 signKey
-        guard let sig = Data(hexString: qr.sigHex), let signKey = Data(hexString: qr.signKeyHex) else { return nil }
-        guard let transport = transport else { return nil }
-        let ok = transport.noiseVerifySignature(sig, for: qr.canonicalBytes(), publicKey: signKey)
-        return ok ? qr : nil
+        guard age.isFinite else { return .failure(.malformed) }
+        if age > boundedMaxAge { return .failure(.expired) }
+        if age < -boundedMaxAge { return .failure(.clockSkew) }
+        return .success(qr)
+    }
+
+    /// Compatibility API for protocol callers that only need success/failure.
+    func verifyScannedQR(
+        _ urlString: String,
+        maxAge: TimeInterval = TransportConfig.verificationQRMaxAgeSeconds
+    ) -> VerificationQR? {
+        guard case .success(let qr) = validateScannedQR(
+            urlString,
+            maxAge: maxAge
+        ) else {
+            return nil
+        }
+        return qr
     }
 
     // MARK: - Noise payloads (scaffold only)

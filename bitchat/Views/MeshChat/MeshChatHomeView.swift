@@ -53,9 +53,9 @@ struct MeshChatHomeView: View {
                         compactAction(title: "#location", icon: "number", action: onOpenLocations)
                         compactAction(
                             title: String(
-                                localized: "verification.sheet.title",
-                                defaultValue: "Scan QR Code",
-                                comment: "Action that opens the global identity QR scanner"
+                                localized: "verification.qr.title",
+                                defaultValue: "QR Code",
+                                comment: "Action that opens the global identity QR screen"
                             ),
                             icon: "qrcode.viewfinder",
                             action: onOpenVerification

@@ -923,9 +923,54 @@ struct ViewSmokeTests {
             coordinator.setup(previewLayer: preview.videoPreviewLayer) { _ in }
             coordinator.setActive(false)
         }
-        coordinator.tearDown()
+        coordinator.tearDown(detaching: preview.videoPreviewLayer)
 
         #expect(preview.videoPreviewLayer.videoGravity == .resizeAspectFill)
         #endif
+    }
+
+    @Test
+    func cameraScannerLifecycle_cancelsPendingCodeWhenDismissed() {
+        var lifecycle = CameraScannerLifecycleState()
+        let generation = lifecycle.beginSetup()
+
+        let acceptedPermission = lifecycle.setPermissionGranted(true, for: generation)
+        let activeGeneration = lifecycle.setActive(true)
+        let claimedGeneration = lifecycle.claimCodeDelivery()
+        let duplicateClaim = lifecycle.claimCodeDelivery()
+        #expect(acceptedPermission)
+        #expect(activeGeneration == generation)
+        #expect(claimedGeneration == generation)
+        #expect(duplicateClaim == nil)
+
+        let didTearDown = lifecycle.tearDown()
+        let reactivationAfterTearDown = lifecycle.setActive(true)
+        #expect(didTearDown)
+        #expect(!lifecycle.canDeliverClaimedCode(for: generation))
+        #expect(reactivationAfterTearDown == nil)
+    }
+
+    @Test
+    func cameraScannerLifecycle_reopensOneShotGateOnlyAfterReactivation() {
+        var lifecycle = CameraScannerLifecycleState()
+        let generation = lifecycle.beginSetup()
+
+        let acceptedPermission = lifecycle.setPermissionGranted(true, for: generation)
+        let initialActivation = lifecycle.setActive(true)
+        let initialClaim = lifecycle.claimCodeDelivery()
+        let duplicateClaim = lifecycle.claimCodeDelivery()
+        #expect(acceptedPermission)
+        #expect(initialActivation == generation)
+        #expect(initialClaim == generation)
+        #expect(lifecycle.canDeliverClaimedCode(for: generation))
+        #expect(duplicateClaim == nil)
+
+        let deactivation = lifecycle.setActive(false)
+        #expect(deactivation == generation)
+        #expect(!lifecycle.canDeliverClaimedCode(for: generation))
+        let reactivation = lifecycle.setActive(true)
+        let reactivatedClaim = lifecycle.claimCodeDelivery()
+        #expect(reactivation == generation)
+        #expect(reactivatedClaim == generation)
     }
 }

@@ -83,9 +83,9 @@ struct MeshChatSidebarView: View {
             comment: "Title of the notices surface"
         )
         static let scanQRCode = String(
-            localized: "verification.sheet.title",
-            defaultValue: "Scan QR Code",
-            comment: "Action that opens the global identity QR scanner"
+            localized: "verification.qr.title",
+            defaultValue: "QR Code",
+            comment: "Action that opens the global identity QR screen"
         )
         static let setNickname = String(
             localized: "fingerprint.local_alias.label",

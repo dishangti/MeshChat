@@ -345,7 +345,7 @@ private struct ContentPeopleListView: View {
                         // .help maps to the accessibility *hint* on iOS, so the
                         // button still needs a spoken name.
                         .accessibilityLabel(
-                            String(localized: "verification.sheet.title", comment: "Accessibility label for the global QR scanner")
+                            String(localized: "verification.qr.title", comment: "Accessibility label for the global QR screen")
                         )
                         .help(
                             String(localized: "verification.scan.prompt_friend", comment: "Help text for the global QR scanner")

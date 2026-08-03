@@ -1433,6 +1433,106 @@ struct AppArchitectureTests {
         #expect(verificationModel.friendVerificationState == .ready)
     }
 
+    @Test("VerificationModel reports an authentic expired Bitchat QR precisely")
+    @MainActor
+    func verificationModelDistinguishesExpiredBitchatQR() throws {
+        let viewModel = makeArchitectureViewModel()
+        VerificationService.shared.configure(with: viewModel.meshService)
+        let verificationModel = VerificationModel(
+            chatViewModel: viewModel,
+            privateConversationModel: PrivateConversationModel(
+                chatViewModel: viewModel,
+                conversations: viewModel.conversations,
+                locationChannelsModel: LocationChannelsModel(
+                    manager: makeArchitectureLocationManager()
+                )
+            )
+        )
+
+        let friendTransport = MockTransport()
+        var qr = VerificationService.VerificationQR(
+            v: 1,
+            noiseKeyHex: friendTransport.noiseStaticPublicKeyData()
+                .hexEncodedString(),
+            signKeyHex: friendTransport.noiseSigningPublicKeyData()
+                .hexEncodedString(),
+            npub: nil,
+            nickname: "Alice",
+            ts: Int64(
+                Date().addingTimeInterval(
+                    -(TransportConfig.verificationQRMaxAgeSeconds + 1)
+                ).timeIntervalSince1970
+            ),
+            nonceB64: Data((0..<16).map(UInt8.init)).base64EncodedString(),
+            sigHex: ""
+        )
+        qr.sigHex = try #require(
+            friendTransport.noiseSignData(qr.canonicalBytes())
+        ).hexEncodedString()
+
+        #expect(
+            verificationModel.verifyScannedPayload(qr.toURLString())
+                == .rejected(.expiredPayload)
+        )
+        #expect(verificationModel.friendCandidate == nil)
+        #expect(
+            verificationModel.friendVerificationState
+                == .failed(.expiredPayload)
+        )
+    }
+
+    @Test("Opaque legacy npub never becomes a Nostr route when adding a friend")
+    @MainActor
+    func verificationModelDoesNotPersistOpaqueLegacyNpub() throws {
+        let viewModel = makeArchitectureViewModel()
+        VerificationService.shared.configure(with: viewModel.meshService)
+        let verificationModel = VerificationModel(
+            chatViewModel: viewModel,
+            privateConversationModel: PrivateConversationModel(
+                chatViewModel: viewModel,
+                conversations: viewModel.conversations,
+                locationChannelsModel: LocationChannelsModel(
+                    manager: makeArchitectureLocationManager()
+                )
+            )
+        )
+
+        let friendTransport = MockTransport()
+        let noiseKey = friendTransport.noiseStaticPublicKeyData()
+        var qr = VerificationService.VerificationQR(
+            v: 1,
+            noiseKeyHex: noiseKey.hexEncodedString(),
+            signKeyHex: friendTransport.noiseSigningPublicKeyData()
+                .hexEncodedString(),
+            npub: "npub1testvalue",
+            nickname: "Legacy Alice",
+            ts: Int64(Date().timeIntervalSince1970),
+            nonceB64: Data((0..<16).map(UInt8.init)).base64EncodedString(),
+            sigHex: ""
+        )
+        qr.sigHex = try #require(
+            friendTransport.noiseSignData(qr.canonicalBytes())
+        ).hexEncodedString()
+
+        guard case .candidate = verificationModel.verifyScannedPayload(
+            qr.toURLString()
+        ) else {
+            Issue.record("Expected the original-style signed QR to be accepted")
+            return
+        }
+        defer {
+            FavoritesPersistenceService.shared.removeFavorite(
+                peerNoisePublicKey: noiseKey
+            )
+        }
+
+        #expect(verificationModel.addFriendFromCandidate())
+        #expect(
+            FavoritesPersistenceService.shared
+                .getFavoriteStatus(for: noiseKey)?.peerNostrPublicKey == nil
+        )
+    }
+
     @Test("Hybrid QR marks the authenticated signing-key holder, not its claimed Noise identity")
     @MainActor
     func verificationModelAttributesHybridQRToSigningKeyHolder() throws {

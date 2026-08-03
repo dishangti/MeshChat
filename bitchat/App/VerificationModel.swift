@@ -96,10 +96,12 @@ final class VerificationModel: ObservableObject {
     }
 
     func verifyScannedPayload(_ payload: String) -> VerificationScanOutcome {
-        guard let qr = VerificationService.shared.verifyScannedQR(payload) else {
+        let validation = VerificationService.shared.validateScannedQR(payload)
+        guard case .success(let qr) = validation else {
+            let failure = Self.friendFailure(for: validation)
             friendCandidate = nil
-            friendVerificationState = .failed(.invalidPayload)
-            return .rejected(.invalidPayload)
+            friendVerificationState = .failed(failure)
+            return .rejected(failure)
         }
 
         guard let noisePublicKey = Data(hexString: qr.noiseKeyHex),
@@ -196,7 +198,10 @@ final class VerificationModel: ObservableObject {
               ) else { return false }
         guard chatViewModel.addFriend(
             noisePublicKey: identity.noisePublicKey,
-            nostrPublicKey: identity.qr.npub,
+            // Preserve an opaque legacy Bitchat npub while checking the QR
+            // signature, but never persist it as a usable Nostr route unless
+            // it is a canonical 32-byte NIP-19 public key.
+            nostrPublicKey: identity.qr.routableNpub,
             claimedNickname: identity.qr.nickname
         ) != nil else {
             return false
@@ -286,10 +291,13 @@ final class VerificationModel: ObservableObject {
 
         let qr: VerificationService.VerificationQR
         if requireFreshSignature {
-            guard let revalidated = VerificationService.shared.verifyScannedQR(
+            let validation = VerificationService.shared.validateScannedQR(
                 candidate.qr.toURLString()
-            ) else {
-                friendVerificationState = .failed(.invalidPayload)
+            )
+            guard case .success(let revalidated) = validation else {
+                friendVerificationState = .failed(
+                    Self.friendFailure(for: validation)
+                )
                 return nil
             }
             qr = revalidated
@@ -322,6 +330,18 @@ final class VerificationModel: ObservableObject {
             return nil
         }
         return (qr, noisePublicKey, signingPublicKey)
+    }
+
+    private static func friendFailure(
+        for result: Result<
+            VerificationService.VerificationQR,
+            VerificationService.QRValidationFailure
+        >
+    ) -> FriendVerificationFailure {
+        guard case .failure(let failure) = result else {
+            return .invalidPayload
+        }
+        return failure.friendVerificationFailure
     }
 
     func resetFriendVerificationFlow() {

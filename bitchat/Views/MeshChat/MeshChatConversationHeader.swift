@@ -147,7 +147,7 @@ struct MeshChatConversationHeader: View {
 
             Menu {
                 Button(action: onOpenVerification) {
-                    Label("verification.sheet.title", systemImage: "qrcode.viewfinder")
+                    Label("verification.qr.title", systemImage: "qrcode.viewfinder")
                 }
 
                 if privateHeader == nil, case .location(let channel) = locationChannelsModel.selectedChannel {

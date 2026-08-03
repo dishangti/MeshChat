@@ -118,7 +118,6 @@ struct QRScanView: View {
     var isActive: Bool = true
     var onCandidate: ((FriendVerificationCandidate) -> Void)? = nil
     @State private var input = ""
-    @State private var lastSubmittedCode = ""
     @State private var cameraUnavailable = false
 
     private enum Strings {
@@ -181,8 +180,7 @@ struct QRScanView: View {
 
     private func handleScannedCode(_ rawCode: String) {
         let code = rawCode.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !code.isEmpty, code != lastSubmittedCode else { return }
-        lastSubmittedCode = code
+        guard !code.isEmpty else { return }
 
         switch verificationModel.verifyScannedPayload(code) {
         case .candidate(let candidate):
@@ -213,12 +211,15 @@ struct CameraScannerView: UIViewRepresentable {
     }
 
     func updateUIView(_ uiView: PreviewView, context: Context) {
+        context.coordinator.updateCallbacks(
+            onCode: onCode,
+            onUnavailable: onUnavailable
+        )
         context.coordinator.setActive(isActive)
     }
 
     static func dismantleUIView(_ uiView: PreviewView, coordinator: CameraScannerCoordinator) {
-        coordinator.tearDown()
-        uiView.videoPreviewLayer.session = nil
+        coordinator.tearDown(detaching: uiView.videoPreviewLayer)
     }
 
     func makeCoordinator() -> CameraScannerCoordinator { CameraScannerCoordinator() }
@@ -252,12 +253,15 @@ struct CameraScannerView: NSViewRepresentable {
     }
 
     func updateNSView(_ nsView: PreviewView, context: Context) {
+        context.coordinator.updateCallbacks(
+            onCode: onCode,
+            onUnavailable: onUnavailable
+        )
         context.coordinator.setActive(isActive)
     }
 
     static func dismantleNSView(_ nsView: PreviewView, coordinator: CameraScannerCoordinator) {
-        coordinator.tearDown()
-        nsView.videoPreviewLayer.session = nil
+        coordinator.tearDown(detaching: nsView.videoPreviewLayer)
     }
 
     func makeCoordinator() -> CameraScannerCoordinator { CameraScannerCoordinator() }
@@ -283,30 +287,84 @@ struct CameraScannerView: NSViewRepresentable {
 }
 #endif
 
-final class CameraScannerCoordinator: NSObject, AVCaptureMetadataOutputObjectsDelegate {
-    private struct LifecycleState {
-        var generation: UInt64 = 0
-        var desiredActive = false
-        var permissionGranted = false
-        var isTornDown = true
+struct CameraScannerLifecycleState {
+    private(set) var generation: UInt64 = 0
+    private(set) var desiredActive = false
+    private(set) var permissionGranted = false
+    private(set) var isTornDown = true
+    private(set) var codeDeliveryClaimed = false
+
+    mutating func beginSetup() -> UInt64 {
+        generation &+= 1
+        desiredActive = false
+        permissionGranted = false
+        isTornDown = false
+        codeDeliveryClaimed = false
+        return generation
     }
 
+    mutating func setPermissionGranted(_ granted: Bool, for generation: UInt64) -> Bool {
+        guard self.generation == generation, !isTornDown else { return false }
+        permissionGranted = granted
+        return true
+    }
+
+    mutating func setActive(_ active: Bool) -> UInt64? {
+        guard !isTornDown else { return nil }
+        if active && !desiredActive {
+            codeDeliveryClaimed = false
+        }
+        desiredActive = active
+        return generation
+    }
+
+    mutating func claimCodeDelivery() -> UInt64? {
+        guard !isTornDown,
+              permissionGranted,
+              desiredActive,
+              !codeDeliveryClaimed else { return nil }
+        codeDeliveryClaimed = true
+        return generation
+    }
+
+    func canDeliverClaimedCode(for generation: UInt64) -> Bool {
+        self.generation == generation
+            && !isTornDown
+            && permissionGranted
+            && desiredActive
+            && codeDeliveryClaimed
+    }
+
+    mutating func tearDown() -> Bool {
+        guard !isTornDown else { return false }
+        generation &+= 1
+        desiredActive = false
+        permissionGranted = false
+        isTornDown = true
+        codeDeliveryClaimed = false
+        return true
+    }
+}
+
+final class CameraScannerCoordinator: NSObject, AVCaptureMetadataOutputObjectsDelegate {
     private var onCode: ((String) -> Void)?
     private var onUnavailable: (() -> Void)?
     private let session = AVCaptureSession()
     private let sessionQueue = DispatchQueue(label: "chat.meshchat.qr-camera-session")
+    private let metadataQueue = DispatchQueue(label: "chat.meshchat.qr-camera-metadata")
     private let lifecycleLock = NSLock()
-    private var lifecycle = LifecycleState()
+    private var lifecycle = CameraScannerLifecycleState()
     private var didConfigureSession = false
-    private weak var previewLayer: AVCaptureVideoPreviewLayer?
 
-    private func withLifecycleState<T>(_ body: (inout LifecycleState) -> T) -> T {
+    private func withLifecycleState<T>(
+        _ body: (inout CameraScannerLifecycleState) -> T
+    ) -> T {
         lifecycleLock.lock()
         defer { lifecycleLock.unlock() }
         return body(&lifecycle)
     }
 
-    private func lifecycleSnapshot() -> LifecycleState {
+    private func lifecycleSnapshot() -> CameraScannerLifecycleState {
         withLifecycleState { $0 }
     }
 
@@ -315,34 +373,23 @@ final class CameraScannerCoordinator: NSObject, AVCaptureMetadataOutputObjectsDe
         onCode: @escaping (String) -> Void,
         onUnavailable: (() -> Void)? = nil
     ) {
-        let generation = withLifecycleState { state in
-            state.generation &+= 1
-            state.desiredActive = false
-            state.permissionGranted = false
-            state.isTornDown = false
-            return state.generation
-        }
-        self.onCode = onCode
-        self.onUnavailable = onUnavailable
-        self.previewLayer = previewLayer
+        let generation = withLifecycleState { $0.beginSetup() }
+        updateCallbacks(onCode: onCode, onUnavailable: onUnavailable)
         previewLayer.session = session
 
         // Check authorization before creating AVCaptureDeviceInput so tests and
         // cold launches do not trigger a TCC prompt just by constructing input.
         switch AVCaptureDevice.authorizationStatus(for: .video) {
         case .authorized:
-            withLifecycleState { $0.permissionGranted = true }
-            prepareSession(for: generation)
+            if withLifecycleState({ $0.setPermissionGranted(true, for: generation) }) {
+                prepareSession(for: generation)
+            }
         case .notDetermined:
             AVCaptureDevice.requestAccess(for: .video) { [weak self] granted in
                 DispatchQueue.main.async {
                     guard let self else { return }
-                    let accepted = self.withLifecycleState { state in
-                        guard state.generation == generation, !state.isTornDown else {
-                            return false
-                        }
-                        state.permissionGranted = granted
-                        return true
+                    let accepted = self.withLifecycleState {
+                        $0.setPermissionGranted(granted, for: generation)
                     }
                     guard accepted else { return }
                     if granted {
@@ -355,6 +402,14 @@ final class CameraScannerCoordinator: NSObject, AVCaptureMetadataOutputObjectsDe
         default:
             reportUnavailable(for: generation)
         }
+    }
+
+    func updateCallbacks(
+        onCode: @escaping (String) -> Void,
+        onUnavailable: (() -> Void)?
+    ) {
+        self.onCode = onCode
+        self.onUnavailable = onUnavailable
     }
 
     private func prepareSession(for generation: UInt64) {
@@ -390,7 +445,7 @@ final class CameraScannerCoordinator: NSObject, AVCaptureMetadataOutputObjectsDe
             return false
         }
         session.addOutput(output)
-        output.setMetadataObjectsDelegate(self, queue: DispatchQueue.main)
+        output.setMetadataObjectsDelegate(self, queue: metadataQueue)
         guard output.availableMetadataObjectTypes.contains(.qr) else {
             session.removeOutput(output)
             session.commitConfiguration()
@@ -412,11 +467,7 @@ final class CameraScannerCoordinator: NSObject, AVCaptureMetadataOutputObjectsDe
     }
 
     func setActive(_ active: Bool) {
-        let generation = withLifecycleState { state -> UInt64? in
-            guard !state.isTornDown else { return nil }
-            state.desiredActive = active
-            return state.generation
-        }
+        let generation = withLifecycleState { $0.setActive(active) }
         guard let generation else { return }
         sessionQueue.async { [weak self] in
             self?.reconcileSession(for: generation)
@@ -439,26 +490,22 @@ final class CameraScannerCoordinator: NSObject, AVCaptureMetadataOutputObjectsDe
         }
     }
 
-    func tearDown() {
-        let shouldTearDown = withLifecycleState { state in
-            guard !state.isTornDown else { return false }
-            state.generation &+= 1
-            state.desiredActive = false
-            state.permissionGranted = false
-            state.isTornDown = true
-            return true
-        }
+    func tearDown(detaching previewLayer: AVCaptureVideoPreviewLayer) {
+        let shouldTearDown = withLifecycleState { $0.tearDown() }
         guard shouldTearDown else { return }
         onCode = nil
         onUnavailable = nil
-        previewLayer = nil
         let session = self.session
         sessionQueue.async {
-            if session.isRunning { session.stopRunning() }
             for output in session.outputs {
                 if let metadataOutput = output as? AVCaptureMetadataOutput {
                     metadataOutput.setMetadataObjectsDelegate(nil, queue: nil)
                 }
+            }
+            if session.isRunning { session.stopRunning() }
+            DispatchQueue.main.async {
+                guard previewLayer.session === session else { return }
+                previewLayer.session = nil
             }
         }
     }
@@ -472,7 +519,20 @@ final class CameraScannerCoordinator: NSObject, AVCaptureMetadataOutputObjectsDe
             guard let m = obj as? AVMetadataMachineReadableCodeObject,
                   m.type == .qr,
                   let str = m.stringValue else { continue }
-            onCode?(str)
+            let code = str.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !code.isEmpty else { continue }
+            guard let generation = withLifecycleState({ $0.claimCodeDelivery() }) else {
+                return
+            }
+            DispatchQueue.main.async { [weak self] in
+                guard let self else { return }
+                let shouldDeliver = self.withLifecycleState {
+                    $0.canDeliverClaimedCode(for: generation)
+                }
+                guard shouldDeliver else { return }
+                self.onCode?(code)
+            }
+            return
         }
     }
 }
@@ -482,7 +542,7 @@ final class CameraScannerCoordinator: NSObject, AVCaptureMetadataOutputObjectsDe
 struct VerificationSheetView: View {
     @EnvironmentObject private var verificationModel: VerificationModel
     @Binding var isPresented: Bool
-    @State private var mode: Mode = .scan
+    @State private var mode: Mode = .myQR
     @State private var friendNickname = ""
     @State private var loadedCandidateID: String?
     @State private var nicknameFeedback: NicknameFeedback?
@@ -567,7 +627,7 @@ struct VerificationSheetView: View {
                     .buttonStyle(.plain)
                     .accessibilityLabel("verification.scan.prompt_friend")
                 }
-                Text("verification.sheet.title")
+                Text("verification.qr.title")
                     .bitchatFont(size: 14, weight: .bold)
                     .foregroundColor(accentColor)
                 Spacer()
@@ -580,6 +640,18 @@ struct VerificationSheetView: View {
 
             Divider()
 
+            Picker("", selection: $mode) {
+                Text("verification.tabs.my_qr")
+                    .tag(Mode.myQR)
+                Text("verification.tabs.scan")
+                    .tag(Mode.scan)
+            }
+            .labelsHidden()
+            .pickerStyle(.segmented)
+            .accessibilityLabel("verification.qr.title")
+            .padding(.horizontal, 16)
+            .padding(.top, 12)
+
             ScrollView {
                 sheetContent
                     .frame(maxWidth: 560)
@@ -587,26 +659,6 @@ struct VerificationSheetView: View {
                     .padding(16)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-
-            if showsModeSwitcher {
-                VStack(spacing: 10) {
-                    if mode == .scan {
-                        Button(action: { mode = .myQR }) {
-                            Label("verification.my_qr.title", systemImage: "qrcode")
-                                .bitchatFont(size: 13)
-                        }
-                        .buttonStyle(.bordered)
-                    } else {
-                        Button(action: { mode = .scan }) {
-                            Label("verification.scan.prompt_friend", systemImage: "camera.viewfinder")
-                                .bitchatFont(size: 13, weight: .medium)
-                        }
-                        .buttonStyle(.bordered)
-                    }
-                }
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 14)
-            }
         }
         .themedSheetBackground()
         .onAppear {
@@ -621,23 +673,37 @@ struct VerificationSheetView: View {
             loadedCandidateID = nil
             nicknameFeedback = nil
             friendAddFailed = false
-            mode = .scan
+            mode = .myQR
         }
     }
 
     @ViewBuilder
     private var sheetContent: some View {
         if mode == .myQR {
-            MyQRView(qrString: verificationModel.myQRString())
+            // Bitchat verification QR timestamps are valid for five minutes.
+            // Re-evaluate well inside that window so a sheet left open never
+            // keeps presenting an expired, otherwise correctly signed code.
+            TimelineView(.periodic(from: .now, by: 60)) { _ in
+                MyQRView(qrString: verificationModel.myQRString())
+            }
         } else {
+            scanFlowContent
+        }
+    }
+
+    private var scanFlowContent: some View {
+        ZStack(alignment: .top) {
+            scannerContent
+                .opacity(showsScanner ? 1 : 0)
+                .allowsHitTesting(showsScanner)
+                .accessibilityHidden(!showsScanner)
+
             switch verificationModel.friendVerificationState {
             case .idle:
-                scannerContent
+                EmptyView()
             case .ready:
                 if let candidate = verificationModel.friendCandidate {
                     confirmationContent(candidate: candidate)
-                } else {
-                    scannerContent
                 }
             case .verifying:
                 progressContent
@@ -647,6 +713,12 @@ struct VerificationSheetView: View {
                 failureContent(failure)
             }
         }
+    }
+
+    private var showsScanner: Bool {
+        verificationModel.friendVerificationState == .idle
+            || (verificationModel.friendVerificationState == .ready
+                && verificationModel.friendCandidate == nil)
     }
 
     private var scannerContent: some View {
@@ -841,10 +913,6 @@ struct VerificationSheetView: View {
         .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
     }
 
-    private var showsModeSwitcher: Bool {
-        verificationModel.friendVerificationState == .idle
-    }
-
     private var candidateDisplayName: String {
         let local = friendNickname.trimmingCharacters(in: .whitespacesAndNewlines)
         if !local.isEmpty { return local }
@@ -920,6 +988,8 @@ struct VerificationSheetView: View {
         switch failure {
         case .invalidPayload, .invalidResponse:
             return String(localized: "verification.scan.status.invalid")
+        case .expiredPayload:
+            return String(localized: "verification.scan.status.expired")
         case .invalidLocalPetname:
             return String(localized: "fingerprint.local_alias.invalid")
         case .selfIdentity:

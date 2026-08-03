@@ -86486,190 +86486,377 @@
       },
       "comment": "Prompt to scan a MeshChat or bitchat identity QR code"
     },
+    "verification.scan.status.expired": {
+      "extractionState": "manual",
+      "localizations": {
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "انتهت صلاحية رمز QR هذا أو أن ساعتي الجهازين غير متطابقتين. اطلب من الشخص الآخر إعادة فتحه، ثم امسحه ضوئيًا مرة أخرى."
+          }
+        },
+        "bn": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "এই QR কোডটির মেয়াদ শেষ হয়ে গেছে অথবা ডিভাইস দুটির ঘড়ির সময় মিলছে না। অন্য ব্যক্তিকে এটি আবার খুলতে বলুন, তারপর আবার স্ক্যান করুন।"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Dieser QR-Code ist abgelaufen oder die Uhren der Geräte stimmen nicht überein. Bitte die andere Person, ihn erneut zu öffnen, und scanne ihn dann noch einmal."
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "This QR code has expired or the devices' clocks differ. Ask the other person to reopen it, then scan again."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Este código QR ha caducado o los relojes de los dispositivos no coinciden. Pide a la otra persona que vuelva a abrirlo y escanéalo de nuevo."
+          }
+        },
+        "fa": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "این کد QR منقضی شده است یا ساعت دستگاه‌ها با هم مطابقت ندارد. از طرف مقابل بخواهید آن را دوباره باز کند، سپس دوباره اسکن کنید."
+          }
+        },
+        "fil": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nag-expire na ang QR code na ito o hindi tugma ang oras ng mga device. Hilingin sa kausap na buksan itong muli, pagkatapos ay i-scan ulit."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ce code QR a expiré ou les horloges des appareils ne sont pas synchronisées. Demandez à l’autre personne de le rouvrir, puis scannez-le à nouveau."
+          }
+        },
+        "he": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "פג תוקפו של קוד ה-QR הזה או שהשעונים במכשירים אינם תואמים. בקשו מהאדם השני לפתוח אותו מחדש ואז סרקו שוב."
+          }
+        },
+        "hi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "यह QR कोड समाप्त हो गया है या दोनों डिवाइसों की घड़ियों में अंतर है। दूसरे व्यक्ति से इसे फिर से खोलने के लिए कहें, फिर दोबारा स्कैन करें।"
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kode QR ini telah kedaluwarsa atau waktu pada kedua perangkat berbeda. Minta orang lain membukanya kembali, lalu pindai lagi."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Questo codice QR è scaduto oppure gli orologi dei dispositivi non sono sincronizzati. Chiedi all’altra persona di riaprirlo, quindi scansionalo di nuovo."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "このQRコードは有効期限が切れているか、端末間で時刻がずれています。相手にQRコードを開き直してもらい、もう一度スキャンしてください。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "이 QR 코드는 만료되었거나 두 기기의 시간이 일치하지 않습니다. 상대방에게 QR 코드를 다시 열어 달라고 한 후 다시 스캔하세요."
+          }
+        },
+        "ms": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kod QR ini telah tamat tempoh atau waktu pada kedua-dua peranti tidak sepadan. Minta orang lain membukanya semula, kemudian imbas sekali lagi."
+          }
+        },
+        "ne": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "यो QR कोडको म्याद सकिएको छ वा दुई उपकरणका घडीहरू फरक छन्। अर्को व्यक्तिलाई यसलाई फेरि खोल्न भन्नुहोस्, त्यसपछि फेरि स्क्यान गर्नुहोस्।"
+          }
+        },
+        "nl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Deze QR-code is verlopen of de klokken van de apparaten lopen niet gelijk. Vraag de andere persoon om de code opnieuw te openen en scan hem daarna nogmaals."
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ten kod QR wygasł albo zegary urządzeń nie są zsynchronizowane. Poproś drugą osobę, aby otworzyła go ponownie, a następnie zeskanuj go jeszcze raz."
+          }
+        },
+        "pt": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Este código QR expirou ou os relógios dos dispositivos não estão sincronizados. Peça à outra pessoa para o voltar a abrir e, em seguida, digitalize-o novamente."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Este QR Code expirou ou os relógios dos dispositivos não estão sincronizados. Peça à outra pessoa para abri-lo novamente e escaneie outra vez."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Срок действия этого QR-кода истёк, либо часы на устройствах не совпадают. Попросите собеседника снова открыть его, а затем повторите сканирование."
+          }
+        },
+        "sv": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Den här QR-koden har gått ut eller så går enheternas klockor olika. Be den andra personen att öppna den igen och skanna sedan på nytt."
+          }
+        },
+        "ta": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "இந்த QR குறியீடு காலாவதியாகிவிட்டது அல்லது இரு சாதனங்களின் கடிகார நேரங்களும் பொருந்தவில்லை. மற்றவரிடம் அதை மீண்டும் திறக்கச் சொல்லி, பின்னர் மீண்டும் ஸ்கேன் செய்யுங்கள்."
+          }
+        },
+        "th": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "รหัส QR นี้หมดอายุแล้ว หรือเวลาของอุปกรณ์ทั้งสองไม่ตรงกัน โปรดให้อีกฝ่ายเปิดรหัสนี้ใหม่ แล้วสแกนอีกครั้ง"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bu QR kodunun süresi dolmuş veya cihazların saatleri uyuşmuyor. Diğer kişiden kodu yeniden açmasını isteyin, ardından tekrar tarayın."
+          }
+        },
+        "uk": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Термін дії цього QR-коду минув або годинники на пристроях не збігаються. Попросіть співрозмовника знову відкрити його, а потім відскануйте ще раз."
+          }
+        },
+        "ur": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "اس QR کوڈ کی میعاد ختم ہو چکی ہے یا دونوں ڈیوائسز کی گھڑیوں میں فرق ہے۔ دوسرے شخص سے اسے دوبارہ کھولنے کو کہیں، پھر دوبارہ اسکین کریں۔"
+          }
+        },
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mã QR này đã hết hạn hoặc đồng hồ trên hai thiết bị không khớp. Hãy yêu cầu người kia mở lại mã rồi quét lại."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "此二维码已过期，或两台设备的时间不一致。请让对方重新打开二维码后再扫描。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "此 QR Code 已過期，或兩台裝置的時間不一致。請讓對方重新開啟 QR Code 後再掃描。"
+          }
+        }
+      },
+      "comment": "Shown when a verification QR is outside its freshness window or the devices' clocks differ"
+    },
     "verification.scan.status.invalid": {
       "extractionState": "manual",
       "localizations": {
         "ar": {
           "stringUnit": {
             "state": "translated",
-            "value": "qr غير صالح أو منتهٍ"
+            "value": "تعذّر التحقق من رمز QR هذا."
           }
         },
         "bn": {
           "stringUnit": {
             "state": "translated",
-            "value": "অবৈধ বা মেয়াদোত্তীর্ণ QR পেলোড"
+            "value": "এই QR কোডটি যাচাই করা যায়নি।"
           }
         },
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "qr ungültig oder abgelaufen"
+            "value": "Dieser QR-Code konnte nicht verifiziert werden."
           }
         },
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Invalid or expired QR payload"
+            "value": "This QR code could not be verified."
           }
         },
         "es": {
           "stringUnit": {
             "state": "translated",
-            "value": "QR inválido o caducado"
+            "value": "No se pudo verificar este código QR."
           }
         },
         "fa": {
           "stringUnit": {
             "state": "translated",
-            "value": "محتوای QR نامعتبر یا منقضی است"
+            "value": "تأیید این کد QR ممکن نشد."
           }
         },
         "fil": {
           "stringUnit": {
             "state": "translated",
-            "value": "di-wasto o paso na ang QR payload"
+            "value": "Hindi ma-verify ang QR code na ito."
           }
         },
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "qr invalide ou expiré"
+            "value": "Ce code QR n’a pas pu être vérifié."
           }
         },
         "he": {
           "stringUnit": {
             "state": "translated",
-            "value": "qr לא תקף או שפג תוקפו"
+            "value": "לא ניתן היה לאמת את קוד ה-QR הזה."
           }
         },
         "hi": {
           "stringUnit": {
             "state": "translated",
-            "value": "अमान्य या समाप्त हुआ QR पेलोड"
+            "value": "इस QR कोड को सत्यापित नहीं किया जा सका।"
           }
         },
         "id": {
           "stringUnit": {
             "state": "translated",
-            "value": "qr tidak valid atau kedaluwarsa"
+            "value": "Kode QR ini tidak dapat diverifikasi."
           }
         },
         "it": {
           "stringUnit": {
             "state": "translated",
-            "value": "qr non valido o scaduto"
+            "value": "Non è stato possibile verificare questo codice QR."
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "qrが無効または期限切れ"
+            "value": "このQRコードを検証できませんでした。"
           }
         },
         "ko": {
           "stringUnit": {
             "state": "translated",
-            "value": "QR 페이로드가 잘못되었거나 만료되었습니다"
+            "value": "이 QR 코드를 검증할 수 없습니다."
           }
         },
         "ms": {
           "stringUnit": {
             "state": "translated",
-            "value": "qr tidak valid atau kedaluwarsa"
+            "value": "Kod QR ini tidak dapat disahkan."
           }
         },
         "ne": {
           "stringUnit": {
             "state": "translated",
-            "value": "qr अवैध या म्याद सकिएको"
+            "value": "यो QR कोड प्रमाणित गर्न सकिएन।"
           }
         },
         "nl": {
           "stringUnit": {
             "state": "translated",
-            "value": "ongeldige of verlopen QR-payload"
+            "value": "Deze QR-code kon niet worden geverifieerd."
           }
         },
         "pl": {
           "stringUnit": {
             "state": "translated",
-            "value": "nieprawidłowy lub wygasły payload QR"
+            "value": "Nie udało się zweryfikować tego kodu QR."
           }
         },
         "pt": {
           "stringUnit": {
             "state": "translated",
-            "value": "payload de QR inválido ou expirado"
+            "value": "Não foi possível verificar este código QR."
           }
         },
         "pt-BR": {
           "stringUnit": {
             "state": "translated",
-            "value": "qr inválido ou expirado"
+            "value": "Não foi possível verificar este QR Code."
           }
         },
         "ru": {
           "stringUnit": {
             "state": "translated",
-            "value": "qr недействителен или просрочен"
+            "value": "Не удалось проверить этот QR-код."
           }
         },
         "sv": {
           "stringUnit": {
             "state": "translated",
-            "value": "ogiltig eller utgången QR-payload"
+            "value": "Det gick inte att verifiera den här QR-koden."
           }
         },
         "ta": {
           "stringUnit": {
             "state": "translated",
-            "value": "சரியானதல்ல அல்லது காலாவதியான QR payload"
+            "value": "இந்த QR குறியீட்டைச் சரிபார்க்க முடியவில்லை."
           }
         },
         "th": {
           "stringUnit": {
             "state": "translated",
-            "value": "payload ของ QR ไม่ถูกต้องหรือหมดอายุ"
+            "value": "ไม่สามารถตรวจสอบรหัส QR นี้ได้"
           }
         },
         "tr": {
           "stringUnit": {
             "state": "translated",
-            "value": "geçersiz veya süresi dolmuş QR yükü"
+            "value": "Bu QR kodu doğrulanamadı."
           }
         },
         "uk": {
           "stringUnit": {
             "state": "translated",
-            "value": "qr недійсний або прострочений"
+            "value": "Не вдалося перевірити цей QR-код."
           }
         },
         "ur": {
           "stringUnit": {
             "state": "translated",
-            "value": "غلط یا میعاد ختم شدہ QR payload"
+            "value": "اس QR کوڈ کی تصدیق نہیں ہو سکی۔"
           }
         },
         "vi": {
           "stringUnit": {
             "state": "translated",
-            "value": "payload QR không hợp lệ hoặc đã hết hạn"
+            "value": "Không thể xác minh mã QR này."
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "QR 无效或已过期"
+            "value": "无法验证此二维码。"
           }
         },
         "zh-Hant": {
           "stringUnit": {
             "state": "translated",
-            "value": "QR 無效或已過期"
+            "value": "無法驗證此 QR Code。"
           }
         }
-      }
+      },
+      "comment": "Shown when a scanned verification QR cannot be parsed or its signature cannot be verified"
     },
     "verification.scan.status.no_peer": {
       "extractionState": "manual",
@@ -87225,6 +87412,114 @@
             "value": "驗證"
           }
         }
+      }
+    },
+    "verification.qr.title": {
+      "comment": "Title for the global identity QR screen",
+      "extractionState": "manual",
+      "localizations": {
+        "ar": { "stringUnit": { "state": "translated", "value": "رمز QR" } },
+        "bn": { "stringUnit": { "state": "translated", "value": "QR কোড" } },
+        "de": { "stringUnit": { "state": "translated", "value": "QR-Code" } },
+        "en": { "stringUnit": { "state": "translated", "value": "QR Code" } },
+        "es": { "stringUnit": { "state": "translated", "value": "Código QR" } },
+        "fa": { "stringUnit": { "state": "translated", "value": "کد QR" } },
+        "fil": { "stringUnit": { "state": "translated", "value": "QR Code" } },
+        "fr": { "stringUnit": { "state": "translated", "value": "Code QR" } },
+        "he": { "stringUnit": { "state": "translated", "value": "קוד QR" } },
+        "hi": { "stringUnit": { "state": "translated", "value": "QR कोड" } },
+        "id": { "stringUnit": { "state": "translated", "value": "Kode QR" } },
+        "it": { "stringUnit": { "state": "translated", "value": "Codice QR" } },
+        "ja": { "stringUnit": { "state": "translated", "value": "QRコード" } },
+        "ko": { "stringUnit": { "state": "translated", "value": "QR 코드" } },
+        "ms": { "stringUnit": { "state": "translated", "value": "Kod QR" } },
+        "ne": { "stringUnit": { "state": "translated", "value": "QR कोड" } },
+        "nl": { "stringUnit": { "state": "translated", "value": "QR-code" } },
+        "pl": { "stringUnit": { "state": "translated", "value": "Kod QR" } },
+        "pt": { "stringUnit": { "state": "translated", "value": "Código QR" } },
+        "pt-BR": { "stringUnit": { "state": "translated", "value": "Código QR" } },
+        "ru": { "stringUnit": { "state": "translated", "value": "QR-код" } },
+        "sv": { "stringUnit": { "state": "translated", "value": "QR-kod" } },
+        "ta": { "stringUnit": { "state": "translated", "value": "QR குறியீடு" } },
+        "th": { "stringUnit": { "state": "translated", "value": "คิวอาร์โค้ด" } },
+        "tr": { "stringUnit": { "state": "translated", "value": "QR Kodu" } },
+        "uk": { "stringUnit": { "state": "translated", "value": "QR-код" } },
+        "ur": { "stringUnit": { "state": "translated", "value": "QR کوڈ" } },
+        "vi": { "stringUnit": { "state": "translated", "value": "Mã QR" } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "二维码" } },
+        "zh-Hant": { "stringUnit": { "state": "translated", "value": "QR Code" } }
+      }
+    },
+    "verification.tabs.my_qr": {
+      "comment": "Left tab showing the current user's QR code",
+      "extractionState": "manual",
+      "localizations": {
+        "ar": { "stringUnit": { "state": "translated", "value": "رمز QR الخاص بي" } },
+        "bn": { "stringUnit": { "state": "translated", "value": "আমার QR" } },
+        "de": { "stringUnit": { "state": "translated", "value": "Mein QR" } },
+        "en": { "stringUnit": { "state": "translated", "value": "My QR" } },
+        "es": { "stringUnit": { "state": "translated", "value": "Mi QR" } },
+        "fa": { "stringUnit": { "state": "translated", "value": "QR من" } },
+        "fil": { "stringUnit": { "state": "translated", "value": "Aking QR" } },
+        "fr": { "stringUnit": { "state": "translated", "value": "Mon QR" } },
+        "he": { "stringUnit": { "state": "translated", "value": "ה-QR שלי" } },
+        "hi": { "stringUnit": { "state": "translated", "value": "मेरा QR" } },
+        "id": { "stringUnit": { "state": "translated", "value": "QR Saya" } },
+        "it": { "stringUnit": { "state": "translated", "value": "Il mio QR" } },
+        "ja": { "stringUnit": { "state": "translated", "value": "自分のQR" } },
+        "ko": { "stringUnit": { "state": "translated", "value": "내 QR" } },
+        "ms": { "stringUnit": { "state": "translated", "value": "QR Saya" } },
+        "ne": { "stringUnit": { "state": "translated", "value": "मेरो QR" } },
+        "nl": { "stringUnit": { "state": "translated", "value": "Mijn QR" } },
+        "pl": { "stringUnit": { "state": "translated", "value": "Mój QR" } },
+        "pt": { "stringUnit": { "state": "translated", "value": "O meu QR" } },
+        "pt-BR": { "stringUnit": { "state": "translated", "value": "Meu QR" } },
+        "ru": { "stringUnit": { "state": "translated", "value": "Мой QR" } },
+        "sv": { "stringUnit": { "state": "translated", "value": "Min QR" } },
+        "ta": { "stringUnit": { "state": "translated", "value": "எனது QR" } },
+        "th": { "stringUnit": { "state": "translated", "value": "QR ของฉัน" } },
+        "tr": { "stringUnit": { "state": "translated", "value": "QR'ım" } },
+        "uk": { "stringUnit": { "state": "translated", "value": "Мій QR" } },
+        "ur": { "stringUnit": { "state": "translated", "value": "میرا QR" } },
+        "vi": { "stringUnit": { "state": "translated", "value": "QR của tôi" } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "我的二维码" } },
+        "zh-Hant": { "stringUnit": { "state": "translated", "value": "我的 QR" } }
+      }
+    },
+    "verification.tabs.scan": {
+      "comment": "Right tab opening the QR scanner",
+      "extractionState": "manual",
+      "localizations": {
+        "ar": { "stringUnit": { "state": "translated", "value": "مسح" } },
+        "bn": { "stringUnit": { "state": "translated", "value": "স্ক্যান" } },
+        "de": { "stringUnit": { "state": "translated", "value": "Scannen" } },
+        "en": { "stringUnit": { "state": "translated", "value": "Scan" } },
+        "es": { "stringUnit": { "state": "translated", "value": "Escanear" } },
+        "fa": { "stringUnit": { "state": "translated", "value": "اسکن" } },
+        "fil": { "stringUnit": { "state": "translated", "value": "I-scan" } },
+        "fr": { "stringUnit": { "state": "translated", "value": "Scanner" } },
+        "he": { "stringUnit": { "state": "translated", "value": "סריקה" } },
+        "hi": { "stringUnit": { "state": "translated", "value": "स्कैन" } },
+        "id": { "stringUnit": { "state": "translated", "value": "Pindai" } },
+        "it": { "stringUnit": { "state": "translated", "value": "Scansiona" } },
+        "ja": { "stringUnit": { "state": "translated", "value": "スキャン" } },
+        "ko": { "stringUnit": { "state": "translated", "value": "스캔" } },
+        "ms": { "stringUnit": { "state": "translated", "value": "Imbas" } },
+        "ne": { "stringUnit": { "state": "translated", "value": "स्क्यान" } },
+        "nl": { "stringUnit": { "state": "translated", "value": "Scannen" } },
+        "pl": { "stringUnit": { "state": "translated", "value": "Skanuj" } },
+        "pt": { "stringUnit": { "state": "translated", "value": "Ler" } },
+        "pt-BR": { "stringUnit": { "state": "translated", "value": "Escanear" } },
+        "ru": { "stringUnit": { "state": "translated", "value": "Сканировать" } },
+        "sv": { "stringUnit": { "state": "translated", "value": "Skanna" } },
+        "ta": { "stringUnit": { "state": "translated", "value": "ஸ்கேன்" } },
+        "th": { "stringUnit": { "state": "translated", "value": "สแกน" } },
+        "tr": { "stringUnit": { "state": "translated", "value": "Tara" } },
+        "uk": { "stringUnit": { "state": "translated", "value": "Сканувати" } },
+        "ur": { "stringUnit": { "state": "translated", "value": "اسکین" } },
+        "vi": { "stringUnit": { "state": "translated", "value": "Quét" } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "扫描" } },
+        "zh-Hant": { "stringUnit": { "state": "translated", "value": "掃描" } }
       }
     },
     "verification.sheet.title": {

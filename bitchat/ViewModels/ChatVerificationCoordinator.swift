@@ -5,6 +5,7 @@ import Security
 
 enum FriendVerificationFailure: Equatable {
     case invalidPayload
+    case expiredPayload
     case invalidLocalPetname
     case selfIdentity
     case blocked
@@ -15,6 +16,17 @@ enum FriendVerificationFailure: Equatable {
     case invalidResponse
     case persistenceRejected
     case timedOut
+}
+
+extension VerificationService.QRValidationFailure {
+    var friendVerificationFailure: FriendVerificationFailure {
+        switch self {
+        case .expired, .clockSkew:
+            return .expiredPayload
+        case .malformed, .signatureMismatch, .verifierUnavailable:
+            return .invalidPayload
+        }
+    }
 }
 
 enum FriendVerificationStartResult: Equatable {
@@ -468,8 +480,15 @@ final class ChatVerificationCoordinator {
         // confirmation screen can remain open beyond the QR freshness window,
         // and compatibility callers can construct `VerificationQR` directly;
         // neither path may persist unverified nickname or Nostr metadata.
-        guard let validatedQR = verificationService.verifyScannedQR(qr.toURLString()),
-              let noisePublicKey = Data(hexString: validatedQR.noiseKeyHex),
+        let validatedQR: VerificationService.VerificationQR
+        switch verificationService.validateScannedQR(qr.toURLString()) {
+        case .success(let qr):
+            validatedQR = qr
+        case .failure(let failure):
+            return .failed(failure.friendVerificationFailure)
+        }
+
+        guard let noisePublicKey = Data(hexString: validatedQR.noiseKeyHex),
               noisePublicKey.count == 32,
               let signingPublicKey = Data(hexString: validatedQR.signKeyHex),
               signingPublicKey.count == 32 else {

@@ -251,10 +251,11 @@ private struct SignedVerificationFixture {
 
 private func makeSignedVerificationFixture(
     npub: String? = nil,
-    nickname: String = "alice"
+    nickname: String = "alice",
+    now: @escaping () -> Date = Date.init
 ) throws -> SignedVerificationFixture {
     let transport = MockTransport()
-    let service = VerificationService()
+    let service = VerificationService(now: now)
     service.configure(with: transport)
     let url = try #require(
         service.buildMyQRString(nickname: nickname, npub: npub)
@@ -689,6 +690,30 @@ struct ChatVerificationCoordinatorContextTests {
         #expect(context.triggeredHandshakes.isEmpty)
         #expect(context.persistedIdentityCalls.isEmpty)
         #expect(context.recordedIdentityConflicts.isEmpty)
+    }
+
+    @Test @MainActor
+    func beginFriendVerification_reportsExpiryAfterConfirmationDelay() throws {
+        var currentTime = Date(timeIntervalSince1970: 1_700_000_000)
+        let fixture = try makeSignedVerificationFixture(now: { currentTime })
+        let context = MockChatVerificationContext()
+        let coordinator = ChatVerificationCoordinator(
+            context: context,
+            verificationService: fixture.service
+        )
+
+        currentTime.addTimeInterval(
+            TransportConfig.verificationQRMaxAgeSeconds + 1
+        )
+
+        #expect(
+            coordinator.beginFriendVerification(
+                with: fixture.qr,
+                completion: { _ in }
+            ) == .failed(.expiredPayload)
+        )
+        #expect(context.triggeredHandshakes.isEmpty)
+        #expect(context.persistedIdentityCalls.isEmpty)
     }
 
     @Test @MainActor

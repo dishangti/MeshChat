@@ -335,7 +335,7 @@ private extension ChatLifecycleCoordinator {
 
             do {
                 let identity = try context.deriveNostrIdentity(forGeohash: channel.geohash)
-                let event = try await NostrProtocol.createMinedEphemeralGeohashEvent(
+                let event = try await NostrProtocol.createOutgoingEphemeralGeohashEvent(
                     content: message,
                     geohash: channel.geohash,
                     senderIdentity: identity,

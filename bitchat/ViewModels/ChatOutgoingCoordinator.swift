@@ -153,11 +153,11 @@ private extension ChatOutgoingCoordinator {
         context.bridgeOutgoingPublicMessage(trimmed, senderPeerID: context.myPeerID, timestamp: message.timestamp)
     }
 
-    /// Geohash sends mine a NIP-13 nonce tag first (off the main actor, see
-    /// `NostrPoW`), so the whole echo-and-send runs in a task once the signed
-    /// event — whose ID is also the local message ID — exists. Typical mining
-    /// at the default target is well under 100 ms and hard-capped at
-    /// `NostrPoW.miningTimeCap`, so sending is never meaningfully delayed.
+    /// Geohash sends optionally mine a NIP-13 nonce tag first (off the main
+    /// actor, see `NostrPoW`), so the whole echo-and-send runs in a task once
+    /// the signed event — whose ID is also the local message ID — exists.
+    /// Mining is on by default, typically takes well under 100 ms, and is
+    /// hard-capped at `NostrPoW.miningTimeCap`.
     func sendGeohashPublicMessage(_ trimmed: String, mentions: [String], channel: GeohashChannel) {
         let identity: NostrIdentity
         do {
@@ -189,7 +189,7 @@ private extension ChatOutgoingCoordinator {
 
             let event: NostrEvent
             do {
-                event = try await NostrProtocol.createMinedEphemeralGeohashEvent(
+                event = try await NostrProtocol.createOutgoingEphemeralGeohashEvent(
                     content: trimmed,
                     geohash: channel.geohash,
                     senderIdentity: identity,

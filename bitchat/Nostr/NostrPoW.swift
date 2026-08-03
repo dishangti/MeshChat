@@ -2,9 +2,30 @@ import BitFoundation
 import CryptoKit
 import Foundation
 
+/// User preference for mining proof-of-work on outgoing location-channel
+/// events. BitChat mines by default, so a missing preference resolves to on.
+/// This setting never disables validation of work carried by inbound events.
+enum NostrPoWSettings {
+    static let enabledKey = "nostr.proofOfWorkEnabled"
+
+    static var enabled: Bool {
+        get { isEnabled(in: .standard) }
+        set { setEnabled(newValue, in: .standard) }
+    }
+
+    static func isEnabled(in defaults: UserDefaults) -> Bool {
+        guard defaults.object(forKey: enabledKey) != nil else { return true }
+        return defaults.bool(forKey: enabledKey)
+    }
+
+    static func setEnabled(_ enabled: Bool, in defaults: UserDefaults) {
+        defaults.set(enabled, forKey: enabledKey)
+    }
+}
+
 /// NIP-13 proof-of-work for Nostr events.
 ///
-/// Outgoing kind-20000 geohash messages mine a `["nonce", "<value>", "<target>"]`
+/// Outgoing kind-20000 geohash messages can mine a `["nonce", "<value>", "<target>"]`
 /// tag so the event ID carries at least `target` leading zero bits. Inbound
 /// events are scored (never hard-rejected — the network has clients that do
 /// not mine): validated PoW at or above `rateLimitBypassBits` relaxes the

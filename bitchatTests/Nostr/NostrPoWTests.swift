@@ -14,6 +14,22 @@ import BitFoundation
 
 struct NostrPoWTests {
 
+    // MARK: - Preference
+
+    @Test func proofOfWorkDefaultsToBitChatBehaviorAndPersistsChanges() throws {
+        let suiteName = "bitchat.tests.pow.\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        #expect(NostrPoWSettings.isEnabled(in: defaults))
+
+        NostrPoWSettings.setEnabled(false, in: defaults)
+        #expect(!NostrPoWSettings.isEnabled(in: defaults))
+
+        NostrPoWSettings.setEnabled(true, in: defaults)
+        #expect(NostrPoWSettings.isEnabled(in: defaults))
+    }
+
     // MARK: - Leading zero bits
 
     @Test func leadingZeroBitsVectors() {
@@ -146,12 +162,13 @@ struct NostrPoWTests {
 
     @Test func minedGeohashEventValidatesEndToEnd() async throws {
         let identity = try NostrIdentity.generate()
-        let event = try await NostrProtocol.createMinedEphemeralGeohashEvent(
+        let event = try await NostrProtocol.createOutgoingEphemeralGeohashEvent(
             content: "hello from a mined event",
             geohash: "u4pruydq",
             senderIdentity: identity,
             nickname: "miner",
-            teleported: false
+            teleported: false,
+            proofOfWorkEnabled: true
         )
 
         // The signed event's own ID (recomputed by sign()) carries the work.
@@ -164,6 +181,24 @@ struct NostrPoWTests {
         #expect(event.tags.contains(["g", "u4pruydq"]))
         #expect(event.tags.contains(["n", "miner"]))
         #expect(event.kind == NostrProtocol.EventKind.ephemeralEvent.rawValue)
+    }
+
+    @Test func disabledOutgoingProofOfWorkCreatesCompatibleUnminedEvent() async throws {
+        let identity = try NostrIdentity.generate()
+        let event = try await NostrProtocol.createOutgoingEphemeralGeohashEvent(
+            content: "hello without proof of work",
+            geohash: "u4pruydq",
+            senderIdentity: identity,
+            nickname: "sender",
+            proofOfWorkEnabled: false
+        )
+
+        #expect(event.isValidSignature())
+        #expect(!event.tags.contains(where: { $0.first == "nonce" }))
+        #expect(event.tags.contains(["g", "u4pruydq"]))
+        #expect(event.tags.contains(["n", "sender"]))
+        #expect(event.kind == NostrProtocol.EventKind.ephemeralEvent.rawValue)
+        #expect(NostrPoW.validatedDifficulty(idHex: event.id, tags: event.tags) == 0)
     }
 
     @Test func cancelledMiningStillProducesHonestCommitment() async throws {

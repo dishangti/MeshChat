@@ -19802,6 +19802,378 @@
         }
       }
     },
+    "app_info.settings.proof_of_work.subtitle": {
+      "comment": "Subtitle explaining the effect and default of the outgoing location-channel proof-of-work toggle",
+      "extractionState": "manual",
+      "localizations": {
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "يضيف تكلفة حسابية صغيرة إلى رسائل #location الصادرة للحد من الرسائل المزعجة والحصول على حدود إرسال أقل تقييدًا. يفعّل BitChat هذا افتراضيًا."
+          }
+        },
+        "bn": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "স্প্যাম কমাতে এবং কম কঠোর প্রেরক সীমা পেতে বহির্গামী #location বার্তায় সামান্য গণনামূলক কাজ যোগ করে। BitChat-এ এটি ডিফল্টভাবে চালু থাকে।"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Fügt ausgehenden #location-Nachrichten einen kleinen Rechenaufwand hinzu, um Spam zu reduzieren und weniger strenge Senderlimits zu erhalten. BitChat aktiviert dies standardmäßig."
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Adds a small computational cost to outgoing #location messages to reduce spam and qualify for less restrictive sender rate limits. BitChat enables this by default."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Añade un pequeño coste computacional a los mensajes salientes de #location para reducir el spam y obtener límites de envío menos restrictivos. BitChat lo activa de forma predeterminada."
+          }
+        },
+        "fa": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "برای کاهش هرزنامه و بهره‌مندی از محدودیت‌های ارسال آسان‌تر، هزینهٔ محاسباتی کوچکی به پیام‌های خروجی #location اضافه می‌کند. این گزینه در BitChat به‌طور پیش‌فرض روشن است."
+          }
+        },
+        "fil": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nagdaragdag ng kaunting pagkukuwenta sa mga ipinapadalang mensahe sa #location upang mabawasan ang spam at makakuha ng mas maluwag na limitasyon sa pagpapadala. Naka-on ito bilang default sa BitChat."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ajoute un léger coût de calcul aux messages #location sortants afin de réduire le spam et de bénéficier de limites d’envoi moins strictes. BitChat l’active par défaut."
+          }
+        },
+        "he": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "מוסיף עלות חישובית קטנה להודעות #location יוצאות כדי לצמצם ספאם ולקבל מגבלות שליחה מקלות יותר. BitChat מפעיל זאת כברירת מחדל."
+          }
+        },
+        "hi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "स्पैम कम करने और कम कठोर प्रेषक सीमाएँ पाने के लिए बाहर भेजे जाने वाले #location संदेशों में थोड़ा गणनात्मक कार्य जोड़ता है। BitChat में यह डिफ़ॉल्ट रूप से चालू है।"
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Menambahkan sedikit beban komputasi ke pesan #location keluar untuk mengurangi spam dan mendapatkan batas pengiriman yang lebih longgar. BitChat mengaktifkannya secara default."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Aggiunge un piccolo costo computazionale ai messaggi #location in uscita per ridurre lo spam e ottenere limiti di invio meno restrittivi. BitChat lo abilita per impostazione predefinita."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "送信する #location メッセージに少量の計算処理を加え、スパムを抑えて送信制限を緩和します。BitChat ではデフォルトで有効です。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "발신 #location 메시지에 소량의 연산 비용을 추가해 스팸을 줄이고 더 완화된 발신 제한을 적용받습니다. BitChat에서는 기본적으로 켜져 있습니다."
+          }
+        },
+        "ms": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Menambah sedikit kos pengiraan pada mesej #location keluar untuk mengurangkan spam dan mendapatkan had penghantaran yang lebih longgar. BitChat menghidupkannya secara lalai."
+          }
+        },
+        "ne": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "स्प्याम घटाउन र कम कडा प्रेषक सीमा पाउन बाहिर जाने #location सन्देशमा थोरै गणनात्मक काम थप्छ। BitChat मा यो पूर्वनिर्धारित रूपमा सक्रिय हुन्छ।"
+          }
+        },
+        "nl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Voegt een kleine rekeninspanning toe aan uitgaande #location-berichten om spam te beperken en soepelere verzendlimieten te krijgen. BitChat schakelt dit standaard in."
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Dodaje niewielki koszt obliczeniowy do wychodzących wiadomości #location, aby ograniczyć spam i uzyskać łagodniejsze limity wysyłania. BitChat włącza tę opcję domyślnie."
+          }
+        },
+        "pt": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Adiciona um pequeno custo computacional às mensagens #location enviadas para reduzir o spam e obter limites de envio menos restritivos. O BitChat ativa esta opção por predefinição."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Adiciona um pequeno custo computacional às mensagens #location enviadas para reduzir spam e obter limites de envio menos restritivos. O BitChat ativa essa opção por padrão."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Добавляет небольшую вычислительную нагрузку к исходящим сообщениям #location, чтобы уменьшить спам и получить менее строгие ограничения отправки. В BitChat эта функция включена по умолчанию."
+          }
+        },
+        "sv": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Lägger till en liten beräkningskostnad för utgående #location-meddelanden för att minska spam och få mindre strikta sändningsgränser. BitChat aktiverar detta som standard."
+          }
+        },
+        "ta": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "தேவையற்ற செய்திகளைக் குறைத்து, தளர்வான அனுப்புநர் வரம்புகளைப் பெற, வெளியேறும் #location செய்திகளுக்கு சிறிய கணக்கீட்டுச் செலவைச் சேர்க்கிறது. BitChat இல் இது இயல்பாக இயக்கப்பட்டிருக்கும்."
+          }
+        },
+        "th": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "เพิ่มภาระการคำนวณเล็กน้อยให้ข้อความ #location ที่ส่งออก เพื่อลดสแปมและรับขีดจำกัดการส่งที่ผ่อนปรนขึ้น BitChat เปิดตัวเลือกนี้ไว้เป็นค่าเริ่มต้น"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Spamı azaltmak ve daha esnek gönderim sınırlarından yararlanmak için giden #location mesajlarına küçük bir hesaplama maliyeti ekler. BitChat bunu varsayılan olarak etkinleştirir."
+          }
+        },
+        "uk": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Додає невелике обчислювальне навантаження до вихідних повідомлень #location, щоб зменшити спам і отримати менш суворі обмеження надсилання. У BitChat цю функцію ввімкнено за замовчуванням."
+          }
+        },
+        "ur": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "اسپیم کم کرنے اور بھیجنے کی نسبتاً نرم حدود حاصل کرنے کے لیے باہر جانے والے #location پیغامات میں معمولی کمپیوٹیشنل کام شامل کرتا ہے۔ BitChat میں یہ بطور ڈیفالٹ فعال ہے۔"
+          }
+        },
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Thêm một lượng tính toán nhỏ vào tin nhắn #location gửi đi để giảm spam và được áp dụng giới hạn gửi ít nghiêm ngặt hơn. BitChat bật tính năng này theo mặc định."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "为发出的 #location 消息增加少量计算成本，以减少垃圾消息并获得较宽松的发送频率限制。BitChat 默认开启此功能。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "為送出的 #location 訊息增加少量運算成本，以減少垃圾訊息並獲得較寬鬆的傳送頻率限制。BitChat 預設開啟此功能。"
+          }
+        }
+      }
+    },
+    "app_info.settings.proof_of_work.title": {
+      "comment": "Title of the toggle that controls NIP-13 proof-of-work on outgoing location-channel messages",
+      "extractionState": "manual",
+      "localizations": {
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "إثبات العمل"
+          }
+        },
+        "bn": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "কাজের প্রমাণ"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Arbeitsnachweis"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Proof of Work"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Prueba de trabajo"
+          }
+        },
+        "fa": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "اثبات کار"
+          }
+        },
+        "fil": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Katibayan ng trabaho"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Preuve de travail"
+          }
+        },
+        "he": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "הוכחת עבודה"
+          }
+        },
+        "hi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "कार्य का प्रमाण"
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bukti kerja"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Prova di lavoro"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "プルーフ・オブ・ワーク"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "작업 증명"
+          }
+        },
+        "ms": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bukti kerja"
+          }
+        },
+        "ne": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "कार्यको प्रमाण"
+          }
+        },
+        "nl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bewijs van werk"
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Dowód pracy"
+          }
+        },
+        "pt": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Prova de trabalho"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Prova de trabalho"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Доказательство работы"
+          }
+        },
+        "sv": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bevis på arbete"
+          }
+        },
+        "ta": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "பணிச் சான்று"
+          }
+        },
+        "th": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "หลักฐานการทำงาน"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "İş kanıtı"
+          }
+        },
+        "uk": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Доказ роботи"
+          }
+        },
+        "ur": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "کام کا ثبوت"
+          }
+        },
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bằng chứng công việc"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "工作量证明"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "工作量證明"
+          }
+        }
+      }
+    },
     "app_info.settings.blocked.title": {
       "comment": "Title of the settings destination listing people blocked by the user",
       "extractionState": "manual",

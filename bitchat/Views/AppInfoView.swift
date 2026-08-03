@@ -51,6 +51,7 @@ struct AppInfoView: View {
     @State private var showTopology = false
     @State private var liveVoiceEnabled = PTTSettings.liveVoiceEnabled
     @State private var locationNotesEnabled = LocationNotesSettings.enabled
+    @State private var proofOfWorkEnabled = NostrPoWSettings.enabled
     @State private var hideMessagePreviews = NotificationPrivacySettings.hideMessagePreviews
     @State private var directMessageNotifications = NotificationDeliverySettings.isEnabled(.directMessages)
     @State private var locationNotifications = NotificationDeliverySettings.isEnabled(.locationChannels)
@@ -112,7 +113,7 @@ struct AppInfoView: View {
             static var tabInfo: String { AppLanguageSettings.localized("app_info.tab.info", defaultValue: "Info", comment: "Segmented control label for the info pane of the app info sheet") }
             static var tabHelp: String { AppLanguageSettings.localized("meshchat.help.title", defaultValue: "Help", comment: "Segmented control label for the standalone MeshChat help page") }
 
-            static var connectivityTitle: String { AppLanguageSettings.localized("app_info.settings.connectivity.title", defaultValue: "Connectivity", comment: "Section header for the connectivity toggles: mesh bridge, internet gateway, and Tor routing") }
+            static var connectivityTitle: String { AppLanguageSettings.localized("app_info.settings.connectivity.title", defaultValue: "Connectivity", comment: "Section header for settings that control mesh bridging, Tor routing, relays, proof-of-work, and location features") }
 
             static var languageTitle: String { AppLanguageSettings.localized("app_info.settings.language.title", defaultValue: "Language", comment: "Section header for the app language picker in settings") }
             static var languagePickerLabel: String { AppLanguageSettings.localized("app_info.settings.language.picker_label", defaultValue: "App Language", comment: "Label of the app language picker row in settings") }
@@ -139,6 +140,9 @@ struct AppInfoView: View {
             // switching it off.
             static var torSubtitle: String { AppLanguageSettings.localized("app_info.settings.tor.subtitle", defaultValue: "Sends internet traffic through Tor, so relay operators see Tor's address instead of yours. Covers location channels and private messages delivered over the internet. Recommended: on.", comment: "Subtitle for the Tor routing toggle in settings, explaining what it covers") }
             static var torOffWarning: String { AppLanguageSettings.localized("app_info.settings.tor.off_warning", defaultValue: "Tor is off: every relay you connect to can see your IP address, including relays carrying your private messages.", comment: "Warning shown under the Tor toggle while Tor is switched off, stating that relay operators can see the device IP address") }
+
+            static var proofOfWorkTitle: String { AppLanguageSettings.localized("app_info.settings.proof_of_work.title", defaultValue: "Proof of Work", comment: "Title of the toggle that controls NIP-13 proof-of-work on outgoing location-channel messages") }
+            static var proofOfWorkSubtitle: String { AppLanguageSettings.localized("app_info.settings.proof_of_work.subtitle", defaultValue: "Adds a small computational cost to outgoing #location messages to reduce spam and qualify for less restrictive sender rate limits. BitChat enables this by default.", comment: "Subtitle explaining the effect and default of the outgoing location-channel proof-of-work toggle") }
 
             static var relaysTitle: String { AppLanguageSettings.localized("app_info.settings.relays.title", defaultValue: "Private Message Relays", comment: "Title of the relay list editor in settings") }
             static var relaysSubtitle: String { AppLanguageSettings.localized("app_info.settings.relays.subtitle", defaultValue: "When the mesh can't reach someone, private messages travel through these relays. The built-in ones are well-known addresses that a network filter can block, so you can add your own — including .onion addresses.", comment: "Subtitle explaining what the relay list is for and why someone would add a relay") }
@@ -398,7 +402,7 @@ struct AppInfoView: View {
                 }
             }
 
-            // Connectivity: mesh bridge, internet gateway, tor routing
+            // Connectivity: mesh bridge, Tor routing, relays, and proof-of-work.
             VStack(alignment: .leading, spacing: 12) {
                 SectionHeader(verbatim: Strings.Settings.connectivityTitle)
 
@@ -436,6 +440,20 @@ struct AppInfoView: View {
                 }
 
                 relaySettingsCard
+
+                settingsCard {
+                    settingToggle(
+                        title: Text(verbatim: Strings.Settings.proofOfWorkTitle),
+                        subtitle: Text(verbatim: Strings.Settings.proofOfWorkSubtitle),
+                        isOn: Binding(
+                            get: { proofOfWorkEnabled },
+                            set: { newValue in
+                                proofOfWorkEnabled = newValue
+                                NostrPoWSettings.enabled = newValue
+                            }
+                        )
+                    )
+                }
 
                 // Location notes / dead drops (merged from main's flat
                 // layout into the shared card + pill style). Turning it on

@@ -260,6 +260,36 @@ struct NostrProtocol {
         return try event.sign(with: schnorrKey)
     }
 
+    /// Create the outgoing geohash event selected by the user's PoW setting.
+    /// Turning mining off only omits the optional NIP-13 nonce tag; the event
+    /// remains a normal signed kind-20000 event that BitChat can receive.
+    static func createOutgoingEphemeralGeohashEvent(
+        content: String,
+        geohash: String,
+        senderIdentity: NostrIdentity,
+        nickname: String? = nil,
+        teleported: Bool = false,
+        proofOfWorkEnabled: Bool = NostrPoWSettings.enabled
+    ) async throws -> NostrEvent {
+        if proofOfWorkEnabled {
+            return try await createMinedEphemeralGeohashEvent(
+                content: content,
+                geohash: geohash,
+                senderIdentity: senderIdentity,
+                nickname: nickname,
+                teleported: teleported
+            )
+        }
+
+        return try createEphemeralGeohashEvent(
+            content: content,
+            geohash: geohash,
+            senderIdentity: senderIdentity,
+            nickname: nickname,
+            teleported: teleported
+        )
+    }
+
     /// Create a kind-20000 geohash message carrying a NIP-13 proof-of-work
     /// nonce tag (see `NostrPoW`). Mining runs off the calling actor and is
     /// bounded by `NostrPoW.miningTimeCap`; when the cap hits (or the

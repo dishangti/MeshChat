@@ -473,7 +473,7 @@ final class ChatPublicConversationCoordinator: PublicMessagePipelineDelegate {
                 guard let context else { return }
                 do {
                     let identity = try context.deriveNostrIdentity(forGeohash: channel.geohash)
-                    let event = try await NostrProtocol.createMinedEphemeralGeohashEvent(
+                    let event = try await NostrProtocol.createOutgoingEphemeralGeohashEvent(
                         content: content,
                         geohash: channel.geohash,
                         senderIdentity: identity,

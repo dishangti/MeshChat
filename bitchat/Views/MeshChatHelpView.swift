@@ -15,6 +15,13 @@ struct MeshChatHelpView: View {
         let description: LocalizedStringKey
     }
 
+    private struct SymbolItem: Identifiable {
+        let id: String
+        let icon: String
+        let color: Color?
+        let text: String
+    }
+
     private let connectivityTopics = [
         Topic(
             id: "offline",
@@ -56,15 +63,27 @@ struct MeshChatHelpView: View {
             description: "meshchat.help.chats.description"
         ),
         Topic(
+            id: "mentions",
+            icon: "at",
+            title: "app_info.features.mentions.title",
+            description: "app_info.features.mentions.description"
+        ),
+        Topic(
             id: "friends",
             icon: "person.crop.circle.badge.plus",
             title: "mesh_peers.section.friends",
             description: "meshchat.help.friends.description"
         ),
         Topic(
+            id: "favorites",
+            icon: "star.fill",
+            title: "app_info.features.favorites.title",
+            description: "app_info.features.favorites.description"
+        ),
+        Topic(
             id: "qr",
             icon: "qrcode.viewfinder",
-            title: "verification.sheet.title",
+            title: "verification.qr.title",
             description: "meshchat.help.qr.description"
         ),
         Topic(
@@ -76,6 +95,18 @@ struct MeshChatHelpView: View {
     ]
 
     private let privacyTopics = [
+        Topic(
+            id: "no-tracking",
+            icon: "eye.slash",
+            title: "app_info.privacy.no_tracking.title",
+            description: "app_info.privacy.no_tracking.description"
+        ),
+        Topic(
+            id: "ephemeral-identity",
+            icon: "shuffle",
+            title: "app_info.privacy.ephemeral.title",
+            description: "app_info.privacy.ephemeral.description"
+        ),
         Topic(
             id: "encryption",
             icon: "lock.fill",
@@ -96,6 +127,24 @@ struct MeshChatHelpView: View {
         )
     ]
 
+    /// General interface symbols belong in Help rather than Info because they
+    /// answer a usage question. Identity lock colors remain beside the
+    /// verification instructions above so their security context is explicit.
+    private let symbolItems = [
+        SymbolItem(id: "mesh-connected", icon: "antenna.radiowaves.left.and.right", color: nil, text: String(localized: "app_info.legend.mesh_connected")),
+        SymbolItem(id: "mesh-relayed", icon: "point.3.filled.connected.trianglepath.dotted", color: nil, text: String(localized: "app_info.legend.mesh_relayed")),
+        SymbolItem(id: "nostr", icon: "globe", color: nil, text: String(localized: "app_info.legend.nostr")),
+        SymbolItem(id: "bridged", icon: "network", color: .cyan, text: String(localized: "app_info.legend.bridged")),
+        SymbolItem(id: "offline", icon: "person", color: nil, text: String(localized: "app_info.legend.offline")),
+        SymbolItem(id: "location-nearby", icon: "mappin.and.ellipse", color: nil, text: String(localized: "app_info.legend.location_nearby")),
+        SymbolItem(id: "teleported", icon: "face.dashed", color: nil, text: String(localized: "app_info.legend.teleported")),
+        SymbolItem(id: "encryption-failed", icon: "exclamationmark.triangle", color: .orange, text: String(localized: "app_info.legend.encryption_failed")),
+        SymbolItem(id: "private-message", icon: "lock.fill", color: .orange, text: String(localized: "app_info.legend.private_message")),
+        SymbolItem(id: "favorite", icon: "star.fill", color: nil, text: String(localized: "app_info.legend.favorite")),
+        SymbolItem(id: "unread", icon: "envelope.fill", color: nil, text: String(localized: "app_info.legend.unread")),
+        SymbolItem(id: "blocked", icon: "nosign", color: nil, text: String(localized: "app_info.legend.blocked"))
+    ]
+
     private var primary: Color { palette.primary }
     private var secondary: Color { palette.secondary }
 
@@ -107,6 +156,7 @@ struct MeshChatHelpView: View {
                 peopleSection
                 notificationsSection
                 topicSection("app_info.privacy.title", topics: privacyTopics)
+                symbolsSection
             }
             .padding()
         }
@@ -214,6 +264,39 @@ struct MeshChatHelpView: View {
                     description: "meshchat.help.notifications.description"
                 )
             )
+        }
+    }
+
+    private var symbolsSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            SectionHeader("app_info.legend.title")
+
+            LazyVGrid(
+                columns: [GridItem(.adaptive(minimum: 220), alignment: .leading)],
+                alignment: .leading,
+                spacing: 8
+            ) {
+                ForEach(symbolItems) { item in
+                    HStack(alignment: .top, spacing: 10) {
+                        Image(systemName: item.icon)
+                            .font(.bitchatSystem(size: 14))
+                            .foregroundColor(item.color ?? primary)
+                            .frame(width: 24)
+                            .accessibilityHidden(true)
+
+                        Text(verbatim: item.text)
+                            .bitchatFont(size: 12)
+                            .foregroundColor(secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+
+                        Spacer(minLength: 0)
+                    }
+                    .padding(10)
+                    .background(palette.secondary.opacity(0.12))
+                    .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                    .accessibilityElement(children: .combine)
+                }
+            }
         }
     }
 

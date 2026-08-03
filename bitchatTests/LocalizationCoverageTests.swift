@@ -104,6 +104,7 @@ struct LocalizationCoverageTests {
         let strings = try #require(root["strings"] as? [String: Any])
 
         let expectedValues = [
+            "app_info.about.description": "MeshChat is an independent, open-source client compatible with BitChat. It adds a simpler interface and more features without changing BitChat's protocol or security compatibility.",
             "app_info.appearance.aurora": "Aurora",
             "app_info.appearance.matrix": "Matrix",
             "app_info.appearance.title": "Appearance",

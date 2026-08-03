@@ -17,8 +17,8 @@ private enum BlockedPeopleStrings {
 }
 
 /// The sheet behind the MeshChat logo: a segmented Help/Info/Settings surface.
-/// Help is task-oriented guidance, Info is product context and the symbols
-/// legend, and Settings gathers preferences and destructive controls.
+/// Help is task-oriented guidance, Info is product metadata and diagnostics,
+/// and Settings gathers preferences and destructive controls.
 struct AppInfoView: View {
     @Environment(\.dismiss) var dismiss
     @Environment(\.scenePhase) private var scenePhase
@@ -80,10 +80,27 @@ struct AppInfoView: View {
 
     private var secondaryTextColor: Color { palette.secondary }
 
+    private var appVersion: String {
+        let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String
+        let build = Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String
+
+        switch (version?.isEmpty == false ? version : nil, build?.isEmpty == false ? build : nil) {
+        case let (.some(version), .some(build)):
+            return "v\(version) (\(build))"
+        case let (.some(version), .none):
+            return "v\(version)"
+        case let (.none, .some(build)):
+            return build
+        case (.none, .none):
+            return "MeshChat"
+        }
+    }
+
     // MARK: - Constants
     private enum Strings {
         static let appName: LocalizedStringKey = "app_info.app_name"
         static let tagline: LocalizedStringKey = "app_info.tagline"
+        static let aboutDescription: LocalizedStringKey = "app_info.about.description"
         static let appearanceTitle: LocalizedStringKey = "app_info.appearance.title"
 
         /// New keys carry their English copy inline (defaultValue) until the
@@ -178,76 +195,6 @@ struct AppInfoView: View {
             static let panicConfirmAction = String(localized: "app_info.settings.danger.panic_confirm_action", defaultValue: "Reset Identity and Wipe", comment: "Destructive confirmation button that regenerates local identity keys through a complete local wipe")
         }
 
-        enum Features {
-            static let title: LocalizedStringKey = "app_info.features.title"
-            static let offlineComm = AppInfoFeatureInfo(
-                icon: "wifi.slash",
-                title: "app_info.features.offline.title",
-                description: "app_info.features.offline.description"
-            )
-            static let encryption = AppInfoFeatureInfo(
-                icon: "lock.shield",
-                title: "app_info.features.encryption.title",
-                description: "app_info.features.encryption.description"
-            )
-            static let extendedRange = AppInfoFeatureInfo(
-                icon: "antenna.radiowaves.left.and.right",
-                title: "app_info.features.extended_range.title",
-                description: "app_info.features.extended_range.description"
-            )
-            static let mentions = AppInfoFeatureInfo(
-                icon: "at",
-                title: "app_info.features.mentions.title",
-                description: "app_info.features.mentions.description"
-            )
-            static let favorites = AppInfoFeatureInfo(
-                icon: "star.fill",
-                title: "app_info.features.favorites.title",
-                description: "app_info.features.favorites.description"
-            )
-            static let geohash = AppInfoFeatureInfo(
-                icon: "number",
-                title: "app_info.features.geohash.title",
-                description: "app_info.features.geohash.description"
-            )
-            static let bridge = AppInfoFeatureInfo(
-                icon: "network",
-                resolvedTitle: String(localized: "app_info.features.bridge.title", defaultValue: "Mesh Bridging", comment: "Feature row title for the mesh bridge in the app info sheet"),
-                resolvedDescription: String(localized: "app_info.features.bridge.description", defaultValue: "Links nearby mesh islands through the internet so one crowd isn't split by radio range.", comment: "Feature row description for the mesh bridge in the app info sheet")
-            )
-        }
-
-        enum Legend {
-            static let title: LocalizedStringKey = "app_info.legend.title"
-            /// Common glyphs used across peer lists, message rows, and headers.
-            /// Stable IDs keep repeated symbols distinct. A nil color follows
-            /// the theme's primary text color.
-            struct Item: Identifiable {
-                let id: String
-                let icon: String
-                let color: Color?
-                let text: String
-            }
-
-            static let items: [Item] = [
-                Item(id: "mesh-connected", icon: "antenna.radiowaves.left.and.right", color: nil, text: String(localized: "app_info.legend.mesh_connected")),
-                Item(id: "mesh-relayed", icon: "point.3.filled.connected.trianglepath.dotted", color: nil, text: String(localized: "app_info.legend.mesh_relayed")),
-                Item(id: "nostr", icon: "globe", color: nil, text: String(localized: "app_info.legend.nostr")),
-                Item(id: "bridged", icon: "network", color: .cyan, text: String(localized: "app_info.legend.bridged", defaultValue: "Message arrived across a mesh bridge.", comment: "Symbols legend entry for the cyan network glyph shown on messages carried across a mesh bridge")),
-                Item(id: "offline", icon: "person", color: nil, text: String(localized: "app_info.legend.offline")),
-                Item(id: "location-nearby", icon: "mappin.and.ellipse", color: nil, text: String(localized: "app_info.legend.location_nearby")),
-                Item(id: "teleported", icon: "face.dashed", color: nil, text: String(localized: "app_info.legend.teleported")),
-                Item(id: "identity-unverified", icon: "lock.fill", color: IdentityLockState.unverified.color, text: String(localized: "fingerprint.badge.not_verified")),
-                Item(id: "identity-verified", icon: "lock.fill", color: IdentityLockState.verified.color, text: String(localized: "fingerprint.badge.verified")),
-                Item(id: "identity-mismatch", icon: "lock.fill", color: IdentityLockState.identityMismatch.color, text: String(localized: "identity.status.mismatch")),
-                Item(id: "encryption-failed", icon: "exclamationmark.triangle", color: .orange, text: String(localized: "app_info.legend.encryption_failed")),
-                Item(id: "private-message", icon: "lock.fill", color: .orange, text: String(localized: "app_info.legend.private_message")),
-                Item(id: "favorite", icon: "star.fill", color: nil, text: String(localized: "app_info.legend.favorite")),
-                Item(id: "unread", icon: "envelope.fill", color: nil, text: String(localized: "app_info.legend.unread")),
-                Item(id: "blocked", icon: "nosign", color: nil, text: String(localized: "app_info.legend.blocked"))
-            ]
-        }
-
         enum Voice {
             static let title: LocalizedStringKey = "app_info.voice.title"
             // The live-voice title/description keys are referenced inline at
@@ -268,25 +215,6 @@ struct AppInfoView: View {
                 icon: "point.3.connected.trianglepath.dotted",
                 title: "app_info.network.topology.title",
                 description: "app_info.network.topology.description"
-            )
-        }
-
-        enum Privacy {
-            static let title: LocalizedStringKey = "app_info.privacy.title"
-            static let noTracking = AppInfoFeatureInfo(
-                icon: "eye.slash",
-                title: "app_info.privacy.no_tracking.title",
-                description: "app_info.privacy.no_tracking.description"
-            )
-            static let ephemeral = AppInfoFeatureInfo(
-                icon: "shuffle",
-                title: "app_info.privacy.ephemeral.title",
-                description: "app_info.privacy.ephemeral.description"
-            )
-            static let panic = AppInfoFeatureInfo(
-                icon: "hand.raised.fill",
-                title: "app_info.privacy.panic.title",
-                description: "app_info.privacy.panic.description"
             )
         }
 
@@ -1089,6 +1017,37 @@ struct AppInfoView: View {
                 Text(Strings.tagline)
                     .bitchatFont(size: 16)
                     .foregroundColor(secondaryTextColor)
+
+                Text(verbatim: appVersion)
+                    .bitchatFont(size: 12)
+                    .foregroundColor(secondaryTextColor)
+
+                Text(Strings.aboutDescription)
+                    .bitchatFont(size: 13)
+                    .foregroundColor(secondaryTextColor)
+                    .multilineTextAlignment(.center)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.top, 6)
+
+                HStack(spacing: 16) {
+                    Link(destination: URL(string: "https://github.com/dishangti/bitchat")!) {
+                        Label {
+                            Text(verbatim: "github.com/dishangti/bitchat")
+                        } icon: {
+                            Image(systemName: "chevron.left.forwardslash.chevron.right")
+                        }
+                    }
+                    .foregroundColor(palette.accent)
+
+                    Label {
+                        Text(verbatim: "MIT")
+                    } icon: {
+                        Image(systemName: "doc.plaintext")
+                    }
+                    .foregroundColor(secondaryTextColor)
+                }
+                .bitchatFont(size: 11, weight: .semibold)
+                .padding(.top, 4)
             }
             .frame(maxWidth: .infinity)
             .padding(.vertical)
@@ -1114,57 +1073,6 @@ struct AppInfoView: View {
                 }
             }
 
-            // Features
-            VStack(alignment: .leading, spacing: 16) {
-                SectionHeader(Strings.Features.title)
-
-                FeatureRow(info: Strings.Features.offlineComm)
-
-                FeatureRow(info: Strings.Features.encryption)
-
-                FeatureRow(info: Strings.Features.extendedRange)
-
-                FeatureRow(info: Strings.Features.bridge)
-
-                FeatureRow(info: Strings.Features.favorites)
-
-                FeatureRow(info: Strings.Features.geohash)
-
-                FeatureRow(info: Strings.Features.mentions)
-            }
-
-            // Privacy
-            VStack(alignment: .leading, spacing: 16) {
-                SectionHeader(Strings.Privacy.title)
-
-                FeatureRow(info: Strings.Privacy.noTracking)
-
-                FeatureRow(info: Strings.Privacy.ephemeral)
-
-                FeatureRow(info: Strings.Privacy.panic)
-            }
-
-            // Symbols legend
-            VStack(alignment: .leading, spacing: 10) {
-                SectionHeader(Strings.Legend.title)
-
-                ForEach(Strings.Legend.items) { item in
-                    HStack(alignment: .top, spacing: 12) {
-                        Image(systemName: item.icon)
-                            .font(.bitchatSystem(size: 14))
-                            .foregroundColor(item.color ?? textColor)
-                            .frame(width: 30)
-
-                        Text(item.text)
-                            .bitchatFont(size: 13)
-                            .foregroundColor(secondaryTextColor)
-                            .fixedSize(horizontal: false, vertical: true)
-
-                        Spacer()
-                    }
-                    .accessibilityElement(children: .combine)
-                }
-            }
         }
         .padding()
     }
@@ -1180,14 +1088,6 @@ struct AppInfoFeatureInfo {
         self.icon = icon
         self.title = Text(title)
         self.description = Text(description)
-    }
-
-    /// Pre-resolved strings — new keys that carry their English defaultValue
-    /// inline until the i18n pass adds them to the catalog.
-    init(icon: String, resolvedTitle: String, resolvedDescription: String) {
-        self.icon = icon
-        self.title = Text(resolvedTitle)
-        self.description = Text(resolvedDescription)
     }
 }
 

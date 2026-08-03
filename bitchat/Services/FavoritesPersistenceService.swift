@@ -31,6 +31,10 @@ final class FavoritesPersistenceService: ObservableObject {
     
     @Published private(set) var favorites: [Data: FavoriteRelationship] = [:] // Noise pubkey -> relationship
     @Published private(set) var mutualFavorites: Set<Data> = []
+    /// Locally added contacts that can be reached through Nostr even before
+    /// the peer adds us back. This is internet transport demand, not a change
+    /// to the mutual-favorite trust relationship.
+    @Published private(set) var nostrFavorites: Set<Data> = []
     
     static let shared = FavoritesPersistenceService()
 
@@ -44,6 +48,16 @@ final class FavoritesPersistenceService: ObservableObject {
                 Set(favorites.compactMap { $0.value.isMutual ? $0.key : nil })
             }
             .assign(to: &$mutualFavorites)
+
+        $favorites
+            .map { favorites in
+                Set(favorites.compactMap { key, relationship in
+                    relationship.isFavorite && relationship.peerNostrPublicKey != nil
+                        ? key
+                        : nil
+                })
+            }
+            .assign(to: &$nostrFavorites)
     }
     
     /// Add or update a favorite

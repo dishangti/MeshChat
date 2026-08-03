@@ -4,11 +4,11 @@ import Testing
 
 struct ChatBluetoothAlertPolicyTests {
     @Test
-    func poweredOffShowsAlertMessage() {
+    func poweredOffDoesNotBlockInternetMessaging() {
         let update = ChatBluetoothAlertPolicy.update(for: .poweredOff)
 
-        #expect(update.isPresented)
-        #expect(update.message?.isEmpty == false)
+        #expect(!update.isPresented)
+        #expect(update.message == "")
     }
 
     @Test

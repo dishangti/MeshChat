@@ -44,6 +44,23 @@ final class NostrRelayManagerTests: XCTestCase {
         XCTAssertTrue(context.sessionFactory.allConnections.allSatisfy { $0.cancelCallCount >= 1 })
     }
 
+    func test_nostrFavoritePublisher_addsAndRemovesDefaultDMRelays() async {
+        let context = makeContext(permission: .denied, favorites: [])
+
+        XCTAssertTrue(context.manager.getRelayStatuses().isEmpty)
+
+        context.nostrFavoritesSubject.send([Data([0x01])])
+        let connected = await waitUntil {
+            context.manager.getRelayStatuses().count == self.expectedDefaultRelayCount &&
+            context.manager.relays.allSatisfy(\.isConnected)
+        }
+        XCTAssertTrue(connected)
+
+        context.nostrFavoritesSubject.send([])
+        let removed = await waitUntil { context.manager.getRelayStatuses().isEmpty }
+        XCTAssertTrue(removed)
+    }
+
     func test_bridgeCourierDemand_addsAndRemovesStandingDMRelays() async {
         let context = makeContext(permission: .denied, favorites: [])
 
@@ -1858,6 +1875,7 @@ final class NostrRelayManagerTests: XCTestCase {
     ) -> RelayManagerTestContext {
         let permissionSubject = CurrentValueSubject<LocationChannelManager.PermissionState, Never>(permission)
         let favoritesSubject = CurrentValueSubject<Set<Data>, Never>(favorites)
+        let nostrFavoritesSubject = CurrentValueSubject<Set<Data>, Never>([])
         let bridgeCourierDemandSubject = CurrentValueSubject<Bool, Never>(false)
         let sessionFactory = MockRelaySessionFactory()
         let scheduler = MockRelayScheduler()
@@ -1872,6 +1890,8 @@ final class NostrRelayManagerTests: XCTestCase {
                 hasMutualFavorites: { !favoritesSubject.value.isEmpty },
                 hasLocationPermission: { permissionSubject.value == .authorized },
                 mutualFavoritesPublisher: favoritesSubject.eraseToAnyPublisher(),
+                hasNostrFavorites: { !nostrFavoritesSubject.value.isEmpty },
+                nostrFavoritesPublisher: nostrFavoritesSubject.eraseToAnyPublisher(),
                 locationPermissionPublisher: permissionSubject.eraseToAnyPublisher(),
                 torEnforced: { torEnforced },
                 torIsReady: { torWaiter.isReady },
@@ -1892,6 +1912,7 @@ final class NostrRelayManagerTests: XCTestCase {
         return RelayManagerTestContext(
             manager: manager,
             permissionSubject: permissionSubject,
+            nostrFavoritesSubject: nostrFavoritesSubject,
             bridgeCourierDemandSubject: bridgeCourierDemandSubject,
             sessionFactory: sessionFactory,
             scheduler: scheduler,
@@ -1946,6 +1967,7 @@ final class NostrRelayManagerTests: XCTestCase {
 private struct RelayManagerTestContext {
     let manager: NostrRelayManager
     let permissionSubject: CurrentValueSubject<LocationChannelManager.PermissionState, Never>
+    let nostrFavoritesSubject: CurrentValueSubject<Set<Data>, Never>
     let bridgeCourierDemandSubject: CurrentValueSubject<Bool, Never>
     let sessionFactory: MockRelaySessionFactory
     let scheduler: MockRelayScheduler

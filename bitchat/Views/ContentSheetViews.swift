@@ -95,7 +95,7 @@ struct ContentPeopleSheetView: View {
                       !hasModalPresentation else {
                     return
                 }
-                appChromeModel.showBluetoothAlert = false
+                appChromeModel.dismissBluetoothAlert()
             }
         )
     }

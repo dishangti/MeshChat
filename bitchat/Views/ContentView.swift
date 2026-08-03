@@ -193,7 +193,7 @@ struct ContentView: View {
                 // `get`); publishing synchronously there is undefined
                 // behavior, so defer the write one hop.
                 Task { @MainActor in
-                    appChromeModel.showBluetoothAlert = false
+                    appChromeModel.dismissBluetoothAlert()
                 }
             }
         )

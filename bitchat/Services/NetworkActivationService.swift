@@ -26,8 +26,8 @@ extension TorURLSession: NetworkActivationProxyControlling {}
 
 /// Coordinates when the app is allowed to start Tor and connect to Nostr relays.
 /// Policy: permit start when an internet-backed feature is active (location
-/// permission, a mutual favorite, an open location channel, or an active
-/// Mesh Bridge rendezvous cell)
+/// permission, a mutual favorite, a locally added Nostr contact, an open
+/// location channel, or an active Mesh Bridge rendezvous cell)
 /// AND the device has a usable network path. When there is provably no network
 /// at all we do not bootstrap Tor or spin relay reconnects — that only wastes
 /// battery on a mesh-only/offline device. BLE mesh is entirely independent of
@@ -52,10 +52,12 @@ final class NetworkActivationService: ObservableObject {
     private let storage: UserDefaults
     private let locationPermissionPublisher: AnyPublisher<LocationChannelManager.PermissionState, Never>
     private let mutualFavoritesPublisher: AnyPublisher<Set<Data>, Never>
+    private let nostrFavoritesPublisher: AnyPublisher<Set<Data>, Never>
     private let selectedChannelPublisher: AnyPublisher<ChannelID, Never>
     private let bridgeActivePublisher: AnyPublisher<Bool, Never>
     private let permissionProvider: () -> LocationChannelManager.PermissionState
     private let mutualFavoritesProvider: () -> Set<Data>
+    private let nostrFavoritesProvider: () -> Set<Data>
     private let locationChannelSelectedProvider: () -> Bool
     private let bridgeActiveProvider: () -> Bool
     private let reachabilityMonitor: NetworkReachabilityMonitoring
@@ -72,6 +74,7 @@ final class NetworkActivationService: ObservableObject {
         storage = .standard
         locationPermissionPublisher = LocationChannelManager.shared.$permissionState.eraseToAnyPublisher()
         mutualFavoritesPublisher = FavoritesPersistenceService.shared.$mutualFavorites.eraseToAnyPublisher()
+        nostrFavoritesPublisher = FavoritesPersistenceService.shared.$nostrFavorites.eraseToAnyPublisher()
         selectedChannelPublisher = LocationChannelManager.shared.$selectedChannel.eraseToAnyPublisher()
         bridgeActivePublisher = Publishers.CombineLatest(
             BridgeService.shared.$isEnabled,
@@ -81,6 +84,7 @@ final class NetworkActivationService: ObservableObject {
         .eraseToAnyPublisher()
         permissionProvider = { LocationChannelManager.shared.permissionState }
         mutualFavoritesProvider = { FavoritesPersistenceService.shared.mutualFavorites }
+        nostrFavoritesProvider = { FavoritesPersistenceService.shared.nostrFavorites }
         locationChannelSelectedProvider = {
             if case .location = LocationChannelManager.shared.selectedChannel { return true }
             return false
@@ -101,6 +105,8 @@ final class NetworkActivationService: ObservableObject {
         mutualFavoritesPublisher: AnyPublisher<Set<Data>, Never>,
         permissionProvider: @escaping () -> LocationChannelManager.PermissionState,
         mutualFavoritesProvider: @escaping () -> Set<Data>,
+        nostrFavoritesPublisher: AnyPublisher<Set<Data>, Never> = Empty().eraseToAnyPublisher(),
+        nostrFavoritesProvider: @escaping () -> Set<Data> = { [] },
         selectedChannelPublisher: AnyPublisher<ChannelID, Never> = Empty().eraseToAnyPublisher(),
         locationChannelSelectedProvider: @escaping () -> Bool = { false },
         bridgeActivePublisher: AnyPublisher<Bool, Never> = Empty().eraseToAnyPublisher(),
@@ -114,8 +120,10 @@ final class NetworkActivationService: ObservableObject {
         self.storage = storage
         self.locationPermissionPublisher = locationPermissionPublisher
         self.mutualFavoritesPublisher = mutualFavoritesPublisher
+        self.nostrFavoritesPublisher = nostrFavoritesPublisher
         self.permissionProvider = permissionProvider
         self.mutualFavoritesProvider = mutualFavoritesProvider
+        self.nostrFavoritesProvider = nostrFavoritesProvider
         self.selectedChannelPublisher = selectedChannelPublisher
         self.locationChannelSelectedProvider = locationChannelSelectedProvider
         self.bridgeActivePublisher = bridgeActivePublisher
@@ -177,6 +185,16 @@ final class NetworkActivationService: ObservableObject {
 
         // React to mutual favorites changes
         mutualFavoritesPublisher
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] _ in
+                self?.reevaluate()
+            }
+            .store(in: &cancellables)
+
+        // A locally added contact with a known Nostr key is reachable over the
+        // internet before the relationship becomes mutual. Keep that path
+        // alive when Bluetooth is unavailable.
+        nostrFavoritesPublisher
             .receive(on: DispatchQueue.main)
             .sink { [weak self] _ in
                 self?.reevaluate()
@@ -276,6 +294,7 @@ final class NetworkActivationService: ObservableObject {
     private func basePolicyAllowed() -> Bool {
         let permOK = permissionProvider() == .authorized
         let hasMutual = !mutualFavoritesProvider().isEmpty
+        let hasNostrFavorite = !nostrFavoritesProvider().isEmpty
         // Being in a location channel counts too. Teleporting into a geohash
         // needs no location permission, so someone who denied location and has
         // no mutual favorites could sit in a channel that never connects: the
@@ -284,7 +303,7 @@ final class NetworkActivationService: ObservableObject {
         // this gate is meant to detect.
         let inLocationChannel = locationChannelSelectedProvider()
         let bridgeActive = bridgeActiveProvider()
-        return permOK || hasMutual || inLocationChannel || bridgeActive
+        return permOK || hasMutual || hasNostrFavorite || inLocationChannel || bridgeActive
     }
 
     /// Effective gate: base policy AND a usable network path. When there is

@@ -65,6 +65,10 @@ struct NostrRelayManagerDependencies {
     var hasMutualFavorites: () -> Bool
     var hasLocationPermission: () -> Bool
     var mutualFavoritesPublisher: AnyPublisher<Set<Data>, Never>
+    /// Locally added contacts with a known Nostr public key. They need the DM
+    /// relays even when the peer has not added us back yet.
+    var hasNostrFavorites: () -> Bool = { false }
+    var nostrFavoritesPublisher: AnyPublisher<Set<Data>, Never> = Empty().eraseToAnyPublisher()
     var locationPermissionPublisher: AnyPublisher<LocationChannelManager.PermissionState, Never>
     var torEnforced: () -> Bool
     var torIsReady: () -> Bool
@@ -104,6 +108,8 @@ private extension NostrRelayManagerDependencies {
             hasMutualFavorites: { !FavoritesPersistenceService.shared.mutualFavorites.isEmpty },
             hasLocationPermission: { LocationChannelManager.shared.permissionState == .authorized },
             mutualFavoritesPublisher: FavoritesPersistenceService.shared.$mutualFavorites.eraseToAnyPublisher(),
+            hasNostrFavorites: { !FavoritesPersistenceService.shared.nostrFavorites.isEmpty },
+            nostrFavoritesPublisher: FavoritesPersistenceService.shared.$nostrFavorites.eraseToAnyPublisher(),
             locationPermissionPublisher: LocationChannelManager.shared.$permissionState.eraseToAnyPublisher(),
             torEnforced: { TorManager.shared.torEnforced },
             torIsReady: { TorManager.shared.isReady },
@@ -210,6 +216,7 @@ final class NostrRelayManager: ObservableObject {
     private let dependencies: NostrRelayManagerDependencies
     private var allowDefaultRelays: Bool = false
     private var hasMutualFavorites: Bool = false
+    private var hasNostrFavorites: Bool = false
     private var hasLocationPermission: Bool = false
     private var hasBridgeCourierDemand: Bool = false
     private var connections: [String: NostrRelayConnectionProtocol] = [:]
@@ -340,6 +347,7 @@ final class NostrRelayManager: ObservableObject {
     internal init(dependencies: NostrRelayManagerDependencies) {
         self.dependencies = dependencies
         hasMutualFavorites = dependencies.hasMutualFavorites()
+        hasNostrFavorites = dependencies.hasNostrFavorites()
         hasLocationPermission = dependencies.hasLocationPermission()
         hasBridgeCourierDemand = dependencies.hasBridgeCourierDemand()
         reloadDefaultRelays()
@@ -351,6 +359,14 @@ final class NostrRelayManager: ObservableObject {
             .sink { [weak self] favorites in
                 guard let self = self else { return }
                 self.hasMutualFavorites = !favorites.isEmpty
+                self.applyDefaultRelayPolicy()
+            }
+            .store(in: &cancellables)
+        dependencies.nostrFavoritesPublisher
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] favorites in
+                guard let self else { return }
+                self.hasNostrFavorites = !favorites.isEmpty
                 self.applyDefaultRelayPolicy()
             }
             .store(in: &cancellables)
@@ -832,6 +848,7 @@ final class NostrRelayManager: ObservableObject {
 
     private func applyDefaultRelayPolicy(force: Bool = false) {
         let shouldAllow = hasMutualFavorites
+            || hasNostrFavorites
             || hasLocationPermission
             || dependencies.isInLocationChannel()
             || hasBridgeCourierDemand

@@ -990,7 +990,7 @@ struct ChatViewModelPeerTests {
 
         viewModel.didReceiveTransportEvent(.bluetoothStateUpdated(.poweredOff))
         #expect(viewModel.bluetoothState == .poweredOff)
-        #expect(viewModel.showBluetoothAlert)
+        #expect(!viewModel.showBluetoothAlert)
 
         // Snapshot events belong to TransportPeerEventsDelegate and are
         // intentionally ignored at this typed sink.
@@ -1310,7 +1310,7 @@ struct ChatViewModelBluetoothTests {
     }
 
     @Test @MainActor
-    func didUpdateBluetoothState_poweredOff_showsAlert() async {
+    func didUpdateBluetoothState_poweredOff_doesNotShowBlockingAlert() async {
         let (viewModel, transport) = makeTestableViewModel()
 
         transport.simulateBluetoothStateChange(.poweredOff)
@@ -1318,7 +1318,7 @@ struct ChatViewModelBluetoothTests {
         // Give time for async processing
         try? await Task.sleep(nanoseconds: 100_000_000)
 
-        #expect(viewModel.showBluetoothAlert)
+        #expect(!viewModel.showBluetoothAlert)
     }
 
     @Test @MainActor
@@ -1331,6 +1331,19 @@ struct ChatViewModelBluetoothTests {
         try? await Task.sleep(nanoseconds: 100_000_000)
 
         #expect(viewModel.showBluetoothAlert)
+    }
+
+    @Test @MainActor
+    func dismissedBluetoothAlertDoesNotReappearForDuplicateState() {
+        let (viewModel, _) = makeTestableViewModel()
+
+        viewModel.updateBluetoothState(.unauthorized)
+        #expect(viewModel.showBluetoothAlert)
+
+        viewModel.dismissBluetoothAlert()
+        viewModel.updateBluetoothState(.unauthorized)
+
+        #expect(!viewModel.showBluetoothAlert)
     }
 }
 

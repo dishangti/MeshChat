@@ -10,10 +10,10 @@ enum ChatBluetoothAlertPolicy {
     static func update(for state: CBManagerState) -> ChatBluetoothAlertUpdate {
         switch state {
         case .poweredOff:
-            ChatBluetoothAlertUpdate(
-                isPresented: true,
-                message: AppLanguageSettings.localized("content.alert.bluetooth_required.off", comment: "Message shown when Bluetooth is turned off")
-            )
+            // Bluetooth only provides the nearby mesh transport. Internet
+            // messaging remains available, so this must not block the app or
+            // claim that Bluetooth is required.
+            ChatBluetoothAlertUpdate(isPresented: false, message: "")
         case .unauthorized:
             ChatBluetoothAlertUpdate(
                 isPresented: true,

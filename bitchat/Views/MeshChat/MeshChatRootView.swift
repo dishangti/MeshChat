@@ -160,7 +160,7 @@ struct MeshChatRootView: View {
                       scenePhase == .active,
                       !hasBlockingPresentation else { return }
                 Task { @MainActor in
-                    appChromeModel.showBluetoothAlert = false
+                    appChromeModel.dismissBluetoothAlert()
                 }
             }
         )

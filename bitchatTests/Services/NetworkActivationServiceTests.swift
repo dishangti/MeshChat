@@ -120,6 +120,20 @@ final class NetworkActivationServiceTests: XCTestCase {
         XCTAssertGreaterThanOrEqual(context.relayController.connectCallCount, 1)
     }
 
+    func test_nostrFavoritesPublisher_keepsInternetDMsAvailableWithoutBluetooth() async {
+        let context = makeService(permission: .denied, favorites: [])
+
+        context.service.start()
+        XCTAssertFalse(context.service.activationAllowed)
+
+        context.nostrFavoritesSubject.send([Data([0x02])])
+        let becameActive = await waitUntil { context.service.activationAllowed }
+
+        XCTAssertTrue(becameActive)
+        XCTAssertGreaterThanOrEqual(context.torController.startIfNeededCallCount, 1)
+        XCTAssertGreaterThanOrEqual(context.relayController.connectCallCount, 1)
+    }
+
     func test_stopForPanic_synchronouslyStopsAndIgnoresPublisherUpdates() async {
         let context = makeService(permission: .authorized, favorites: [])
 
@@ -236,6 +250,7 @@ final class NetworkActivationServiceTests: XCTestCase {
 
         let permissionSubject = CurrentValueSubject<LocationChannelManager.PermissionState, Never>(permission)
         let favoritesSubject = CurrentValueSubject<Set<Data>, Never>(favorites)
+        let nostrFavoritesSubject = CurrentValueSubject<Set<Data>, Never>([])
         let channelSubject = selectedChannelSubject
             ?? CurrentValueSubject<ChannelID, Never>(selectedChannel)
         let bridgeSubject = CurrentValueSubject<Bool, Never>(bridgeActive)
@@ -250,6 +265,8 @@ final class NetworkActivationServiceTests: XCTestCase {
             mutualFavoritesPublisher: favoritesSubject.eraseToAnyPublisher(),
             permissionProvider: { permissionSubject.value },
             mutualFavoritesProvider: { favoritesSubject.value },
+            nostrFavoritesPublisher: nostrFavoritesSubject.eraseToAnyPublisher(),
+            nostrFavoritesProvider: { nostrFavoritesSubject.value },
             selectedChannelPublisher: channelSubject.eraseToAnyPublisher(),
             locationChannelSelectedProvider: {
                 if case .location = channelSubject.value { return true }
@@ -267,6 +284,7 @@ final class NetworkActivationServiceTests: XCTestCase {
             service: service,
             storage: storage,
             favoritesSubject: favoritesSubject,
+            nostrFavoritesSubject: nostrFavoritesSubject,
             bridgeSubject: bridgeSubject,
             reachability: reachability,
             torController: torController,
@@ -296,6 +314,7 @@ private struct NetworkActivationTestContext {
     let service: NetworkActivationService
     let storage: UserDefaults
     let favoritesSubject: CurrentValueSubject<Set<Data>, Never>
+    let nostrFavoritesSubject: CurrentValueSubject<Set<Data>, Never>
     let bridgeSubject: CurrentValueSubject<Bool, Never>
     let reachability: MockNetworkActivationReachability
     let torController: MockNetworkActivationTorController

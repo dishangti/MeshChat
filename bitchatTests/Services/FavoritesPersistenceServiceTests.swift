@@ -22,6 +22,27 @@ final class FavoritesPersistenceServiceTests: XCTestCase {
         XCTAssertNotNil(keychain.load(key: storageKey, service: serviceKey))
     }
 
+    func test_nostrFavorites_tracksLocallyAddedContactsWithNostrKeys() {
+        let service = FavoritesPersistenceService(keychain: MockKeychain())
+        let peerKey = Data(repeating: 0xA1, count: 32)
+
+        service.addFavorite(
+            peerNoisePublicKey: peerKey,
+            peerNickname: "Alice"
+        )
+        XCTAssertFalse(service.nostrFavorites.contains(peerKey))
+
+        service.addFavorite(
+            peerNoisePublicKey: peerKey,
+            peerNostrPublicKey: String(repeating: "a", count: 64),
+            peerNickname: "Alice"
+        )
+        XCTAssertTrue(service.nostrFavorites.contains(peerKey))
+
+        service.removeFavorite(peerNoisePublicKey: peerKey)
+        XCTAssertFalse(service.nostrFavorites.contains(peerKey))
+    }
+
     func test_addFavorite_rollsBackWhenDurableSaveCannotBeConfirmed() {
         let keychain = MockKeychain()
         keychain.shouldFailGenericSave = true

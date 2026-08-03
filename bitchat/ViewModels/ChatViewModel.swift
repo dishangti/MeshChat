@@ -1712,12 +1712,18 @@ final class ChatViewModel: ObservableObject, BitchatDelegate, SynchronousMessage
     /// - Parameter state: The current Bluetooth manager state
     @MainActor
     func updateBluetoothState(_ state: CBManagerState) {
+        guard state != bluetoothState else { return }
         bluetoothState = state
         let alertUpdate = ChatBluetoothAlertPolicy.update(for: state)
         showBluetoothAlert = alertUpdate.isPresented
         if let message = alertUpdate.message {
             bluetoothAlertMessage = message
         }
+    }
+
+    @MainActor
+    func dismissBluetoothAlert() {
+        showBluetoothAlert = false
     }
 
     // MARK: - Private Chat Management

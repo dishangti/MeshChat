@@ -186,6 +186,11 @@ final class AppChromeModel: ObservableObject {
         showScreenshotPrivacyWarning = true
     }
 
+    func dismissBluetoothAlert() {
+        showBluetoothAlert = false
+        chatViewModel.dismissBluetoothAlert()
+    }
+
     func setPanicPreparation(_ preparation: (@MainActor () -> Void)?) {
         prepareForPanic = preparation
     }

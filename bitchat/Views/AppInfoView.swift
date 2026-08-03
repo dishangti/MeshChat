@@ -1090,6 +1090,16 @@ struct AppInfoView: View {
                 }
                 .bitchatFont(size: 11, weight: .semibold)
                 .padding(.top, 4)
+
+                Link(destination: URL(string: "https://github.com/permissionlesstech/bitchat")!) {
+                    Label {
+                        Text(verbatim: "BitChat · permissionlesstech/bitchat")
+                    } icon: {
+                        Image(systemName: "heart.fill")
+                    }
+                }
+                .bitchatFont(size: 11, weight: .semibold)
+                .foregroundColor(palette.accent)
             }
             .frame(maxWidth: .infinity)
             .padding(.vertical)

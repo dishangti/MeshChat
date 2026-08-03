@@ -7066,181 +7066,181 @@
         "ar": {
           "stringUnit": {
             "state": "translated",
-            "value": "MeshChat هو عميل مستقل ومفتوح المصدر متوافق مع BitChat. يضيف واجهة أبسط وميزات أكثر من دون تغيير بروتوكول BitChat أو توافقه الأمني."
+            "value": "MeshChat هو تفرّع مفتوح المصدر من BitChat. نشكر مشروع BitChat وجميع مساهميه على البروتوكول والأساس الأمني والتنفيذ الأصلي الذي أتاح إنشاء MeshChat. يضيف MeshChat واجهة أبسط وميزات أكثر مع الحفاظ على التوافق مع BitChat."
           }
         },
         "bn": {
           "stringUnit": {
             "state": "translated",
-            "value": "MeshChat হলো BitChat-এর সঙ্গে সামঞ্জস্যপূর্ণ একটি স্বাধীন, ওপেন-সোর্স ক্লায়েন্ট। এটি BitChat-এর প্রোটোকল বা নিরাপত্তা সামঞ্জস্য না বদলে আরও সহজ ইন্টারফেস ও অতিরিক্ত ফিচার যোগ করে।"
+            "value": "MeshChat হলো BitChat-এর একটি ওপেন-সোর্স ফর্ক। MeshChat সম্ভব করে তোলা প্রোটোকল, নিরাপত্তার ভিত্তি ও মূল বাস্তবায়নের জন্য আমরা BitChat প্রকল্প এবং এর সব অবদানকারীকে ধন্যবাদ জানাই। BitChat-এর সঙ্গে সামঞ্জস্য বজায় রেখে MeshChat আরও সহজ ইন্টারফেস ও অতিরিক্ত ফিচার যোগ করে।"
           }
         },
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "MeshChat ist ein unabhängiger Open-Source-Client, der mit BitChat kompatibel ist. Er bietet eine einfachere Oberfläche und mehr Funktionen, ohne die Protokoll- oder Sicherheitskompatibilität mit BitChat zu verändern."
+            "value": "MeshChat ist ein Open-Source-Fork von BitChat. Wir danken dem BitChat-Projekt und allen Mitwirkenden für das Protokoll, die Sicherheitsgrundlage und die ursprüngliche Implementierung, die MeshChat möglich gemacht haben. MeshChat bietet eine einfachere Oberfläche und mehr Funktionen und bleibt dabei mit BitChat kompatibel."
           }
         },
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "MeshChat is an independent, open-source client compatible with BitChat. It adds a simpler interface and more features without changing BitChat's protocol or security compatibility."
+            "value": "MeshChat is an open-source fork of BitChat. We thank the BitChat project and all of its contributors for the protocol, security foundation, and original implementation that made MeshChat possible. MeshChat adds a simpler interface and more features while preserving BitChat compatibility."
           }
         },
         "es": {
           "stringUnit": {
             "state": "translated",
-            "value": "MeshChat es un cliente independiente y de código abierto compatible con BitChat. Añade una interfaz más sencilla y más funciones sin alterar la compatibilidad del protocolo ni la seguridad de BitChat."
+            "value": "MeshChat es una bifurcación de código abierto de BitChat. Agradecemos al proyecto BitChat y a todas las personas que contribuyen a él el protocolo, la base de seguridad y la implementación original que hicieron posible MeshChat. MeshChat añade una interfaz más sencilla y más funciones, manteniendo la compatibilidad con BitChat."
           }
         },
         "fa": {
           "stringUnit": {
             "state": "translated",
-            "value": "MeshChat یک کارخواه مستقل و متن‌باز سازگار با BitChat است. بدون تغییر سازگاری پروتکل یا امنیت BitChat، رابطی ساده‌تر و امکانات بیشتری اضافه می‌کند."
+            "value": "MeshChat یک انشعاب متن‌باز از BitChat است. از پروژه BitChat و همه مشارکت‌کنندگان آن برای پروتکل، پایه امنیتی و پیاده‌سازی اصلی که MeshChat را ممکن کرد سپاسگزاریم. MeshChat با حفظ سازگاری با BitChat، رابطی ساده‌تر و امکانات بیشتری ارائه می‌دهد."
           }
         },
         "fil": {
           "stringUnit": {
             "state": "translated",
-            "value": "Ang MeshChat ay isang hiwalay at open-source na client na compatible sa BitChat. Nagdaragdag ito ng mas simpleng interface at mas maraming feature nang hindi binabago ang protocol o security compatibility ng BitChat."
+            "value": "Ang MeshChat ay isang open-source fork ng BitChat. Nagpapasalamat kami sa proyekto ng BitChat at sa lahat ng contributor nito para sa protocol, pundasyon ng seguridad, at orihinal na implementation na nagbigay-daan sa MeshChat. Nagdaragdag ang MeshChat ng mas simpleng interface at mas maraming feature habang pinananatili ang compatibility sa BitChat."
           }
         },
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "MeshChat est un client indépendant et open source compatible avec BitChat. Il ajoute une interface plus simple et davantage de fonctionnalités sans modifier la compatibilité du protocole ni la sécurité de BitChat."
+            "value": "MeshChat est un fork open source de BitChat. Nous remercions le projet BitChat et l’ensemble de ses contributeurs pour le protocole, les fondations de sécurité et l’implémentation d’origine qui ont rendu MeshChat possible. MeshChat ajoute une interface plus simple et davantage de fonctionnalités tout en préservant la compatibilité avec BitChat."
           }
         },
         "he": {
           "stringUnit": {
             "state": "translated",
-            "value": "MeshChat הוא לקוח עצמאי בקוד פתוח התואם ל-BitChat. הוא מוסיף ממשק פשוט יותר ותכונות נוספות בלי לשנות את תאימות הפרוטוקול או האבטחה של BitChat."
+            "value": "MeshChat הוא פיצול בקוד פתוח של BitChat. אנו מודים לפרויקט BitChat ולכל התורמים לו על הפרוטוקול, תשתית האבטחה והמימוש המקורי שאפשרו את MeshChat. MeshChat מוסיף ממשק פשוט יותר ותכונות נוספות תוך שמירה על תאימות ל-BitChat."
           }
         },
         "hi": {
           "stringUnit": {
             "state": "translated",
-            "value": "MeshChat, BitChat के साथ संगत एक स्वतंत्र, ओपन-सोर्स क्लाइंट है। यह BitChat के प्रोटोकॉल या सुरक्षा संगतता को बदले बिना अधिक सरल इंटरफ़ेस और अतिरिक्त सुविधाएँ जोड़ता है।"
+            "value": "MeshChat, BitChat का एक ओपन-सोर्स फ़ोर्क है। MeshChat को संभव बनाने वाले प्रोटोकॉल, सुरक्षा आधार और मूल कार्यान्वयन के लिए हम BitChat परियोजना और उसके सभी योगदानकर्ताओं का धन्यवाद करते हैं। MeshChat, BitChat के साथ संगतता बनाए रखते हुए अधिक सरल इंटरफ़ेस और अतिरिक्त सुविधाएँ जोड़ता है।"
           }
         },
         "id": {
           "stringUnit": {
             "state": "translated",
-            "value": "MeshChat adalah klien sumber terbuka independen yang kompatibel dengan BitChat. MeshChat menambahkan antarmuka yang lebih sederhana dan lebih banyak fitur tanpa mengubah kompatibilitas protokol atau keamanan BitChat."
+            "value": "MeshChat adalah fork sumber terbuka dari BitChat. Kami berterima kasih kepada proyek BitChat dan seluruh kontributornya atas protokol, fondasi keamanan, dan implementasi asli yang memungkinkan MeshChat. MeshChat menambahkan antarmuka yang lebih sederhana dan lebih banyak fitur dengan tetap mempertahankan kompatibilitas BitChat."
           }
         },
         "it": {
           "stringUnit": {
             "state": "translated",
-            "value": "MeshChat è un client indipendente e open source compatibile con BitChat. Aggiunge un'interfaccia più semplice e più funzioni senza modificare la compatibilità del protocollo o della sicurezza di BitChat."
+            "value": "MeshChat è un fork open source di BitChat. Ringraziamo il progetto BitChat e tutti i suoi collaboratori per il protocollo, le fondamenta di sicurezza e l’implementazione originale che hanno reso possibile MeshChat. MeshChat aggiunge un’interfaccia più semplice e più funzioni, mantenendo la compatibilità con BitChat."
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "MeshChat は BitChat と互換性のある、独立したオープンソースクライアントです。BitChat のプロトコルやセキュリティ互換性を変えずに、よりシンプルな画面と追加機能を提供します。"
+            "value": "MeshChat は BitChat のオープンソースフォークです。MeshChat を可能にしたプロトコル、セキュリティ基盤、オリジナル実装を提供した BitChat プロジェクトとすべての貢献者に感謝します。MeshChat は BitChat との互換性を保ちながら、よりシンプルな画面と追加機能を提供します。"
           }
         },
         "ko": {
           "stringUnit": {
             "state": "translated",
-            "value": "MeshChat은 BitChat과 호환되는 독립 오픈 소스 클라이언트입니다. BitChat의 프로토콜이나 보안 호환성을 변경하지 않으면서 더 간단한 인터페이스와 다양한 기능을 제공합니다."
+            "value": "MeshChat은 BitChat의 오픈 소스 포크입니다. MeshChat을 가능하게 한 프로토콜, 보안 기반 및 최초 구현을 제공한 BitChat 프로젝트와 모든 기여자에게 감사드립니다. MeshChat은 BitChat과의 호환성을 유지하면서 더 간단한 인터페이스와 다양한 기능을 제공합니다."
           }
         },
         "ms": {
           "stringUnit": {
             "state": "translated",
-            "value": "MeshChat ialah klien sumber terbuka bebas yang serasi dengan BitChat. Ia menambah antara muka yang lebih ringkas dan lebih banyak ciri tanpa mengubah keserasian protokol atau keselamatan BitChat."
+            "value": "MeshChat ialah cabang sumber terbuka daripada BitChat. Kami berterima kasih kepada projek BitChat dan semua penyumbangnya atas protokol, asas keselamatan dan pelaksanaan asal yang memungkinkan MeshChat. MeshChat menambah antara muka yang lebih ringkas dan lebih banyak ciri sambil mengekalkan keserasian dengan BitChat."
           }
         },
         "ne": {
           "stringUnit": {
             "state": "translated",
-            "value": "MeshChat BitChat सँग मिल्दो स्वतन्त्र, खुला-स्रोत क्लाइन्ट हो। यसले BitChat को प्रोटोकल वा सुरक्षा अनुकूलता नबदली सरल इन्टरफेस र थप सुविधाहरू दिन्छ।"
+            "value": "MeshChat, BitChat को खुला-स्रोत फोर्क हो। MeshChat सम्भव बनाउने प्रोटोकल, सुरक्षा आधार र मूल कार्यान्वयनका लागि हामी BitChat परियोजना र यसका सबै योगदानकर्तालाई धन्यवाद दिन्छौँ। MeshChat ले BitChat सँगको अनुकूलता कायम राख्दै सरल इन्टरफेस र थप सुविधाहरू दिन्छ।"
           }
         },
         "nl": {
           "stringUnit": {
             "state": "translated",
-            "value": "MeshChat is een onafhankelijke opensourceclient die compatibel is met BitChat. Het biedt een eenvoudigere interface en meer functies zonder de protocol- of beveiligingscompatibiliteit van BitChat te wijzigen."
+            "value": "MeshChat is een opensourcefork van BitChat. We bedanken het BitChat-project en alle bijdragers voor het protocol, de beveiligingsbasis en de oorspronkelijke implementatie die MeshChat mogelijk maakten. MeshChat biedt een eenvoudigere interface en meer functies, met behoud van compatibiliteit met BitChat."
           }
         },
         "pl": {
           "stringUnit": {
             "state": "translated",
-            "value": "MeshChat to niezależny klient open source zgodny z BitChat. Dodaje prostszy interfejs i więcej funkcji bez zmiany zgodności protokołu ani zabezpieczeń BitChat."
+            "value": "MeshChat jest otwartoźródłowym forkiem BitChat. Dziękujemy projektowi BitChat i wszystkim jego współtwórcom za protokół, podstawy bezpieczeństwa oraz pierwotną implementację, dzięki którym MeshChat mógł powstać. MeshChat oferuje prostszy interfejs i więcej funkcji, zachowując zgodność z BitChat."
           }
         },
         "pt": {
           "stringUnit": {
             "state": "translated",
-            "value": "O MeshChat é um cliente independente e de código aberto compatível com o BitChat. Adiciona uma interface mais simples e mais funcionalidades sem alterar a compatibilidade de protocolo ou segurança do BitChat."
+            "value": "O MeshChat é uma bifurcação de código aberto do BitChat. Agradecemos ao projeto BitChat e a todos os seus colaboradores pelo protocolo, pela base de segurança e pela implementação original que tornaram o MeshChat possível. O MeshChat acrescenta uma interface mais simples e mais funcionalidades, mantendo a compatibilidade com o BitChat."
           }
         },
         "pt-BR": {
           "stringUnit": {
             "state": "translated",
-            "value": "O MeshChat é um cliente independente e de código aberto compatível com o BitChat. Ele adiciona uma interface mais simples e mais recursos sem alterar a compatibilidade de protocolo ou segurança do BitChat."
+            "value": "O MeshChat é uma bifurcação de código aberto do BitChat. Agradecemos ao projeto BitChat e a todos os seus colaboradores pelo protocolo, pela base de segurança e pela implementação original que tornaram o MeshChat possível. O MeshChat adiciona uma interface mais simples e mais recursos, mantendo a compatibilidade com o BitChat."
           }
         },
         "ru": {
           "stringUnit": {
             "state": "translated",
-            "value": "MeshChat — независимый клиент с открытым исходным кодом, совместимый с BitChat. Он предлагает более простой интерфейс и дополнительные функции, не меняя совместимость протокола и механизмов безопасности BitChat."
+            "value": "MeshChat — это форк BitChat с открытым исходным кодом. Мы благодарим проект BitChat и всех его участников за протокол, основу безопасности и исходную реализацию, благодаря которым стал возможен MeshChat. MeshChat предлагает более простой интерфейс и дополнительные функции, сохраняя совместимость с BitChat."
           }
         },
         "sv": {
           "stringUnit": {
             "state": "translated",
-            "value": "MeshChat är en oberoende klient med öppen källkod som är kompatibel med BitChat. Den ger ett enklare gränssnitt och fler funktioner utan att ändra BitChats protokoll- eller säkerhetskompatibilitet."
+            "value": "MeshChat är en fork av BitChat med öppen källkod. Vi tackar BitChat-projektet och alla dess bidragsgivare för protokollet, säkerhetsgrunden och den ursprungliga implementationen som gjorde MeshChat möjligt. MeshChat ger ett enklare gränssnitt och fler funktioner samtidigt som kompatibiliteten med BitChat bevaras."
           }
         },
         "ta": {
           "stringUnit": {
             "state": "translated",
-            "value": "MeshChat என்பது BitChat-உடன் இணக்கமான ஒரு சுயாதீன, திறந்த மூல கிளையண்ட். BitChat-இன் நெறிமுறை அல்லது பாதுகாப்பு இணக்கத்தன்மையை மாற்றாமல் எளிய இடைமுகத்தையும் கூடுதல் அம்சங்களையும் வழங்குகிறது."
+            "value": "MeshChat என்பது BitChat-இன் திறந்த மூல கிளைத் திட்டமாகும். MeshChat உருவாகக் காரணமான நெறிமுறை, பாதுகாப்பு அடித்தளம் மற்றும் அசல் செயலாக்கத்திற்காக BitChat திட்டத்திற்கும் அதன் அனைத்து பங்களிப்பாளர்களுக்கும் நன்றி தெரிவிக்கிறோம். BitChat இணக்கத்தன்மையைப் பேணியபடி MeshChat எளிய இடைமுகத்தையும் கூடுதல் அம்சங்களையும் வழங்குகிறது."
           }
         },
         "th": {
           "stringUnit": {
             "state": "translated",
-            "value": "MeshChat เป็นไคลเอนต์โอเพนซอร์สอิสระที่เข้ากันได้กับ BitChat โดยเพิ่มอินเทอร์เฟซที่เรียบง่ายขึ้นและฟีเจอร์เพิ่มเติม โดยไม่เปลี่ยนความเข้ากันได้ของโปรโตคอลหรือระบบความปลอดภัยของ BitChat"
+            "value": "MeshChat เป็นโครงการแยกแบบโอเพนซอร์สจาก BitChat เราขอขอบคุณโครงการ BitChat และผู้ร่วมพัฒนาทุกคนสำหรับโปรโตคอล รากฐานด้านความปลอดภัย และการพัฒนาต้นฉบับที่ทำให้ MeshChat เกิดขึ้นได้ MeshChat เพิ่มอินเทอร์เฟซที่เรียบง่ายขึ้นและฟีเจอร์เพิ่มเติม พร้อมคงความเข้ากันได้กับ BitChat"
           }
         },
         "tr": {
           "stringUnit": {
             "state": "translated",
-            "value": "MeshChat, BitChat ile uyumlu, bağımsız ve açık kaynaklı bir istemcidir. BitChat'in protokol veya güvenlik uyumluluğunu değiştirmeden daha sade bir arayüz ve daha fazla özellik sunar."
+            "value": "MeshChat, BitChat'in açık kaynaklı bir çatallamasıdır. MeshChat'i mümkün kılan protokol, güvenlik temeli ve özgün uygulama için BitChat projesine ve tüm katkıda bulunanlara teşekkür ederiz. MeshChat, BitChat uyumluluğunu korurken daha sade bir arayüz ve daha fazla özellik sunar."
           }
         },
         "uk": {
           "stringUnit": {
             "state": "translated",
-            "value": "MeshChat — незалежний клієнт із відкритим кодом, сумісний із BitChat. Він пропонує простіший інтерфейс і додаткові функції, не змінюючи сумісність протоколу та механізмів безпеки BitChat."
+            "value": "MeshChat — це форк BitChat із відкритим кодом. Ми дякуємо проєкту BitChat і всім його учасникам за протокол, основу безпеки та початкову реалізацію, завдяки яким MeshChat став можливим. MeshChat пропонує простіший інтерфейс і додаткові функції, зберігаючи сумісність із BitChat."
           }
         },
         "ur": {
           "stringUnit": {
             "state": "translated",
-            "value": "MeshChat ایک آزاد اور اوپن سورس کلائنٹ ہے جو BitChat کے ساتھ مطابقت رکھتا ہے۔ یہ BitChat کے پروٹوکول یا سیکیورٹی مطابقت کو بدلے بغیر آسان انٹرفیس اور مزید خصوصیات فراہم کرتا ہے۔"
+            "value": "MeshChat، BitChat کا ایک اوپن سورس فورک ہے۔ ہم اس پروٹوکول، سیکیورٹی بنیاد اور اصل نفاذ کے لیے BitChat پروجیکٹ اور اس کے تمام معاونین کا شکریہ ادا کرتے ہیں جنہوں نے MeshChat کو ممکن بنایا۔ MeshChat، BitChat کے ساتھ مطابقت برقرار رکھتے ہوئے آسان انٹرفیس اور مزید خصوصیات فراہم کرتا ہے۔"
           }
         },
         "vi": {
           "stringUnit": {
             "state": "translated",
-            "value": "MeshChat là ứng dụng khách độc lập, mã nguồn mở, tương thích với BitChat. Ứng dụng bổ sung giao diện đơn giản hơn và nhiều tính năng hơn mà không thay đổi khả năng tương thích về giao thức hoặc bảo mật của BitChat."
+            "value": "MeshChat là một bản phân nhánh mã nguồn mở của BitChat. Chúng tôi cảm ơn dự án BitChat cùng tất cả những người đóng góp đã tạo nên giao thức, nền tảng bảo mật và bản triển khai ban đầu giúp MeshChat trở thành hiện thực. MeshChat bổ sung giao diện đơn giản hơn và nhiều tính năng hơn trong khi vẫn duy trì khả năng tương thích với BitChat."
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "MeshChat 是一个独立、开源且兼容 BitChat 的客户端。它在不改变 BitChat 协议和安全兼容性的前提下，提供了更简洁的界面和更多功能。"
+            "value": "MeshChat 是 BitChat 的开源分支。感谢 BitChat 项目及全体贡献者提供协议、安全基础和原始实现，让 MeshChat 得以诞生。MeshChat 在保持 BitChat 兼容性的同时，提供更简洁的界面和更多功能。"
           }
         },
         "zh-Hant": {
           "stringUnit": {
             "state": "translated",
-            "value": "MeshChat 是一個獨立、開源且相容 BitChat 的用戶端。它在不改變 BitChat 協定和安全相容性的前提下，提供更簡潔的介面和更多功能。"
+            "value": "MeshChat 是 BitChat 的開源分支。感謝 BitChat 專案及全體貢獻者提供協定、安全基礎和原始實作，讓 MeshChat 得以誕生。MeshChat 在保持 BitChat 相容性的同時，提供更簡潔的介面和更多功能。"
           }
         }
       }

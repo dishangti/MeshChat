@@ -91,6 +91,61 @@ struct PanicRecoveryOperations {
             }
         )
     }
+
+    /// Uses an independent recovery marker for an explicit local-data erase.
+    /// A crash must resume the erase without rotating the identity keys that
+    /// the user deliberately chose to keep.
+    static func dataErasureLive(
+        fileStore: BLEIncomingFileStore = BLEIncomingFileStore(),
+        defaults: UserDefaults = .standard
+    ) -> PanicRecoveryOperations {
+        let defaultsKey = "bitchat.dataErasurePending"
+        return PanicRecoveryOperations(
+            isPending: {
+                if defaults.bool(forKey: defaultsKey) {
+                    return true
+                }
+                return try fileStore.isDataErasureRecoveryPending()
+            },
+            begin: {
+                defaults.set(true, forKey: defaultsKey)
+                let externalMarkerEstablished =
+                    defaults.synchronize()
+                    && defaults.bool(forKey: defaultsKey)
+
+                let fileMarkerEstablished: Bool
+                do {
+                    try fileStore.markDataErasureRecoveryPending()
+                    fileMarkerEstablished = true
+                } catch {
+                    fileMarkerEstablished = false
+                    SecureLogger.error(
+                        "Failed to persist file data-erasure recovery marker: \(error)",
+                        category: .security
+                    )
+                }
+
+                return PanicRecoveryIntent(
+                    fileMarkerEstablished: fileMarkerEstablished,
+                    externalMarkerEstablished: externalMarkerEstablished
+                )
+            },
+            wipeMedia: { intent in
+                try fileStore.eraseDataMedia(
+                    hasDurablePendingMarker: intent.hasDurableMarker
+                )
+            },
+            complete: {
+                try fileStore.completeDataErasureRecovery()
+                defaults.removeObject(forKey: defaultsKey)
+                guard defaults.synchronize(),
+                      !defaults.bool(forKey: defaultsKey) else {
+                    throw BLEIncomingFileStore.PanicRecoveryError
+                        .externalMarkerCommitFailed
+                }
+            }
+        )
+    }
 }
 
 struct BLEIncomingFileStore: @unchecked Sendable {
@@ -125,6 +180,10 @@ struct BLEIncomingFileStore: @unchecked Sendable {
     /// media-specific name for the same full-transaction latch.
     private static let legacyPanicRecoveryPendingMarkerFileName =
         ".panic-media-wipe-pending"
+    /// Kept separate from panic recovery so an interrupted settings-driven
+    /// data erase can finish without unexpectedly replacing identity keys.
+    private static let dataErasureRecoveryPendingMarkerFileName =
+        ".data-erasure-recovery-pending"
     private static let mediaSubdirectories = [
         "voicenotes/incoming",
         "voicenotes/outgoing",
@@ -196,6 +255,27 @@ struct BLEIncomingFileStore: @unchecked Sendable {
     func panicWipe(
         hasDurablePendingMarker: Bool = false
     ) throws {
+        try wipeManagedMedia(
+            hasDurablePendingMarker: hasDurablePendingMarker,
+            markPending: markPanicRecoveryPending
+        )
+    }
+
+    /// Erases the same managed payloads as panic mode while using the
+    /// independent data-erasure transaction marker.
+    func eraseDataMedia(
+        hasDurablePendingMarker: Bool = false
+    ) throws {
+        try wipeManagedMedia(
+            hasDurablePendingMarker: hasDurablePendingMarker,
+            markPending: markDataErasureRecoveryPending
+        )
+    }
+
+    private func wipeManagedMedia(
+        hasDurablePendingMarker: Bool,
+        markPending: () throws -> Void
+    ) throws {
         // The receipt index caches tombstones as well as accepted payloads,
         // while payload coordination retains save/delete reservations. Always
         // invalidate both on return, including partial-failure paths, so no
@@ -214,12 +294,12 @@ struct BLEIncomingFileStore: @unchecked Sendable {
 
         let markerError: Error?
         do {
-            try markPanicRecoveryPending()
+            try markPending()
             markerError = nil
         } catch {
             markerError = error
             SecureLogger.error(
-                "Could not persist file panic-recovery marker; attempting media deletion anyway: \(error)",
+                "Could not persist media-erasure recovery marker; attempting deletion anyway: \(error)",
                 category: .security
             )
         }
@@ -274,6 +354,29 @@ struct BLEIncomingFileStore: @unchecked Sendable {
     func completePanicRecovery() throws {
         for markerURL in try panicRecoveryMarkerURLs()
         where fileManager.fileExists(atPath: markerURL.path) {
+            try fileManager.removeItem(at: markerURL)
+        }
+    }
+
+    func markDataErasureRecoveryPending() throws {
+        let markerURL = try dataErasureRecoveryPendingMarkerURL()
+        try fileManager.createDirectory(
+            at: markerURL.deletingLastPathComponent(),
+            withIntermediateDirectories: true,
+            attributes: nil
+        )
+        try panicMarkerWriter(Data([1]), markerURL)
+    }
+
+    func isDataErasureRecoveryPending() throws -> Bool {
+        fileManager.fileExists(
+            atPath: try dataErasureRecoveryPendingMarkerURL().path
+        )
+    }
+
+    func completeDataErasureRecovery() throws {
+        let markerURL = try dataErasureRecoveryPendingMarkerURL()
+        if fileManager.fileExists(atPath: markerURL.path) {
             try fileManager.removeItem(at: markerURL)
         }
     }
@@ -767,6 +870,13 @@ struct BLEIncomingFileStore: @unchecked Sendable {
     private func panicRecoveryPendingMarkerURL() throws -> URL {
         try rootDirectory().appendingPathComponent(
             Self.panicRecoveryPendingMarkerFileName,
+            isDirectory: false
+        )
+    }
+
+    private func dataErasureRecoveryPendingMarkerURL() throws -> URL {
+        try rootDirectory().appendingPathComponent(
+            Self.dataErasureRecoveryPendingMarkerFileName,
             isDirectory: false
         )
     }

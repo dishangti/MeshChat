@@ -230,7 +230,8 @@ struct MeshChatRootView: View {
             .sheet(isPresented: $appChromeModel.isAppInfoPresented) {
                 AppInfoView(
                     topologyProvider: { appChromeModel.meshTopologyDisplayModel() },
-                    onPanicWipe: performPanicWipe,
+                    onResetIdentity: performIdentityReset,
+                    onEraseData: performDataErase,
                     blockedPeopleProvider: { appChromeModel.blockedPeople() },
                     onUnblockPerson: { appChromeModel.unblock($0) }
                 )
@@ -644,6 +645,22 @@ struct MeshChatRootView: View {
     /// Removes view-owned transient content that does not live in the chat
     /// model, runs the security wipe, and makes Home the only visible route.
     private func performPanicWipe() {
+        prepareForDestructiveChange()
+        appChromeModel.panicClearAllData()
+        finishDataEraseUI()
+    }
+
+    private func performDataErase() {
+        prepareForDestructiveChange()
+        appChromeModel.eraseAllData()
+        finishDataEraseUI()
+    }
+
+    private func performIdentityReset() {
+        appChromeModel.resetIdentity()
+    }
+
+    private func prepareForDestructiveChange() {
         showVerification = false
         pendingShareGeohash = nil
         showSharePrecisionWarning = false
@@ -661,8 +678,9 @@ struct MeshChatRootView: View {
         #else
         showMacImagePicker = false
         #endif
+    }
 
-        appChromeModel.panicClearAllData()
+    private func finishDataEraseUI() {
         showHome()
 
         messageText = ""

@@ -212,6 +212,21 @@ final class AppChromeModel: ObservableObject {
         chatViewModel.panicClearAllData()
     }
 
+    func eraseAllData() {
+        dismissTransientSurfacesForPanic()
+        defer { dismissTransientSurfacesForPanic() }
+        prepareForPanic?()
+        onPanicWipe()
+        chatViewModel.eraseAllData()
+    }
+
+    func resetIdentity() {
+        dismissTransientSurfacesForPanic()
+        defer { dismissTransientSurfacesForPanic() }
+        prepareForPanic?()
+        chatViewModel.resetIdentity()
+    }
+
     private func bind(privateInboxModel: PrivateInboxModel) {
         privateInboxModel.$unreadPeerIDs
             .receive(on: DispatchQueue.main)

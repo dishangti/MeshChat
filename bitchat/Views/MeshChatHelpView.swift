@@ -120,10 +120,16 @@ struct MeshChatHelpView: View {
             description: "app_info.settings.hide_previews.subtitle"
         ),
         Topic(
-            id: "panic",
-            icon: "hand.raised.fill",
-            title: "app_info.settings.danger.panic_button",
-            description: "app_info.settings.danger.panic_note"
+            id: "identity-reset",
+            icon: "key.horizontal",
+            title: "app_info.settings.danger.identity_reset_button",
+            description: "app_info.settings.danger.identity_reset_note"
+        ),
+        Topic(
+            id: "data-erasure",
+            icon: "trash",
+            title: "app_info.settings.danger.erase_button",
+            description: "app_info.settings.danger.erase_note"
         )
     ]
 

@@ -344,7 +344,8 @@ struct ContentView: View {
         .sheet(isPresented: $appChromeModel.isAppInfoPresented) {
             AppInfoView(
                 topologyProvider: { appChromeModel.meshTopologyDisplayModel() },
-                onPanicWipe: { appChromeModel.panicClearAllData() },
+                onResetIdentity: { appChromeModel.resetIdentity() },
+                onEraseData: { appChromeModel.eraseAllData() },
                 blockedPeopleProvider: { appChromeModel.blockedPeople() },
                 onUnblockPerson: { appChromeModel.unblock($0) }
             )

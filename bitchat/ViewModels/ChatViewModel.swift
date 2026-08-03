@@ -335,6 +335,7 @@ final class ChatViewModel: ObservableObject, BitchatDelegate, SynchronousMessage
     private let userDefaults = UserDefaults.standard
     let keychain: KeychainManagerProtocol
     private let panicRecoveryOperations: PanicRecoveryOperations
+    private let dataErasureRecoveryOperations: PanicRecoveryOperations
     private let panicNetworkLifecycle: PanicNetworkLifecycle
     private let panicBridgeReset: @MainActor () -> Void
     private var isPanicResetting = false
@@ -1207,19 +1208,35 @@ final class ChatViewModel: ObservableObject, BitchatDelegate, SynchronousMessage
         locationManager: LocationChannelManager = .shared
     ) {
         let livePanicRecoveryOperations = PanicRecoveryOperations.live()
-        let startSuspendedForRecovery: Bool
+        let liveDataErasureRecoveryOperations =
+            PanicRecoveryOperations.dataErasureLive()
+        let identityResetRecoveryRequired = UserDefaults.standard.bool(
+            forKey: "bitchat.identityResetPending"
+        )
+        let panicRecoveryRequired: Bool
+        let dataErasureRecoveryRequired: Bool
         do {
-            startSuspendedForRecovery =
-                try livePanicRecoveryOperations.isPending()
+            panicRecoveryRequired = try livePanicRecoveryOperations.isPending()
         } catch {
-            startSuspendedForRecovery = true
+            panicRecoveryRequired = true
         }
+        do {
+            dataErasureRecoveryRequired =
+                try liveDataErasureRecoveryOperations.isPending()
+        } catch {
+            dataErasureRecoveryRequired = true
+        }
+        let startSuspendedForRecovery: Bool
+        startSuspendedForRecovery =
+            panicRecoveryRequired
+            || dataErasureRecoveryRequired
+            || identityResetRecoveryRequired
         // Preserve the preflight decision used to defer CoreBluetooth. A
         // transiently successful second read must not skip recovery and leave
         // the service permanently suspended without running the wipe.
         let panicRecoveryOperations = PanicRecoveryOperations(
             isPending: {
-                if startSuspendedForRecovery {
+                if panicRecoveryRequired {
                     return true
                 }
                 return try livePanicRecoveryOperations.isPending()
@@ -1227,6 +1244,17 @@ final class ChatViewModel: ObservableObject, BitchatDelegate, SynchronousMessage
             begin: livePanicRecoveryOperations.begin,
             wipeMedia: livePanicRecoveryOperations.wipeMedia,
             complete: livePanicRecoveryOperations.complete
+        )
+        let dataErasureRecoveryOperations = PanicRecoveryOperations(
+            isPending: {
+                if dataErasureRecoveryRequired {
+                    return true
+                }
+                return try liveDataErasureRecoveryOperations.isPending()
+            },
+            begin: liveDataErasureRecoveryOperations.begin,
+            wipeMedia: liveDataErasureRecoveryOperations.wipeMedia,
+            complete: liveDataErasureRecoveryOperations.complete
         )
         let meshService = BLEService(
             keychain: keychain,
@@ -1247,6 +1275,7 @@ final class ChatViewModel: ObservableObject, BitchatDelegate, SynchronousMessage
             outboxStore: MessageOutboxStore(keychain: keychain),
             sfMetrics: .shared,
             panicRecoveryOperations: panicRecoveryOperations,
+            dataErasureRecoveryOperations: dataErasureRecoveryOperations,
             panicNetworkLifecycle: .live
         )
     }
@@ -1268,6 +1297,7 @@ final class ChatViewModel: ObservableObject, BitchatDelegate, SynchronousMessage
         sfMetrics: StoreAndForwardMetrics? = nil,
         panicMediaWipe: (() throws -> Void)? = nil,
         panicRecoveryOperations: PanicRecoveryOperations? = nil,
+        dataErasureRecoveryOperations: PanicRecoveryOperations? = nil,
         panicNetworkLifecycle: PanicNetworkLifecycle = .noop,
         panicBridgeReset: @escaping @MainActor () -> Void = {
             BridgeService.shared.resetForPanic()
@@ -1287,6 +1317,8 @@ final class ChatViewModel: ObservableObject, BitchatDelegate, SynchronousMessage
 
         self.keychain = keychain
         self.panicRecoveryOperations = panicRecoveryOperations
+            ?? .ephemeral(wipeMedia: panicMediaWipe ?? {})
+        self.dataErasureRecoveryOperations = dataErasureRecoveryOperations
             ?? .ephemeral(wipeMedia: panicMediaWipe ?? {})
         self.panicNetworkLifecycle = panicNetworkLifecycle
         self.panicBridgeReset = panicBridgeReset
@@ -1345,6 +1377,34 @@ final class ChatViewModel: ObservableObject, BitchatDelegate, SynchronousMessage
                 category: .security
             )
             _ = panicClearAllData(restartServices: false)
+        }
+
+        let dataErasureRecoveryRequired: Bool
+        do {
+            dataErasureRecoveryRequired =
+                try self.dataErasureRecoveryOperations.isPending()
+        } catch {
+            dataErasureRecoveryRequired = true
+            SecureLogger.error(
+                "Could not read data-erasure recovery state; retrying the erase before startup: \(error)",
+                category: .security
+            )
+        }
+
+        if dataErasureRecoveryRequired {
+            SecureLogger.warning(
+                "Pending data erasure detected; finishing before runtime services start",
+                category: .security
+            )
+            _ = eraseAllData(restartServices: false)
+        }
+
+        if userDefaults.bool(forKey: "bitchat.identityResetPending") {
+            SecureLogger.warning(
+                "Pending identity reset detected; finishing before runtime services start",
+                category: .security
+            )
+            _ = resetIdentity(restartServices: false)
         }
 
         if networkActivationAllowed {
@@ -1721,6 +1781,127 @@ final class ChatViewModel: ObservableObject, BitchatDelegate, SynchronousMessage
     @MainActor
     @discardableResult
     func panicClearAllData(restartServices: Bool = true) -> Bool {
+        eraseAllLocalData(
+            resettingIdentity: true,
+            recoveryOperations: panicRecoveryOperations,
+            restartServices: restartServices
+        )
+    }
+
+    /// Removes local user data while deliberately retaining this installation's
+    /// Noise, signing, prekey, and Nostr identities. This is separate from the
+    /// emergency panic action, which still rotates identities as well.
+    @MainActor
+    @discardableResult
+    func eraseAllData(restartServices: Bool = true) -> Bool {
+        eraseAllLocalData(
+            resettingIdentity: false,
+            recoveryOperations: dataErasureRecoveryOperations,
+            restartServices: restartServices
+        )
+    }
+
+    /// Rotates every local communications identity without deleting chat
+    /// history, media, contacts, nicknames, blocks, or preferences. Private
+    /// group membership and queued sends cannot survive because they are
+    /// cryptographically bound to the previous keys.
+    @MainActor
+    @discardableResult
+    func resetIdentity(restartServices: Bool = true) -> Bool {
+        let pendingKey = "bitchat.identityResetPending"
+        userDefaults.set(true, forKey: pendingKey)
+        _ = userDefaults.synchronize()
+
+        panicRecoveryBlocked = true
+        isPanicResetting = true
+        defer { isPanicResetting = false }
+
+        verificationCoordinator.resetForPanic()
+        panicNetworkLifecycle.stop()
+        panicBridgeReset()
+
+        if let panicTransport = meshService as? PanicResettingTransport {
+            panicTransport.suspendForPanicReset()
+        } else {
+            meshService.emergencyDisconnectAll()
+        }
+
+        // Reject callbacks and queued work created under the old identity.
+        mediaTransferCoordinator.resetForPanic()
+        liveVoiceCoordinator.resetForPanic()
+        publicMessagePipeline.resetForPanic()
+        publicConversationCoordinator.resetForPanic()
+        privateChatClearGeneration &+= 1
+        queuedPrivateChatClears.removeAll(keepingCapacity: false)
+        privateChatClearInFlight = false
+        cancelAllLegacyPrivateMediaConsents()
+        messageRouter.wipeOutbox()
+
+        // Group rosters pin the previous Noise fingerprint and signing key.
+        // Keeping them would allow the UI to send messages every member must
+        // reject, so only this identity-bound store is removed.
+        groupStore.wipe()
+
+        setGeoChatSubscriptionID(nil)
+        setGeoDmSubscriptionID(nil)
+        _ = clearGeoSamplingSubs()
+        cachedGeohashIdentity = nil
+        NostrRelayManager.shared.resetForPanicWipe()
+        nostrCoordinator.inbound.invalidateInFlightDecrypts()
+        nostrRelayManager = nil
+        nostrHandlersSetup = false
+        idBridge.clearAllAssociations()
+
+        if let panicTransport = meshService as? PanicResettingTransport {
+            panicTransport.resetIdentityForPanic(
+                currentNickname: nickname,
+                restartServices: false
+            )
+        } else {
+            // Non-BLE transports do not own durable identity keys. Reapply the
+            // retained nickname after their emergency disconnect.
+            meshService.setNickname(nickname)
+        }
+
+        userDefaults.removeObject(forKey: pendingKey)
+        guard userDefaults.synchronize(),
+              !userDefaults.bool(forKey: pendingKey) else {
+            SecureLogger.error(
+                "Identity reset completed but its recovery marker could not be cleared",
+                category: .security
+            )
+            return false
+        }
+
+        panicRecoveryBlocked = false
+        if let panicTransport = meshService as? PanicResettingTransport {
+            panicTransport.completePanicReset(
+                restartServices: restartServices
+            )
+        }
+
+        if restartServices {
+            if !(meshService is PanicResettingTransport) {
+                meshService.startServices()
+            }
+            if !TestEnvironment.isRunningTests {
+                nostrRelayManager = NostrRelayManager.shared
+                setupNostrMessageHandling()
+                nostrHandlersSetup = true
+                resubscribeCurrentGeohash()
+            }
+            panicNetworkLifecycle.restart()
+        }
+
+        return true
+    }
+
+    @MainActor
+    private func eraseAllLocalData(
+        resettingIdentity: Bool,
+        recoveryOperations: PanicRecoveryOperations,
+        restartServices: Bool
+    ) -> Bool {
         panicRecoveryBlocked = true
         isPanicResetting = true
         defer { isPanicResetting = false }
@@ -1737,7 +1918,7 @@ final class ChatViewModel: ObservableObject, BitchatDelegate, SynchronousMessage
 
         // Establish both independent durable intents before erasing anything.
         // `wipeMedia` will still attempt deletion if neither write succeeds.
-        let recoveryIntent = panicRecoveryOperations.begin()
+        let recoveryIntent = recoveryOperations.begin()
 
         // Quiesce the mesh before clearing stores. Identity replacement below
         // deliberately stays stopped until media deletion and marker commit.
@@ -1767,8 +1948,11 @@ final class ChatViewModel: ObservableObject, BitchatDelegate, SynchronousMessage
         conversations.clearAll()
         pendingGeohashSystemMessages.removeAll()
 
-        // Delete all keychain data (including Noise and Nostr keys)
-        let keychainWipeCompleted = keychain.deleteAllKeychainData()
+        // A full panic removes every application-owned keychain item. The
+        // settings-driven data erase relies on each data store's explicit
+        // wipe below and keeps the local identity services intact.
+        let keychainWipeCompleted =
+            resettingIdentity ? keychain.deleteAllKeychainData() : true
         if !keychainWipeCompleted {
             SecureLogger.error(
                 "Panic keychain cleanup incomplete; recovery remains pending",
@@ -1776,8 +1960,10 @@ final class ChatViewModel: ObservableObject, BitchatDelegate, SynchronousMessage
             )
         }
 
-        // Clear UserDefaults identity data
-        userDefaults.removeObject(forKey: "bitchat.noiseIdentityKey")
+        // The legacy identity mirror is removed only when keys are rotated.
+        if resettingIdentity {
+            userDefaults.removeObject(forKey: "bitchat.noiseIdentityKey")
+        }
         userDefaults.removeObject(forKey: "bitchat.messageRetentionKey")
 
         // Wipe persisted location state (selected channel, teleport set,
@@ -1785,9 +1971,12 @@ final class ChatViewModel: ObservableObject, BitchatDelegate, SynchronousMessage
         // exactly the data an adversary inspecting the device wants.
         LocationStateManager.shared.panicWipe()
 
-        // Reset nickname to anonymous
-        nickname = "anon\(Int.random(in: 1000...9999))"
-        userDefaults.set(nickname, forKey: nicknameKey)
+        // A nickname is part of the retained identity. Panic mode replaces it
+        // so the newly generated keys do not keep the old visible handle.
+        if resettingIdentity {
+            nickname = "anon\(Int.random(in: 1000...9999))"
+            userDefaults.set(nickname, forKey: nicknameKey)
+        }
 
         // Clear favorites and peer mappings
         // Clear through SecureIdentityStateManager instead of directly
@@ -1875,19 +2064,25 @@ final class ChatViewModel: ObservableObject, BitchatDelegate, SynchronousMessage
         // dropped at the main-actor delivery hop instead of landing here.
         nostrCoordinator.inbound.invalidateInFlightDecrypts()
         nostrRelayManager = nil
+        nostrHandlersSetup = false
 
-        // Clear Nostr identity associations
-        idBridge.clearAllAssociations()
+        // Resetting identity rotates the current and derived Nostr identities.
+        // A data-only erase retains those private keys by design.
+        if resettingIdentity {
+            idBridge.clearAllAssociations()
+        }
 
-        // Replace the BLE identity while keeping the radio stopped. It may
-        // reopen only after the durable panic transaction commits.
-        if let panicTransport = meshService as? PanicResettingTransport {
-            panicTransport.resetIdentityForPanic(
-                currentNickname: nickname,
-                restartServices: false
-            )
-        } else {
-            meshService.setNickname(nickname)
+        if resettingIdentity {
+            // Replace the BLE identity while keeping the radio stopped. It may
+            // reopen only after the durable panic transaction commits.
+            if let panicTransport = meshService as? PanicResettingTransport {
+                panicTransport.resetIdentityForPanic(
+                    currentNickname: nickname,
+                    restartServices: false
+                )
+            } else {
+                meshService.setNickname(nickname)
+            }
         }
 
         // The wipe must finish before this security action returns. A detached
@@ -1895,12 +2090,12 @@ final class ChatViewModel: ObservableObject, BitchatDelegate, SynchronousMessage
         // leave pre-panic media behind.
         let panicCompleted: Bool
         do {
-            try panicRecoveryOperations.wipeMedia(recoveryIntent)
+            try recoveryOperations.wipeMedia(recoveryIntent)
             if keychainWipeCompleted {
-                try panicRecoveryOperations.complete()
+                try recoveryOperations.complete()
                 panicCompleted = true
                 SecureLogger.info(
-                    "🗑️ Deleted all media files during panic clear",
+                    "🗑️ Deleted all media files during local data erase",
                     category: .session
                 )
             } else {
@@ -1911,7 +2106,7 @@ final class ChatViewModel: ObservableObject, BitchatDelegate, SynchronousMessage
         } catch {
             panicCompleted = false
             SecureLogger.error(
-                "Panic transaction did not commit; services remain stopped: \(error)",
+                "Local data erase did not commit; services remain stopped: \(error)",
                 category: .security
             )
         }
@@ -1946,6 +2141,7 @@ final class ChatViewModel: ObservableObject, BitchatDelegate, SynchronousMessage
             if !TestEnvironment.isRunningTests {
                 nostrRelayManager = NostrRelayManager.shared
                 setupNostrMessageHandling()
+                nostrHandlersSetup = true
             }
             panicNetworkLifecycle.restart()
         }

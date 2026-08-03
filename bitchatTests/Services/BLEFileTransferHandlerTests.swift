@@ -1375,6 +1375,29 @@ struct BLEFileTransferHandlerTests {
         #expect(try !store.isPanicRecoveryPending())
     }
 
+    @Test
+    func dataErasureRecoveryMarkerDoesNotEscalateToPanicRecovery() throws {
+        let base = FileManager.default.temporaryDirectory
+            .appendingPathComponent(
+                "data-erasure-recovery-marker-\(UUID().uuidString)",
+                isDirectory: true
+            )
+        defer { try? FileManager.default.removeItem(at: base) }
+        let store = BLEIncomingFileStore(baseDirectory: base)
+
+        try store.markDataErasureRecoveryPending()
+        #expect(try store.isDataErasureRecoveryPending())
+        #expect(try !store.isPanicRecoveryPending())
+        try store.eraseDataMedia(hasDurablePendingMarker: true)
+        #expect(try store.isDataErasureRecoveryPending())
+        #expect(try !store.isPanicRecoveryPending())
+
+        try store.completeDataErasureRecovery()
+
+        #expect(try !store.isDataErasureRecoveryPending())
+        #expect(try !store.isPanicRecoveryPending())
+    }
+
     private func expectNoSideEffects(_ recorder: Recorder) {
         #expect(recorder.signedNameQueries.isEmpty)
         #expect(recorder.trackedPackets.isEmpty)

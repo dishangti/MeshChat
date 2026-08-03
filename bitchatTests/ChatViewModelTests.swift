@@ -20,6 +20,7 @@ private func makeTestableViewModel(
     identityManager injectedIdentityManager: SecureIdentityStateManagerProtocol? = nil,
     panicMediaWipe: (() throws -> Void)? = nil,
     panicRecoveryOperations: PanicRecoveryOperations? = nil,
+    dataErasureRecoveryOperations: PanicRecoveryOperations? = nil,
     panicNetworkLifecycle: PanicNetworkLifecycle = .noop,
     panicBridgeReset: @escaping @MainActor () -> Void = {
         BridgeService.shared.resetForPanic()
@@ -38,6 +39,7 @@ private func makeTestableViewModel(
         transport: transport,
         panicMediaWipe: panicMediaWipe,
         panicRecoveryOperations: panicRecoveryOperations,
+        dataErasureRecoveryOperations: dataErasureRecoveryOperations,
         panicNetworkLifecycle: panicNetworkLifecycle,
         panicBridgeReset: panicBridgeReset
     )
@@ -2212,6 +2214,100 @@ struct ChatViewModelPrivateMediaDeletionTests {
 // MARK: - Panic Clear Tests
 
 struct ChatViewModelPanicTests {
+
+    @Test @MainActor
+    func eraseAllData_preservesIdentityKeysWhileRemovingConversations() {
+        let keychain = MockKeychain()
+        let noiseKey = Data(repeating: 0x31, count: 32)
+        let signingKey = Data(repeating: 0x42, count: 32)
+        let prekeys = Data(repeating: 0x53, count: 32)
+        #expect(keychain.saveIdentityKey(noiseKey, forKey: "noiseStaticKey"))
+        #expect(keychain.saveIdentityKey(signingKey, forKey: "ed25519SigningKey"))
+        #expect(keychain.saveIdentityKey(prekeys, forKey: "prekeysV1"))
+
+        let (viewModel, _) = makeTestableViewModel(keychain: keychain)
+        viewModel.seedPublicMessages([
+            BitchatMessage(
+                id: "erase-data-message",
+                sender: "Tester",
+                content: "Local history",
+                timestamp: Date(),
+                isRelay: false
+            )
+        ])
+
+        #expect(viewModel.eraseAllData(restartServices: false))
+
+        #expect(viewModel.messages.isEmpty)
+        #expect(keychain.getIdentityKey(forKey: "noiseStaticKey") == noiseKey)
+        #expect(keychain.getIdentityKey(forKey: "ed25519SigningKey") == signingKey)
+        #expect(keychain.getIdentityKey(forKey: "prekeysV1") == prekeys)
+        #expect(keychain.deleteAllCallCount == 0)
+    }
+
+    @Test @MainActor
+    func resetIdentity_preservesConversationsAndSkipsMediaErasure() {
+        var mediaWasErased = false
+        let (viewModel, _) = makeTestableViewModel(panicMediaWipe: {
+            mediaWasErased = true
+        })
+        let peerID = PeerID(str: String(repeating: "7", count: 64))
+        let publicMessage = BitchatMessage(
+            id: "identity-reset-public",
+            sender: "Tester",
+            content: "Public history",
+            timestamp: Date(),
+            isRelay: false
+        )
+        let privateMessage = BitchatMessage(
+            id: "identity-reset-private",
+            sender: "Peer",
+            content: "Private history",
+            timestamp: Date(),
+            isRelay: false,
+            isPrivate: true,
+            recipientNickname: viewModel.nickname,
+            senderPeerID: peerID
+        )
+        viewModel.seedPublicMessages([publicMessage])
+        viewModel.seedPrivateChat([privateMessage], for: peerID)
+
+        #expect(viewModel.resetIdentity(restartServices: false))
+
+        #expect(viewModel.messages.map(\.id) == [publicMessage.id])
+        #expect(viewModel.privateChats[peerID]?.map(\.id) == [privateMessage.id])
+        #expect(!mediaWasErased)
+    }
+
+    @Test @MainActor
+    func pendingDataErasureRecoveryDoesNotResetIdentity() {
+        let keychain = MockKeychain()
+        let identityKey = Data(repeating: 0x64, count: 32)
+        #expect(keychain.saveIdentityKey(identityKey, forKey: "noiseStaticKey"))
+        var events: [String] = []
+        let operations = PanicRecoveryOperations(
+            isPending: { true },
+            begin: {
+                events.append("begin")
+                return PanicRecoveryIntent(
+                    fileMarkerEstablished: true,
+                    externalMarkerEstablished: true
+                )
+            },
+            wipeMedia: { _ in events.append("wipe") },
+            complete: { events.append("complete") }
+        )
+
+        let (_, transport) = makeTestableViewModel(
+            keychain: keychain,
+            dataErasureRecoveryOperations: operations
+        )
+
+        #expect(events == ["begin", "wipe", "complete"])
+        #expect(keychain.getIdentityKey(forKey: "noiseStaticKey") == identityKey)
+        #expect(keychain.deleteAllCallCount == 0)
+        #expect(transport.startServicesCallCount == 1)
+    }
 
     @Test @MainActor
     func panicClearAllData_finishesMediaWipeBeforeReturning() {

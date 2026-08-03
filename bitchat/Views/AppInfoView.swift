@@ -30,9 +30,10 @@ struct AppInfoView: View {
     /// Supplies the mesh topology map data. Nil (previews, missing wiring)
     /// hides the topology row entirely.
     var topologyProvider: (@MainActor () -> MeshTopologyDisplayModel)?
-    /// Wipes all local data. Nil (previews, missing wiring) hides the danger
-    /// zone entirely.
-    var onPanicWipe: (@MainActor () -> Void)?
+    /// Destructive actions are supplied independently so resetting identity
+    /// never implicitly erases user data, and erasing data can retain keys.
+    var onResetIdentity: (@MainActor () -> Void)?
+    var onEraseData: (@MainActor () -> Void)?
     /// Secure identity data stays behind the app model; Settings receives only
     /// presentation rows and an explicit unblock intent.
     var blockedPeopleProvider: (@MainActor () -> [BlockedPersonRow])?
@@ -66,7 +67,8 @@ struct AppInfoView: View {
     /// by writing this shared selection before the sheet appears. Info remains
     /// available from the segmented control.
     @AppStorage(AppInfoPane.storageKey) private var selectedPane: AppInfoPane = .help
-    @State private var showPanicConfirmation = false
+    @State private var showIdentityResetConfirmation = false
+    @State private var showDataEraseConfirmation = false
     @AppStorage(AppLanguageSettings.overrideKey) private var languageOverride = ""
     /// The override changed this session; localization resolves at process
     /// start, so surface the restart hint.
@@ -189,10 +191,10 @@ struct AppInfoView: View {
             static let securityNotificationsSubtitle = String(localized: "app_info.settings.notifications.security.subtitle", defaultValue: "Encryption and verification alerts", comment: "Description of the security notification topic")
 
             static let dangerTitle = String(localized: "app_info.settings.danger.title", defaultValue: "Danger Zone", comment: "Section header for destructive actions in settings")
-            static let panicButton = String(localized: "app_info.settings.danger.panic_button", defaultValue: "Reset Identity & Wipe Data", comment: "Button in the settings danger zone that creates new local identity keys by performing a complete local wipe")
-            static let panicNote = String(localized: "app_info.settings.danger.panic_note", defaultValue: "Creates new local Noise and signing keys by deleting all MeshChat data on this device, including chats, contacts, nicknames, verification and block records, groups, and media. Other devices keep your old messages and fingerprint; they will see the new identity as unverified. This cannot be undone. Triple-tapping the MeshChat logo performs the same wipe immediately.", comment: "Warning shown below and inside the local identity reset confirmation; explains local deletion and what remote peers retain")
-            static let panicConfirmTitle = String(localized: "app_info.settings.danger.panic_confirm_title", defaultValue: "Reset Identity and Wipe All Data?", comment: "Title of the destructive confirmation before regenerating local identity keys through a complete local wipe")
-            static let panicConfirmAction = String(localized: "app_info.settings.danger.panic_confirm_action", defaultValue: "Reset Identity and Wipe", comment: "Destructive confirmation button that regenerates local identity keys through a complete local wipe")
+            static let identityResetButton = String(localized: "app_info.settings.danger.identity_reset_button", defaultValue: "Reset Identity", comment: "Button that rotates local communications identity keys without deleting retained user data")
+            static let identityResetNote = String(localized: "app_info.settings.danger.identity_reset_note", defaultValue: "Creates new Mesh, signing, and Nostr keys. Chats, media, contacts, nicknames, blocks, and settings stay. Private groups and queued messages are removed because they use the old keys. Other devices will see you as unverified. This cannot be undone.", comment: "Warning for identity reset explaining retained data, identity-bound removals, and what remote peers retain")
+            static let eraseDataButton = String(localized: "app_info.settings.danger.erase_button", defaultValue: "Erase Data", comment: "Button that erases local user data while retaining communications identity keys")
+            static let eraseDataNote = String(localized: "app_info.settings.danger.erase_note", defaultValue: "Deletes chats, media, contacts, nicknames, verification and block records, groups, location history, queued messages, and notification and relay settings. Your identity keys and nickname stay, so your fingerprint does not change. This cannot be undone. Triple-tapping the MeshChat logo also resets identity.", comment: "Warning for local data erasure explaining retained identity keys and the separate emergency wipe")
         }
 
         enum Voice {
@@ -560,37 +562,57 @@ struct AppInfoView: View {
             notificationSettingsSection
 
             // Danger zone
-            if onPanicWipe != nil {
+            if onResetIdentity != nil || onEraseData != nil {
                 VStack(alignment: .leading, spacing: 12) {
                     SectionHeader(verbatim: Strings.Settings.dangerTitle)
 
-                    Button(action: { showPanicConfirmation = true }) {
-                        Text(Strings.Settings.panicButton)
-                            .bitchatFont(size: 12)
-                            .foregroundColor(palette.alertRed)
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 6)
-                            .background(Color.red.opacity(0.08))
-                            .cornerRadius(6)
-                    }
-                    .buttonStyle(.plain)
-                    .confirmationDialog(
-                        Strings.Settings.panicConfirmTitle,
-                        isPresented: $showPanicConfirmation,
-                        titleVisibility: .visible
-                    ) {
-                        Button(Strings.Settings.panicConfirmAction, role: .destructive) {
-                            performPanicWipe()
+                    if onResetIdentity != nil {
+                        destructiveSettingsButton(
+                            title: Strings.Settings.identityResetButton,
+                            action: { showIdentityResetConfirmation = true }
+                        )
+                        .confirmationDialog(
+                            Strings.Settings.identityResetButton,
+                            isPresented: $showIdentityResetConfirmation,
+                            titleVisibility: .visible
+                        ) {
+                            Button(Strings.Settings.identityResetButton, role: .destructive) {
+                                performIdentityReset()
+                            }
+                            Button("common.cancel", role: .cancel) {}
+                        } message: {
+                            Text(verbatim: Strings.Settings.identityResetNote)
                         }
-                        Button("common.cancel", role: .cancel) {}
-                    } message: {
-                        Text(verbatim: Strings.Settings.panicNote)
+
+                        Text(Strings.Settings.identityResetNote)
+                            .bitchatFont(size: 11)
+                            .foregroundColor(secondaryTextColor)
+                            .fixedSize(horizontal: false, vertical: true)
                     }
 
-                    Text(Strings.Settings.panicNote)
-                        .bitchatFont(size: 11)
-                        .foregroundColor(secondaryTextColor)
-                        .fixedSize(horizontal: false, vertical: true)
+                    if onEraseData != nil {
+                        destructiveSettingsButton(
+                            title: Strings.Settings.eraseDataButton,
+                            action: { showDataEraseConfirmation = true }
+                        )
+                        .confirmationDialog(
+                            Strings.Settings.eraseDataButton,
+                            isPresented: $showDataEraseConfirmation,
+                            titleVisibility: .visible
+                        ) {
+                            Button(Strings.Settings.eraseDataButton, role: .destructive) {
+                                performDataErase()
+                            }
+                            Button("common.cancel", role: .cancel) {}
+                        } message: {
+                            Text(verbatim: Strings.Settings.eraseDataNote)
+                        }
+
+                        Text(Strings.Settings.eraseDataNote)
+                            .bitchatFont(size: 11)
+                            .foregroundColor(secondaryTextColor)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
                 }
             }
         }
@@ -793,14 +815,18 @@ struct AppInfoView: View {
         notificationPauseTask = nil
     }
 
-    /// Identity rotation deliberately uses the complete panic transaction.
-    /// State addressed to the old Noise, signing, and Nostr keys cannot be
-    /// retained safely, and remote devices cannot be rewritten from here.
-    /// Clear sheet-owned copies first so a dismiss animation cannot leave old
-    /// identity or routing metadata visible for another frame.
-    private func performPanicWipe() {
+    private func performIdentityReset() {
         cancelNotificationPauseTask()
-        showPanicConfirmation = false
+        showIdentityResetConfirmation = false
+        onResetIdentity?()
+        dismiss()
+    }
+
+    /// Clear sheet-owned copies first so a dismiss animation cannot leave
+    /// erased identity or routing metadata visible for another frame.
+    private func performDataErase() {
+        cancelNotificationPauseTask()
+        showDataEraseConfirmation = false
         showTopology = false
         blockedPeople.removeAll(keepingCapacity: false)
         customRelays.removeAll(keepingCapacity: false)
@@ -817,8 +843,24 @@ struct AppInfoView: View {
         securityNotifications = true
         notificationPauseUntil = nil
 
-        onPanicWipe?()
+        onEraseData?()
         dismiss()
+    }
+
+    private func destructiveSettingsButton(
+        title: String,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            Text(verbatim: title)
+                .bitchatFont(size: 12)
+                .foregroundColor(palette.alertRed)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 6)
+                .background(Color.red.opacity(0.08))
+                .cornerRadius(6)
+        }
+        .buttonStyle(.plain)
     }
 
     private func notificationToggle(

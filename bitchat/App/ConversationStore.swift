@@ -322,6 +322,14 @@ enum ConversationChange {
     case unreadChanged(ConversationID, isUnread: Bool)
 }
 
+/// Exact unread bookkeeping. Message IDs deduplicate retransmissions and
+/// stable/ephemeral mirrored copies; `.legacy` represents older/system paths
+/// that can assert unread state without a concrete timeline message ID.
+private enum ConversationUnreadItem: Hashable {
+    case message(String)
+    case legacy
+}
+
 // MARK: - ConversationStore
 
 /// Sole writer and sole holder of conversation message state. All mutations
@@ -362,6 +370,11 @@ final class ConversationStore: ObservableObject {
     /// copies.
     private var conversationIDsByMessageID: [String: Set<ConversationID>] = [:]
 
+    /// Per-conversation unread items. Kept separate from the public unread
+    /// conversation set so the existing Bool-facing API remains lightweight
+    /// while numeric badges can union message IDs across peer aliases.
+    private var unreadItemsByConversation: [ConversationID: Set<ConversationUnreadItem>] = [:]
+
     /// Monotonic count of messages inserted into any conversation (appends,
     /// upsert-appends, migration inserts). Field-observability only: the
     /// periodic store audit folds the delta into its heartbeat line so logs
@@ -398,7 +411,14 @@ final class ConversationStore: ObservableObject {
         guard result.inserted else { return false }
         registerMessageID(message.id, in: id)
         unregisterMessageIDs(result.trimmedMessageIDs, from: id)
+        let unreadChanged = removeUnreadMessageItems(
+            result.trimmedMessageIDs,
+            from: id
+        )
         changes.send(.appended(id, message))
+        if unreadChanged {
+            changes.send(.unreadChanged(id, isUnread: conversation.isUnread))
+        }
         return true
     }
 
@@ -409,7 +429,14 @@ final class ConversationStore: ObservableObject {
         case .appended(let trimmedMessageIDs):
             registerMessageID(message.id, in: id)
             unregisterMessageIDs(trimmedMessageIDs, from: id)
+            let unreadChanged = removeUnreadMessageItems(
+                trimmedMessageIDs,
+                from: id
+            )
             changes.send(.appended(id, message))
+            if unreadChanged {
+                changes.send(.unreadChanged(id, isUnread: conversation.isUnread))
+            }
         case .updated:
             changes.send(.updated(id, messageID: message.id))
         }
@@ -528,6 +555,7 @@ final class ConversationStore: ObservableObject {
     func markRead(_ id: ConversationID) {
         guard unreadConversations.contains(id) else { return }
         unreadConversations.remove(id)
+        unreadItemsByConversation.removeValue(forKey: id)
         conversationsByID[id]?.setUnread(false)
         changes.send(.unreadChanged(id, isUnread: false))
     }
@@ -536,8 +564,30 @@ final class ConversationStore: ObservableObject {
         guard !unreadConversations.contains(id) else { return }
         let conversation = conversation(for: id)
         unreadConversations.insert(id)
+        unreadItemsByConversation[id, default: []].insert(.legacy)
         conversation.setUnread(true)
         changes.send(.unreadChanged(id, isUnread: true))
+    }
+
+    /// Records one concrete unread message. Re-recording the same message ID
+    /// is a no-op, while each distinct message republishes `.unreadChanged`
+    /// so an already-unread list row still advances its numeric badge.
+    @discardableResult
+    func recordUnreadMessage(_ messageID: String, in id: ConversationID) -> Bool {
+        guard let conversation = conversationsByID[id],
+              conversation.containsMessage(withID: messageID) else {
+            return false
+        }
+        let inserted = unreadItemsByConversation[id, default: []]
+            .insert(.message(messageID))
+            .inserted
+        guard inserted else { return false }
+        if !unreadConversations.contains(id) {
+            unreadConversations.insert(id)
+        }
+        conversation.setUnread(true)
+        changes.send(.unreadChanged(id, isUnread: true))
+        return true
     }
 
     /// Selects a conversation (creating it if needed) or clears the
@@ -597,15 +647,44 @@ final class ConversationStore: ObservableObject {
         }
 
         let wasUnread = unreadConversations.contains(source)
+        var sourceUnreadItems = unreadItemsByConversation[source] ?? []
+        if wasUnread, sourceUnreadItems.isEmpty {
+            sourceUnreadItems.insert(.legacy)
+        }
+        let destinationWasUnread = unreadConversations.contains(destination)
+        var destinationItems = unreadItemsByConversation[destination] ?? []
+        if destinationWasUnread, destinationItems.isEmpty {
+            destinationItems.insert(.legacy)
+        }
+        if wasUnread {
+            destinationItems.formUnion(sourceUnreadItems)
+        }
+        destinationItems = Set(destinationItems.filter { item in
+            switch item {
+            case .legacy:
+                return true
+            case .message(let messageID):
+                return destinationConversation.containsMessage(withID: messageID)
+            }
+        })
+        if wasUnread, destinationItems.isEmpty {
+            destinationItems.insert(.legacy)
+        }
         let wasSelected = selectedConversationID == source
 
         conversationsByID.removeValue(forKey: source)
         conversationIDs.removeAll { $0 == source }
         unreadConversations.remove(source)
+        unreadItemsByConversation.removeValue(forKey: source)
 
-        if wasUnread, !unreadConversations.contains(destination) {
+        if !destinationItems.isEmpty {
+            unreadItemsByConversation[destination] = destinationItems
             unreadConversations.insert(destination)
             destinationConversation.setUnread(true)
+        } else {
+            unreadItemsByConversation.removeValue(forKey: destination)
+            unreadConversations.remove(destination)
+            destinationConversation.setUnread(false)
         }
         if wasSelected {
             selectedConversationID = destination
@@ -631,7 +710,11 @@ final class ConversationStore: ObservableObject {
             return nil
         }
         unregisterMessageID(messageID, from: id)
+        let unreadChanged = removeUnreadMessageItems([messageID], from: id)
         changes.send(.messageRemoved(id, messageID: messageID))
+        if unreadChanged {
+            changes.send(.unreadChanged(id, isUnread: conversation.isUnread))
+        }
         return removed
     }
 
@@ -642,8 +725,12 @@ final class ConversationStore: ObservableObject {
         guard let conversation = conversationsByID[id] else { return }
         let removedIDs = conversation.removeAll(where: predicate)
         unregisterMessageIDs(removedIDs, from: id)
+        let unreadChanged = removeUnreadMessageItems(removedIDs, from: id)
         for messageID in removedIDs {
             changes.send(.messageRemoved(id, messageID: messageID))
+        }
+        if unreadChanged {
+            changes.send(.unreadChanged(id, isUnread: conversation.isUnread))
         }
     }
 
@@ -655,6 +742,7 @@ final class ConversationStore: ObservableObject {
             unregisterMessageID(messageID, from: id)
         }
         conversation.clearMessages()
+        collapseUnreadItemsAfterTimelineClear(in: id)
         changes.send(.cleared(id))
     }
 
@@ -667,6 +755,7 @@ final class ConversationStore: ObservableObject {
         }
         conversationIDs.removeAll { $0 == id }
         unreadConversations.remove(id)
+        unreadItemsByConversation.removeValue(forKey: id)
         if selectedConversationID == id {
             selectedConversationID = nil
         }
@@ -680,6 +769,7 @@ final class ConversationStore: ObservableObject {
         conversationsByID.removeAll()
         conversationIDs.removeAll()
         unreadConversations.removeAll()
+        unreadItemsByConversation.removeAll()
         conversationIDsByMessageID.removeAll()
         if selectedConversationID != nil {
             selectedConversationID = nil
@@ -714,7 +804,8 @@ final class ConversationStore: ObservableObject {
     ///   the message, and total memberships equal total messages (with the
     ///   forward check, equality proves no conversation message is missing
     ///   from the map)
-    /// - `unreadConversations` only references existing conversations
+    /// - unread set, per-conversation flags, and unread-item ledgers agree;
+    ///   concrete unread IDs still exist in their retained timeline
     /// - `selectedConversationID`, when set, references an existing
     ///   conversation (`select(_:)` creates on selection and
     ///   `removeConversation`/`clearAll` clear it, so existence is the
@@ -755,8 +846,38 @@ final class ConversationStore: ObservableObject {
             violations.append("message map holds \(totalMappedMemberships) memberships but conversations hold \(totalMessages) messages")
         }
 
-        for id in unreadConversations where conversationsByID[id] == nil {
-            violations.append("unreadConversations contains unknown conversation \(id.auditDescription)")
+        for (id, conversation) in conversationsByID {
+            let listedUnread = unreadConversations.contains(id)
+            if conversation.isUnread != listedUnread {
+                violations.append("\(id.auditDescription): unread flag disagrees with unreadConversations")
+            }
+        }
+        for id in unreadConversations {
+            guard conversationsByID[id] != nil else {
+                violations.append("unreadConversations contains unknown conversation \(id.auditDescription)")
+                continue
+            }
+            if unreadItemsByConversation[id]?.isEmpty != false {
+                violations.append("\(id.auditDescription): unread conversation has no unread items")
+            }
+        }
+        for (id, items) in unreadItemsByConversation {
+            guard let conversation = conversationsByID[id] else {
+                violations.append("unread items reference unknown conversation \(id.auditDescription)")
+                continue
+            }
+            if items.isEmpty {
+                violations.append("\(id.auditDescription): unread item ledger is empty")
+            }
+            if !unreadConversations.contains(id) {
+                violations.append("\(id.auditDescription): unread items exist outside unreadConversations")
+            }
+            for item in items {
+                guard case .message(let messageID) = item else { continue }
+                if !conversation.containsMessage(withID: messageID) {
+                    violations.append("\(id.auditDescription): unread message \(messageID.prefix(8))… is no longer retained")
+                }
+            }
         }
 
         if let selected = selectedConversationID, conversationsByID[selected] == nil {
@@ -789,6 +910,47 @@ final class ConversationStore: ObservableObject {
         for messageID in messageIDs {
             unregisterMessageID(messageID, from: id)
         }
+    }
+
+    /// Removes concrete unread entries whose messages left the retained
+    /// timeline. Returns whether the displayed unread count changed.
+    @discardableResult
+    private func removeUnreadMessageItems(
+        _ messageIDs: [String],
+        from id: ConversationID
+    ) -> Bool {
+        guard !messageIDs.isEmpty,
+              var items = unreadItemsByConversation[id] else {
+            return false
+        }
+
+        let previousCount = items.count
+        for messageID in messageIDs {
+            items.remove(.message(messageID))
+        }
+        guard items.count != previousCount else { return false }
+
+        if items.isEmpty {
+            unreadItemsByConversation.removeValue(forKey: id)
+            unreadConversations.remove(id)
+            conversationsByID[id]?.setUnread(false)
+        } else {
+            unreadItemsByConversation[id] = items
+        }
+        return true
+    }
+
+    /// `/clear` historically keeps a conversation's unread state alive.
+    /// Concrete IDs no longer exist after the timeline is cleared, so fold
+    /// any exact entries into one legacy marker instead of showing a stale
+    /// message count.
+    private func collapseUnreadItemsAfterTimelineClear(in id: ConversationID) {
+        guard unreadConversations.contains(id) else {
+            unreadItemsByConversation.removeValue(forKey: id)
+            return
+        }
+        unreadItemsByConversation[id] = [.legacy]
+        conversationsByID[id]?.setUnread(true)
     }
 
     private static func cap(for id: ConversationID) -> Int {
@@ -843,6 +1005,31 @@ extension ConversationStore {
             peerIDs.insert(handle.routingPeerID)
         }
         return peerIDs
+    }
+
+    /// Unread badge count for one raw conversation key.
+    func unreadMessageCount(for id: ConversationID) -> Int {
+        let exactCount = unreadItemsByConversation[id]?.count ?? 0
+        return max(exactCount, unreadConversations.contains(id) ? 1 : 0)
+    }
+
+    /// Exact unread count across every raw routing alias for one identity.
+    /// Unioning the unread items counts mirrored message IDs once while still
+    /// retaining distinct messages that only exist under one alias.
+    func unreadMessageCount(forDirectPeerIDs peerIDs: Set<PeerID>) -> Int {
+        guard !peerIDs.isEmpty else { return 0 }
+        var union = Set<ConversationUnreadItem>()
+        var hasUnreadConversation = false
+        for peerID in peerIDs {
+            let id = ConversationID.directPeer(peerID)
+            if unreadConversations.contains(id) {
+                hasUnreadConversation = true
+            }
+            if let items = unreadItemsByConversation[id] {
+                union.formUnion(items)
+            }
+        }
+        return max(union.count, hasUnreadConversation ? 1 : 0)
     }
 
     /// `true` when any direct conversation contains a message with `messageID`

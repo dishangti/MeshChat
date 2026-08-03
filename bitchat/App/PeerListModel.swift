@@ -5,9 +5,13 @@ import SwiftUI
 
 struct MeshPeerRow: Identifiable, Equatable {
     let peerID: PeerID
+    /// Raw conversation keys that can represent this cryptographic identity
+    /// (live short ID, stable Noise key, and optional Nostr mailbox key).
+    let conversationPeerIDs: [PeerID]
     let displayName: String
     let isMe: Bool
     let hasUnread: Bool
+    let unreadMessageCount: Int
     let isBlocked: Bool
     let isFavorite: Bool
     let isConnected: Bool
@@ -38,6 +42,7 @@ struct GeohashPersonRow: Identifiable, Equatable {
     let isMe: Bool
     let isTeleported: Bool
     let isBlocked: Bool
+    let unreadMessageCount: Int
 }
 
 struct GroupChatRow: Identifiable, Equatable {
@@ -46,6 +51,7 @@ struct GroupChatRow: Identifiable, Equatable {
     let memberCount: Int
     let isCreator: Bool
     let hasUnread: Bool
+    let unreadMessageCount: Int
 
     var id: String { peerID.id }
 }
@@ -62,6 +68,7 @@ struct RecentMeshPeerRow: Identifiable, Equatable {
     let claimedNickname: String
     let lastMessageAt: Date
     let hasUnread: Bool
+    let unreadMessageCount: Int
     let isBlocked: Bool
     let isNostrAvailable: Bool
     let identityLockState: IdentityLockState
@@ -374,12 +381,28 @@ final class PeerListModel: ObservableObject {
                 && !isVerifiedFingerprint
                 && (fingerprint.map { chatViewModel.isVouchedFingerprint($0) } ?? false)
             let hasNostrRoute = peer.hasNostrRoute
+            var conversationPeerIDs = Set([peer.peerID])
+            if peer.noisePublicKey.count == 32 {
+                conversationPeerIDs.insert(PeerID(hexData: peer.noisePublicKey))
+            }
+            if let nostrPublicKey = peer.nostrPublicKey {
+                conversationPeerIDs.insert(PeerID(nostr_: nostrPublicKey))
+            }
+            let hasUnread = chatViewModel.hasUnreadMessages(for: peer.peerID)
+            let unreadMessageCount = max(
+                conversations.unreadMessageCount(
+                    forDirectPeerIDs: conversationPeerIDs
+                ),
+                hasUnread ? 1 : 0
+            )
 
             return MeshPeerRow(
                 peerID: peer.peerID,
+                conversationPeerIDs: conversationPeerIDs.sorted { $0.id < $1.id },
                 displayName: isMe ? chatViewModel.nickname : peer.displayName,
                 isMe: isMe,
-                hasUnread: chatViewModel.hasUnreadMessages(for: peer.peerID),
+                hasUnread: hasUnread,
+                unreadMessageCount: unreadMessageCount,
                 isBlocked: !isMe && chatViewModel.isPeerBlocked(peer.peerID),
                 isFavorite: peer.favoriteStatus?.isFavorite ?? false,
                 isConnected: peer.isConnected,
@@ -415,17 +438,18 @@ final class PeerListModel: ObservableObject {
         self.groupRows = groupRows
         renderID = (
             meshRows.map {
-                "\($0.id)-\($0.displayName)-\($0.isConnected)-\($0.isReachable)-\($0.isNostrAvailable)-\($0.hasUnread)-\($0.isFavorite)-\($0.isBlocked)"
+                let aliases = $0.conversationPeerIDs.map(\.id).joined(separator: ",")
+                return "\($0.id)-\(aliases)-\($0.displayName)-\($0.isConnected)-\($0.isReachable)-\($0.isNostrAvailable)-\($0.hasUnread)-\($0.unreadMessageCount)-\($0.isFavorite)-\($0.isBlocked)"
             } +
             geohashPeople.map {
-                "geo:\($0.id)-\($0.isTeleported)-\($0.isBlocked)-\($0.displayName)"
+                "geo:\($0.id)-\($0.isTeleported)-\($0.isBlocked)-\($0.unreadMessageCount)-\($0.displayName)"
             } +
             groupRows.map {
-                "group:\($0.id)-\($0.name)-\($0.memberCount)-\($0.hasUnread)"
+                "group:\($0.id)-\($0.name)-\($0.memberCount)-\($0.hasUnread)-\($0.unreadMessageCount)"
             } +
             recentMeshRows.map {
                 let aliases = $0.conversationPeerIDs.map(\.id).joined(separator: ",")
-                return "recent:\($0.id)-\(aliases)-\($0.displayName)-\($0.lastMessageAt.timeIntervalSince1970)-\($0.hasUnread)-\($0.isBlocked)"
+                return "recent:\($0.id)-\(aliases)-\($0.displayName)-\($0.lastMessageAt.timeIntervalSince1970)-\($0.hasUnread)-\($0.unreadMessageCount)-\($0.isBlocked)"
             }
         ).joined(separator: "|")
     }
@@ -536,6 +560,13 @@ final class PeerListModel: ObservableObject {
                 claimedNickname: claimedNickname,
                 lastMessageAt: item.lastMessageAt,
                 hasUnread: item.hasUnread,
+                unreadMessageCount: max(
+                    conversations.unreadMessageCount(
+                        forDirectPeerIDs: item.conversationPeerIDs
+                            .union([item.identity.stablePeerID])
+                    ),
+                    item.hasUnread ? 1 : 0
+                ),
                 isBlocked: social?.isBlocked == true
                     || chatViewModel.identityManager.isBlocked(
                         fingerprint: item.identity.fingerprint
@@ -628,12 +659,17 @@ final class PeerListModel: ObservableObject {
     private func buildGroupRows() -> [GroupChatRow] {
         let myFingerprint = chatViewModel.meshService.noiseIdentityFingerprint()
         return chatViewModel.groupStore.groups.map { group in
-            GroupChatRow(
+            let hasUnread = chatViewModel.hasUnreadMessages(for: group.peerID)
+            return GroupChatRow(
                 peerID: group.peerID,
                 name: group.name,
                 memberCount: group.members.count,
                 isCreator: group.creatorFingerprint == myFingerprint,
-                hasUnread: chatViewModel.hasUnreadMessages(for: group.peerID)
+                hasUnread: hasUnread,
+                unreadMessageCount: max(
+                    conversations.unreadMessageCount(for: .directPeer(group.peerID)),
+                    hasUnread ? 1 : 0
+                )
             )
         }
     }
@@ -644,12 +680,18 @@ final class PeerListModel: ObservableObject {
 
         return chatViewModel.visibleGeohashPeople().map { person in
             let isMe = person.id == myHex
+            let conversationPeerID = PeerID(nostr_: person.id)
             return GeohashPersonRow(
                 id: person.id,
                 displayName: person.displayName,
                 isMe: isMe,
                 isTeleported: teleportedSet.contains(person.id.lowercased()) || (isMe && locationChannelsModel.teleported),
-                isBlocked: !isMe && chatViewModel.isGeohashUserBlocked(pubkeyHexLowercased: person.id)
+                isBlocked: !isMe && chatViewModel.isGeohashUserBlocked(pubkeyHexLowercased: person.id),
+                unreadMessageCount: isMe
+                    ? 0
+                    : conversations.unreadMessageCount(
+                        for: .directPeer(conversationPeerID)
+                    )
             )
         }
     }

@@ -100,6 +100,14 @@ struct ThemePalette {
     let accentBlue: Color
     /// Destructive/error accent.
     let alertRed: Color
+    /// Positive/safe state accent (established encryption, success).
+    let success: Color
+    /// Caution/in-progress accent (handshakes, recoverable warnings).
+    let warning: Color
+    /// Background for messages received from other people.
+    let incomingBubble: Color
+    /// Background for messages sent by the current user.
+    let outgoingBubble: Color
     /// Hairline separators.
     let divider: Color
 
@@ -114,12 +122,17 @@ struct ThemePalette {
             locationAccent: green,
             accentBlue: Color(red: 0.0, green: 0.478, blue: 1.0),
             alertRed: Color(red: 0.75, green: 0.1, blue: 0.1),
+            success: green,
+            warning: .orange,
+            incomingBubble: green.opacity(isDark ? 0.09 : 0.06),
+            outgoingBubble: green.opacity(isDark ? 0.20 : 0.13),
             divider: isDark ? Color.white.opacity(0.12) : Color.black.opacity(0.08)
         )
     }
 
-    static func aurora(_: ColorScheme) -> ThemePalette {
-        ThemePalette(
+    static func aurora(_ colorScheme: ColorScheme) -> ThemePalette {
+        let isDark = colorScheme == .dark
+        return ThemePalette(
             background: systemBackground,
             primary: .primary,
             secondary: .secondary,
@@ -127,6 +140,12 @@ struct ThemePalette {
             locationAccent: .green,
             accentBlue: .blue,
             alertRed: .red,
+            success: .green,
+            warning: .orange,
+            incomingBubble: isDark
+                ? Color.white.opacity(0.10)
+                : Color.black.opacity(0.06),
+            outgoingBubble: Color.blue.opacity(isDark ? 0.24 : 0.14),
             divider: separator
         )
     }

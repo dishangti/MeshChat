@@ -201,6 +201,9 @@ struct MeshChatRootView: View {
             .onChange(of: horizontalSizeClass) { _ in
                 reconcileColumnVisibilityForSizeClass()
             }
+            .onChange(of: scenePhase) { _ in
+                updateVisibleConversation()
+            }
             .onChange(of: selectedPrivatePeerID) { newValue in
                 switchDraftContext()
                 if newValue != nil {
@@ -491,8 +494,6 @@ struct MeshChatRootView: View {
                 onShareChannel: requestChannelShare
             )
 
-            Divider()
-
             MessageListView(
                 privatePeer: selectedPrivatePeerID,
                 isAtBottom: selectedPrivatePeerID == nil ? $isAtBottomPublic : $isAtBottomPrivate,
@@ -508,12 +509,17 @@ struct MeshChatRootView: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity)
 
             if selectedPrivatePeerID != nil {
-                privateConversationPrivacyCaption
+                PrivateConversationPrivacyCaption(
+                    peerID: selectedPrivatePeerID,
+                    encryptionStatus: privateConversationModel
+                        .selectedHeaderState?
+                        .encryptionStatus
+                )
             }
 
             composer
         }
-        .background(palette.background)
+        .background(ThemedRootBackground())
     }
 
     @ViewBuilder
@@ -538,50 +544,6 @@ struct MeshChatRootView: View {
             showMacImagePicker: $showMacImagePicker
         )
         #endif
-    }
-
-    private var privateConversationPrivacyCaption: some View {
-        HStack(spacing: 6) {
-            Image(systemName: "lock.fill")
-                .font(.caption2)
-            Text(privateConversationPrivacyText)
-                .font(.caption.weight(.medium))
-                .lineLimit(2)
-        }
-        .foregroundStyle(Color.orange)
-        .frame(maxWidth: .infinity)
-        .padding(.horizontal, 12)
-        .padding(.vertical, 5)
-        .background(Color.orange.opacity(0.07))
-        .accessibilityElement(children: .combine)
-    }
-
-    private var privateConversationPrivacyText: String {
-        if selectedPrivatePeerID?.isGroup == true {
-            return AppLanguageSettings.localized(
-                 "content.private.caption_group",
-                comment: "Caption above the group chat composer noting messages are encrypted to group members"
-            )
-        }
-
-        let noiseSecured: Bool = {
-            switch privateConversationModel.selectedHeaderState?.encryptionStatus {
-            case .noiseSecured, .noiseVerified:
-                return true
-            default:
-                return false
-            }
-        }()
-        if selectedPrivatePeerID?.isGeoDM == true || noiseSecured {
-            return AppLanguageSettings.localized(
-                 "content.private.caption_encrypted",
-                comment: "Caption above the private chat composer once the session is end-to-end encrypted"
-            )
-        }
-        return AppLanguageSettings.localized(
-             "content.private.caption",
-            comment: "Caption above the private chat composer before encryption is established"
-        )
     }
 
     private var initialNoticesTab: NoticesView.Tab {
@@ -730,6 +692,14 @@ struct MeshChatRootView: View {
     }
 
     private func updateVisibleConversation() {
+        let visiblePublicChannel: ChannelID? = {
+            guard scenePhase == .active,
+                  isConversationPresented,
+                  selectedPrivatePeerID == nil else { return nil }
+            return locationChannelsModel.selectedChannel
+        }()
+        publicChatModel.setVisibleChannel(visiblePublicChannel)
+
         guard isConversationPresented else {
             routeModel.setVisibleConversation(nil)
             return

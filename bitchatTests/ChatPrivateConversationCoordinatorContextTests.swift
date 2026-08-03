@@ -53,6 +53,7 @@ private final class MockChatPrivateConversationContext: ChatPrivateConversationC
     // migrate) while recording calls for assertions.
     private(set) var upsertedMessages: [(messageID: String, peerID: PeerID)] = []
     private(set) var migratedChats: [(from: PeerID, to: PeerID)] = []
+    private(set) var unreadMessageIDsByPeer: [PeerID: Set<String>] = [:]
 
     @discardableResult
     func appendPrivateMessage(_ message: BitchatMessage, to peerID: PeerID) -> Bool {
@@ -96,8 +97,23 @@ private final class MockChatPrivateConversationContext: ChatPrivateConversationC
         unreadPrivateMessages.insert(peerID)
     }
 
+    @discardableResult
+    func recordUnreadPrivateMessage(_ messageID: String, in peerID: PeerID) -> Bool {
+        guard privateChats[peerID]?.contains(where: { $0.id == messageID }) == true else {
+            return false
+        }
+        let inserted = unreadMessageIDsByPeer[peerID, default: []]
+            .insert(messageID)
+            .inserted
+        if inserted {
+            unreadPrivateMessages.insert(peerID)
+        }
+        return inserted
+    }
+
     func markPrivateChatRead(_ peerID: PeerID) {
         unreadPrivateMessages.remove(peerID)
+        unreadMessageIDsByPeer.removeValue(forKey: peerID)
     }
 
     func migratePrivateChat(from oldPeerID: PeerID, to newPeerID: PeerID) {

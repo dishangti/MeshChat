@@ -7,6 +7,7 @@ import SwiftUI
 /// this companion fills the detail column on iPad and Mac.
 struct MeshChatHomeView: View {
     @EnvironmentObject private var peerListModel: PeerListModel
+    @EnvironmentObject private var publicChatModel: PublicChatModel
     @ObservedObject private var bridgeService = BridgeService.shared
     @ThemedPalette private var palette
 
@@ -45,6 +46,7 @@ struct MeshChatHomeView: View {
                     homeAction(
                         title: AppLanguageSettings.localized("location_channels.mesh_label", defaultValue: "#mesh"),
                         subtitle: peopleCountText,
+                        messageCount: publicChatModel.unreadMessageCount(for: .mesh),
                         icon: "antenna.radiowaves.left.and.right",
                         action: onOpenMesh
                     )
@@ -77,6 +79,7 @@ struct MeshChatHomeView: View {
     private func homeAction(
         title: String,
         subtitle: String,
+        messageCount: Int,
         icon: String,
         action: @escaping () -> Void
     ) -> some View {
@@ -91,9 +94,17 @@ struct MeshChatHomeView: View {
                 VStack(alignment: .leading, spacing: 3) {
                     Text(verbatim: title)
                         .bitchatFont(size: 16, weight: .semibold)
-                    Text(verbatim: subtitle)
-                        .bitchatFont(size: 12)
+                    HStack(spacing: 10) {
+                        Label {
+                            Text(verbatim: subtitle)
+                        } icon: {
+                            Image(systemName: "person.2")
+                        }
                         .foregroundStyle(palette.secondary)
+
+                        messageMetric(messageCount)
+                    }
+                    .bitchatFont(size: 11)
                 }
                 Spacer()
                 Image(systemName: "chevron.right")
@@ -105,6 +116,25 @@ struct MeshChatHomeView: View {
         }
         .buttonStyle(.plain)
         .themedOverlayPanel()
+    }
+
+    @ViewBuilder
+    private func messageMetric(_ count: Int) -> some View {
+        if count > 0 {
+            HStack(spacing: 4) {
+                Image(systemName: "bubble.left.fill")
+                    .font(.bitchatSystem(size: 9, weight: .semibold))
+                Text(verbatim: "\(count)")
+                    .bitchatFont(size: 11, weight: .semibold)
+            }
+            .foregroundStyle(palette.accent)
+            .padding(.horizontal, 6)
+            .padding(.vertical, 2)
+            .background(
+                Capsule().fill(palette.accent.opacity(0.11))
+            )
+            .fixedSize()
+        }
     }
 
     private func compactAction(

@@ -139,6 +139,20 @@ final class ConversationUIModel: ObservableObject {
         chatViewModel.formatMessageAsText(message, colorScheme: colorScheme, theme: theme)
     }
 
+    /// Rich message body without the legacy IRC sender prefix or inline
+    /// timestamp. Bubble rows render sender and metadata in their own slots.
+    func formatMessageContent(
+        _ message: BitchatMessage,
+        colorScheme: ColorScheme,
+        theme: AppTheme? = nil
+    ) -> AttributedString {
+        chatViewModel.formatMessageContent(
+            message,
+            colorScheme: colorScheme,
+            theme: theme
+        )
+    }
+
     func formatMessageHeader(_ message: BitchatMessage, colorScheme: ColorScheme, theme: AppTheme? = nil) -> AttributedString {
         chatViewModel.formatMessageHeader(message, colorScheme: colorScheme, theme: theme)
     }
@@ -152,11 +166,18 @@ final class ConversationUIModel: ObservableObject {
     }
 
     func isSentByCurrentUser(_ message: BitchatMessage) -> Bool {
-        message.sender == currentNickname || message.sender.hasPrefix(currentNickname + "#")
+        chatViewModel.isSelfMessage(message)
     }
 
     func isMediaMessageFromCurrentUser(_ message: BitchatMessage) -> Bool {
-        message.sender == currentNickname || message.senderPeerID == chatViewModel.meshService.myPeerID
+        chatViewModel.isSelfMessage(message)
+    }
+
+    func senderColor(for message: BitchatMessage, colorScheme: ColorScheme) -> Color {
+        chatViewModel.senderColor(
+            for: message,
+            isDark: colorScheme == .dark
+        )
     }
 
     /// Whether a private-message row should show the filled verification seal

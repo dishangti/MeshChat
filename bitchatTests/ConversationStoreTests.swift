@@ -647,16 +647,71 @@ struct ConversationStoreTests {
         store.markUnread(id)
         #expect(store.unreadConversations == [id])
         #expect(store.conversation(for: id).isUnread)
+        #expect(store.unreadMessageCount(for: id) == 1)
         // Idempotent: marking unread twice emits once.
         store.markUnread(id)
 
         store.markRead(id)
         #expect(store.unreadConversations.isEmpty)
         #expect(!store.conversation(for: id).isUnread)
+        #expect(store.unreadMessageCount(for: id) == 0)
 
         #expect(unreadChanges.count == 2)
         #expect(unreadChanges[0].0 == id && unreadChanges[0].1 == true)
         #expect(unreadChanges[1].0 == id && unreadChanges[1].1 == false)
+    }
+
+    @Test("concrete unread message IDs deduplicate and clear on read")
+    @MainActor
+    func concreteUnreadMessageCounts() {
+        let store = ConversationStore()
+        let peerID = PeerID(str: "peer-count")
+        let id = ConversationID.directPeer(peerID)
+
+        store.append(makeMessage(id: "m1", timestamp: 1, isPrivate: true), to: id)
+        store.append(makeMessage(id: "m2", timestamp: 2, isPrivate: true), to: id)
+
+        #expect(!store.recordUnreadMessage("missing", in: id))
+        #expect(store.recordUnreadMessage("m1", in: id))
+        #expect(!store.recordUnreadMessage("m1", in: id))
+        #expect(store.recordUnreadMessage("m2", in: id))
+        #expect(store.unreadMessageCount(for: id) == 2)
+        #expect(store.unreadConversations == [id])
+
+        store.markRead(id)
+        #expect(store.unreadMessageCount(for: id) == 0)
+        #expect(!store.conversation(for: id).isUnread)
+    }
+
+    @Test("alias unread counts union overlapping message IDs")
+    @MainActor
+    func unreadCountUnionsAliasesAndSurvivesMigration() {
+        let store = ConversationStore()
+        let stablePeerID = PeerID(str: "peer-stable")
+        let ephemeralPeerID = PeerID(str: "peer-ephemeral")
+        let stable = ConversationID.directPeer(stablePeerID)
+        let ephemeral = ConversationID.directPeer(ephemeralPeerID)
+
+        for (messageID, timestamp) in [("m1", 1.0), ("m2", 2.0)] {
+            store.append(makeMessage(id: messageID, timestamp: timestamp, isPrivate: true), to: stable)
+            #expect(store.recordUnreadMessage(messageID, in: stable))
+        }
+        for (messageID, timestamp) in [("m2", 2.0), ("m3", 3.0)] {
+            store.append(makeMessage(id: messageID, timestamp: timestamp, isPrivate: true), to: ephemeral)
+            #expect(store.recordUnreadMessage(messageID, in: ephemeral))
+        }
+
+        let aliases = Set([stablePeerID, ephemeralPeerID])
+        // m2 is mirrored, while m1 and m3 live under only one alias each.
+        #expect(store.unreadMessageCount(forDirectPeerIDs: aliases) == 3)
+
+        store.migrateConversation(from: ephemeral, to: stable)
+        #expect(store.unreadMessageCount(for: stable) == 3)
+        #expect(store.unreadMessageCount(for: ephemeral) == 0)
+        #expect(store.unreadMessageCount(forDirectPeerIDs: aliases) == 3)
+
+        store.removeMessage(withID: "m2", from: stable)
+        #expect(store.unreadMessageCount(for: stable) == 2)
     }
 
     // MARK: - Selection

@@ -57,8 +57,6 @@ struct DeliveryStatusView: View {
 
     // MARK: - Computed Properties
 
-    private var textColor: Color { palette.primary }
-
     private var secondaryTextColor: Color { palette.secondary }
 
     // MARK: - Body
@@ -81,9 +79,9 @@ struct DeliveryStatusView: View {
                 .foregroundColor(secondaryTextColor.opacity(0.6))
 
         case .sending:
-            Image(systemName: "circle")
+            Image(systemName: "clock")
                 .font(.bitchatSystem(size: 10))
-                .foregroundColor(secondaryTextColor.opacity(0.6))
+                .foregroundColor(secondaryTextColor.opacity(0.8))
 
         case .sent:
             Image(systemName: "checkmark")
@@ -98,26 +96,27 @@ struct DeliveryStatusView: View {
         case .delivered:
             HStack(spacing: -2) {
                 Image(systemName: "checkmark")
-                    .font(.bitchatSystem(size: 10))
+                    .font(.bitchatSystem(size: 10, weight: .semibold))
                 Image(systemName: "checkmark")
-                    .font(.bitchatSystem(size: 10))
+                    .font(.bitchatSystem(size: 10, weight: .semibold))
             }
-            .foregroundColor(textColor.opacity(0.8))
+            .foregroundColor(secondaryTextColor.opacity(0.9))
 
         case .read:
-            // Filled variant so read vs delivered is legible without color.
-            HStack(spacing: 0) {
-                Image(systemName: "checkmark.circle.fill")
-                    .font(.bitchatSystem(size: 9, weight: .bold))
-                Image(systemName: "checkmark.circle.fill")
-                    .font(.bitchatSystem(size: 9, weight: .bold))
+            // Same double-check silhouette as delivered; blue is the familiar
+            // WhatsApp-style read receipt and avoids a shape jump.
+            HStack(spacing: -2) {
+                Image(systemName: "checkmark")
+                    .font(.bitchatSystem(size: 10, weight: .bold))
+                Image(systemName: "checkmark")
+                    .font(.bitchatSystem(size: 10, weight: .bold))
             }
             .foregroundColor(palette.accentBlue)
 
         case .failed:
             Image(systemName: "exclamationmark.triangle")
                 .font(.bitchatSystem(size: 10))
-                .foregroundColor(Color.red.opacity(0.8))
+                .foregroundColor(palette.alertRed)
 
         case .partiallyDelivered(let reached, let total):
             HStack(spacing: 1) {

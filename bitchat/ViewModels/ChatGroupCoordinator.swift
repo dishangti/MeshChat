@@ -46,6 +46,8 @@ protocol ChatGroupContext: AnyObject {
     // MARK: Conversation intents (group chats are direct-keyed)
     @discardableResult
     func appendPrivateMessage(_ message: BitchatMessage, to peerID: PeerID) -> Bool
+    @discardableResult
+    func recordUnreadPrivateMessage(_ messageID: String, in peerID: PeerID) -> Bool
     func markPrivateChatUnread(_ peerID: PeerID)
     func removePrivateChat(_ peerID: PeerID)
     func startPrivateChat(with peerID: PeerID)
@@ -450,7 +452,7 @@ final class ChatGroupCoordinator {
 
         let isViewing = context.selectedPrivateChatPeer == groupPeerID
         if !isViewing {
-            context.markPrivateChatUnread(groupPeerID)
+            context.recordUnreadPrivateMessage(message.id, in: groupPeerID)
             let isRecent = Date().timeIntervalSince(messageDate) < 30
             if isRecent {
                 context.notifyPrivateMessage(

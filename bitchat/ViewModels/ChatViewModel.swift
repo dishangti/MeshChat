@@ -659,6 +659,13 @@ final class ChatViewModel: ObservableObject, BitchatDelegate, SynchronousMessage
         conversations.markUnread(.directPeer(peerID))
     }
 
+    /// Records one concrete unread private message for numeric list badges.
+    @MainActor
+    @discardableResult
+    func recordUnreadPrivateMessage(_ messageID: String, in peerID: PeerID) -> Bool {
+        conversations.recordUnreadMessage(messageID, in: .directPeer(peerID))
+    }
+
     /// Clears the peer's unread flag (store unread state only; read-receipt
     /// sending stays in `PrivateChatManager.markAsRead`).
     @MainActor
@@ -2209,6 +2216,20 @@ final class ChatViewModel: ObservableObject, BitchatDelegate, SynchronousMessage
     @MainActor
     func formatMessageAsText(_ message: BitchatMessage, colorScheme: ColorScheme, theme: AppTheme? = nil) -> AttributedString {
         messageFormatter.formatMessageAsText(message, colorScheme: colorScheme, theme: theme ?? currentTheme)
+    }
+
+    @MainActor
+    func formatMessageContent(
+        _ message: BitchatMessage,
+        colorScheme: ColorScheme,
+        theme: AppTheme? = nil
+    ) -> AttributedString {
+        messageFormatter.formatMessageAsText(
+            message,
+            colorScheme: colorScheme,
+            theme: theme ?? currentTheme,
+            presentation: .bubble
+        )
     }
 
     @MainActor

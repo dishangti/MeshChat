@@ -37,6 +37,8 @@ protocol ChatPrivateConversationContext: AnyObject {
     /// message is unknown or the update would downgrade the status.
     @discardableResult
     func setPrivateDeliveryStatus(_ status: DeliveryStatus, forMessageID messageID: String, peerID: PeerID) -> Bool
+    @discardableResult
+    func recordUnreadPrivateMessage(_ messageID: String, in peerID: PeerID) -> Bool
     func markPrivateChatUnread(_ peerID: PeerID)
     func markPrivateChatRead(_ peerID: PeerID)
     /// Moves all messages from `oldPeerID`'s chat into `newPeerID`'s chat
@@ -591,7 +593,7 @@ final class ChatPrivateConversationCoordinator {
         let isRecentMessage = Date().timeIntervalSince(messageTimestamp) < 30
         let shouldMarkUnread = !wasReadBefore && !isViewing && isRecentMessage
         if shouldMarkUnread {
-            context.markPrivateChatUnread(conversationPeerID)
+            context.recordUnreadPrivateMessage(messageId, in: conversationPeerID)
         }
 
         if isViewing {
@@ -733,7 +735,7 @@ final class ChatPrivateConversationCoordinator {
             context.sendMeshReadReceipt(receipt, to: peerID)
             context.markReadReceiptSent(message.id)
         } else {
-            context.markPrivateChatUnread(peerID)
+            context.recordUnreadPrivateMessage(message.id, in: peerID)
             context.notifyPrivateMessage(from: message.sender, message: message.content, peerID: peerID)
         }
 

@@ -49,10 +49,14 @@ struct GroupChatList: View {
 
                         Spacer()
 
-                        if group.hasUnread {
-                            Image(systemName: "envelope.fill")
-                                .font(.bitchatSystem(size: 10))
-                                .foregroundColor(.orange)
+                        if group.unreadMessageCount > 0 {
+                            Text(verbatim: group.unreadMessageCount > 99 ? "99+" : "\(group.unreadMessageCount)")
+                                .font(.system(size: 10, weight: .bold, design: .rounded))
+                                .foregroundColor(.white)
+                                .padding(.horizontal, group.unreadMessageCount > 9 ? 5 : 0)
+                                .frame(minWidth: 20, minHeight: 20)
+                                .background(Capsule().fill(palette.accent))
+                                .fixedSize()
                                 .help(Strings.newMessagesTooltip)
                         }
                     }
@@ -75,7 +79,9 @@ struct GroupChatList: View {
             String(format: Strings.memberCountFormat, locale: .current, "\(group.memberCount)")
         ]
         if group.isCreator { parts.append(Strings.creator) }
-        if group.hasUnread { parts.append(Strings.unread) }
+        if group.unreadMessageCount > 0 {
+            parts.append("\(Strings.unread): \(group.unreadMessageCount)")
+        }
         return parts.joined(separator: ", ")
     }
 }

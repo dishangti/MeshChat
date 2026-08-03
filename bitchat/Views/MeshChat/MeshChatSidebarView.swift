@@ -4,6 +4,15 @@ import BitFoundation
 import Foundation
 import SwiftUI
 
+enum MeshChatSidebarSelection {
+    static func showsPublicChannel(
+        showsConversationSelection: Bool,
+        activePeerID: PeerID?
+    ) -> Bool {
+        showsConversationSelection && activePeerID == nil
+    }
+}
+
 /// A conversation-first sidebar for the MeshChat shell.
 ///
 /// This view intentionally owns presentation only. Channel selection is
@@ -14,6 +23,7 @@ struct MeshChatSidebarView: View {
     @EnvironmentObject private var appChromeModel: AppChromeModel
     @EnvironmentObject private var locationChannelsModel: LocationChannelsModel
     @EnvironmentObject private var peerListModel: PeerListModel
+    @EnvironmentObject private var publicChatModel: PublicChatModel
     @EnvironmentObject private var privateInboxModel: PrivateInboxModel
     @EnvironmentObject private var privateConversationModel: PrivateConversationModel
     @EnvironmentObject private var conversationUIModel: ConversationUIModel
@@ -39,6 +49,13 @@ struct MeshChatSidebarView: View {
     let onOpenVerification: () -> Void
     let onPanic: () -> Void
     var onDeleteActiveRecent: () -> Void = {}
+
+    private var showsPublicChannelSelection: Bool {
+        MeshChatSidebarSelection.showsPublicChannel(
+            showsConversationSelection: showsConversationSelection,
+            activePeerID: activePeerID
+        )
+    }
 
     private enum Strings {
         static var people: String {
@@ -591,8 +608,11 @@ private extension MeshChatSidebarView {
                     title: Strings.mesh,
                     subtitle: nil,
                     icon: "antenna.radiowaves.left.and.right",
-                    count: peerListModel.reachableMeshPeerCount,
-                    isSelected: showsConversationSelection && locationChannelsModel.selectedChannel.isMesh
+                    peopleCount: peerListModel.reachableMeshPeerCount
+                        + bridgeService.bridgedPeerCount,
+                    messageCount: publicChatModel.unreadMessageCount(for: .mesh),
+                    isSelected: showsPublicChannelSelection
+                        && locationChannelsModel.selectedChannel.isMesh
                 ) {
                     openChannel(.mesh)
                 }
@@ -604,8 +624,11 @@ private extension MeshChatSidebarView {
                     title: "#\(channel.geohash)",
                     subtitle: channel.level.displayName,
                     icon: "number",
-                    count: peerListModel.participantCount(for: channel.geohash),
-                    isSelected: showsConversationSelection
+                    peopleCount: peerListModel.participantCount(for: channel.geohash),
+                    messageCount: publicChatModel.unreadMessageCount(
+                        for: .location(channel)
+                    ),
+                    isSelected: showsPublicChannelSelection
                 ) {
                     openChannel(.location(channel))
                 }
@@ -614,11 +637,15 @@ private extension MeshChatSidebarView {
             if !filteredBookmarks.isEmpty {
                 sidebarSubsectionLabel(Strings.bookmarks)
                 ForEach(filteredBookmarks, id: \.self) { geohash in
+                    let channel = geohashChannel(for: geohash)
                     channelRow(
                         title: "#\(geohash)",
                         subtitle: locationChannelsModel.bookmarkNames[geohash],
                         icon: "bookmark.fill",
-                        count: peerListModel.participantCount(for: geohash),
+                        peopleCount: peerListModel.participantCount(for: geohash),
+                        messageCount: publicChatModel.unreadMessageCount(
+                            for: .location(channel)
+                        ),
                         isSelected: isSelected(geohash: geohash)
                     ) {
                         openBookmarkedChannel(geohash)
@@ -722,7 +749,8 @@ private extension MeshChatSidebarView {
         title: String,
         subtitle: String?,
         icon: String,
-        count: Int,
+        peopleCount: Int,
+        messageCount: Int,
         isSelected: Bool,
         action: @escaping () -> Void
     ) -> some View {
@@ -744,19 +772,20 @@ private extension MeshChatSidebarView {
                         .bitchatFont(size: 14, weight: isSelected ? .semibold : .regular)
                         .foregroundColor(palette.primary)
                         .lineLimit(1)
-                    if let subtitle, !subtitle.isEmpty {
-                        Text(verbatim: subtitle)
-                            .bitchatFont(size: 11)
-                            .foregroundColor(palette.secondary)
-                            .lineLimit(1)
+                    HStack(spacing: 8) {
+                        if let subtitle, !subtitle.isEmpty {
+                            Text(verbatim: subtitle)
+                                .lineLimit(1)
+                        }
+                        channelPeopleMetric(peopleCount)
+                        channelMessageMetric(messageCount)
                     }
+                    .bitchatFont(size: 11)
+                    .foregroundColor(palette.secondary)
                 }
 
                 Spacer(minLength: 8)
 
-                if count > 0 {
-                    countBadge(count, emphasized: false)
-                }
                 if isSelected {
                     Image(systemName: "checkmark")
                         .font(.bitchatSystem(size: 11, weight: .bold))
@@ -770,12 +799,27 @@ private extension MeshChatSidebarView {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .accessibilityLabel(channelAccessibilityLabel(title: title, subtitle: subtitle, count: count))
+        .accessibilityLabel(
+            channelAccessibilityLabel(
+                title: title,
+                subtitle: subtitle,
+                peopleCount: peopleCount,
+                messageCount: messageCount
+            )
+        )
         .accessibilityAddTraits(isSelected ? .isSelected : [])
     }
 
     func groupRow(_ group: GroupChatRow) -> some View {
-        let hasUnread = group.hasUnread || privateInboxModel.unreadPeerIDs.contains(group.peerID)
+        let reportedUnread = group.hasUnread
+            || privateInboxModel.unreadPeerIDs.contains(group.peerID)
+        let unreadCount = max(
+            max(
+                group.unreadMessageCount,
+                privateInboxModel.unreadMessageCount(for: group.peerID)
+            ),
+            reportedUnread ? 1 : 0
+        )
         let isSelected = showsConversationSelection && activePeerID == group.peerID
 
         return Button {
@@ -794,7 +838,7 @@ private extension MeshChatSidebarView {
                 VStack(alignment: .leading, spacing: 3) {
                     HStack(spacing: 5) {
                         Text(verbatim: "#\(group.name)")
-                            .bitchatFont(size: 14, weight: hasUnread ? .semibold : .regular)
+                            .bitchatFont(size: 14, weight: unreadCount > 0 ? .semibold : .regular)
                             .foregroundColor(palette.primary)
                             .lineLimit(1)
                         if group.isCreator {
@@ -811,8 +855,8 @@ private extension MeshChatSidebarView {
 
                 Spacer(minLength: 8)
 
-                if hasUnread {
-                    unreadBadge
+                if unreadCount > 0 {
+                    unreadBadge(unreadCount)
                 }
             }
             .padding(.horizontal, 12)
@@ -821,13 +865,20 @@ private extension MeshChatSidebarView {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .accessibilityLabel(groupAccessibilityLabel(group, hasUnread: hasUnread))
+        .accessibilityLabel(groupAccessibilityLabel(group, unreadCount: unreadCount))
         .accessibilityHint(AppLanguageSettings.localized("groups.accessibility.open_group_hint"))
         .accessibilityAddTraits(isSelected ? .isSelected : [])
     }
 
     func peerRow(_ peer: MeshPeerRow) -> some View {
-        let hasUnread = peerHasUnread(peer)
+        let reportedUnread = peerHasUnread(peer)
+        let unreadCount = max(
+            max(
+                peer.unreadMessageCount,
+                privateInboxModel.unreadMessageCount(for: peer.conversationPeerIDs)
+            ),
+            reportedUnread ? 1 : 0
+        )
         let isSelected = showsConversationSelection && activePeerID == peer.peerID
         let peerColor = peerListModel.colorForMeshPeer(
             id: peer.peerID,
@@ -849,7 +900,7 @@ private extension MeshChatSidebarView {
 
                 VStack(alignment: .leading, spacing: 3) {
                     Text(verbatim: peer.displayName)
-                        .bitchatFont(size: 14, weight: hasUnread ? .semibold : .regular)
+                        .bitchatFont(size: 14, weight: unreadCount > 0 ? .semibold : .regular)
                         .foregroundColor(palette.primary)
                         .lineLimit(1)
                         .truncationMode(.middle)
@@ -865,7 +916,7 @@ private extension MeshChatSidebarView {
                 }
 
                 Spacer(minLength: 6)
-                peerStatusBadges(peer, hasUnread: hasUnread)
+                peerStatusBadges(peer, unreadCount: unreadCount)
             }
             .padding(.horizontal, 12)
             .frame(minHeight: 56)
@@ -909,7 +960,7 @@ private extension MeshChatSidebarView {
             }
         }
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel(peerAccessibilityLabel(peer, hasUnread: hasUnread))
+        .accessibilityLabel(peerAccessibilityLabel(peer, unreadCount: unreadCount))
         .accessibilityHint(Strings.openDMHint)
         .accessibilityAddTraits(isSelected ? [.isButton, .isSelected] : .isButton)
         .accessibilityAction {
@@ -948,7 +999,16 @@ private extension MeshChatSidebarView {
     }
 
     func recentPeerRow(_ peer: RecentMeshPeerRow) -> some View {
-        let hasUnread = recentPeerHasUnread(peer)
+        let reportedUnread = recentPeerHasUnread(peer)
+        let unreadCount = max(
+            max(
+                peer.unreadMessageCount,
+                privateInboxModel.unreadMessageCount(
+                    for: [peer.stablePeerID] + peer.conversationPeerIDs
+                )
+            ),
+            reportedUnread ? 1 : 0
+        )
         let isSelected = showsConversationSelection
             && (activePeerID.map(peer.conversationPeerIDs.contains) == true
                 || activePeerID?.toShort() == peer.stablePeerID.toShort())
@@ -972,7 +1032,7 @@ private extension MeshChatSidebarView {
 
                 VStack(alignment: .leading, spacing: 3) {
                     Text(verbatim: peer.displayName)
-                        .bitchatFont(size: 14, weight: hasUnread ? .semibold : .regular)
+                        .bitchatFont(size: 14, weight: unreadCount > 0 ? .semibold : .regular)
                         .foregroundColor(palette.primary)
                         .lineLimit(1)
                         .truncationMode(.middle)
@@ -994,8 +1054,8 @@ private extension MeshChatSidebarView {
 
                 Spacer(minLength: 6)
                 HStack(spacing: 5) {
-                    if hasUnread {
-                        unreadBadge
+                    if unreadCount > 0 {
+                        unreadBadge(unreadCount)
                     }
                     Image(systemName: peer.identityLockState.icon)
                         .font(.bitchatSystem(size: 11))
@@ -1052,7 +1112,7 @@ private extension MeshChatSidebarView {
             }
         }
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel(recentPeerAccessibilityLabel(peer, hasUnread: hasUnread))
+        .accessibilityLabel(recentPeerAccessibilityLabel(peer, unreadCount: unreadCount))
         .accessibilityHint(Strings.openDMHint)
         .accessibilityAddTraits(isSelected ? [.isButton, .isSelected] : .isButton)
         .accessibilityAction {
@@ -1091,6 +1151,12 @@ private extension MeshChatSidebarView {
     }
 
     func geohashPersonRow(_ person: GeohashPersonRow) -> some View {
+        let unreadCount = person.isMe ? 0 : max(
+            person.unreadMessageCount,
+            privateInboxModel.unreadMessageCount(
+                for: PeerID(nostr_: person.id)
+            )
+        )
         let personColor = peerListModel.colorForGeohashPerson(
             id: person.id,
             isDark: colorScheme == .dark
@@ -1121,7 +1187,10 @@ private extension MeshChatSidebarView {
 
                 VStack(alignment: .leading, spacing: 3) {
                     Text(verbatim: person.displayName)
-                        .bitchatFont(size: 14, weight: person.isMe ? .semibold : .regular)
+                        .bitchatFont(
+                            size: 14,
+                            weight: person.isMe || unreadCount > 0 ? .semibold : .regular
+                        )
                         .foregroundColor(palette.primary)
                         .lineLimit(1)
                         .truncationMode(.middle)
@@ -1132,6 +1201,10 @@ private extension MeshChatSidebarView {
                 }
 
                 Spacer(minLength: 8)
+
+                if unreadCount > 0 {
+                    unreadBadge(unreadCount)
+                }
 
                 if person.isBlocked {
                     Image(systemName: "nosign")
@@ -1163,7 +1236,9 @@ private extension MeshChatSidebarView {
                 }
             }
         }
-        .accessibilityLabel(geohashPersonAccessibilityLabel(person))
+        .accessibilityLabel(
+            geohashPersonAccessibilityLabel(person, unreadCount: unreadCount)
+        )
         .accessibilityHint(person.isMe ? "" : Strings.openDMHint)
         .accessibilityActions {
             if !person.isMe {
@@ -1189,10 +1264,10 @@ private extension MeshChatSidebarView {
 
 private extension MeshChatSidebarView {
     @ViewBuilder
-    func peerStatusBadges(_ peer: MeshPeerRow, hasUnread: Bool) -> some View {
+    func peerStatusBadges(_ peer: MeshPeerRow, unreadCount: Int) -> some View {
         HStack(spacing: 5) {
-            if hasUnread {
-                unreadBadge
+            if unreadCount > 0 {
+                unreadBadge(unreadCount)
             }
 
             Image(systemName: peer.identityLockState.icon)
@@ -1223,26 +1298,43 @@ private extension MeshChatSidebarView {
         }
     }
 
-    var unreadBadge: some View {
-        Image(systemName: "envelope.fill")
-            .font(.bitchatSystem(size: 10, weight: .semibold))
-            .foregroundColor(.orange)
-            .padding(5)
-            .background(Circle().fill(Color.orange.opacity(0.13)))
+    func unreadBadge(_ count: Int) -> some View {
+        Text(verbatim: count > 99 ? "99+" : "\(count)")
+            .font(.system(size: 10, weight: .bold, design: .rounded))
+            .foregroundColor(.white)
+            .padding(.horizontal, count > 9 ? 5 : 0)
+            .frame(minWidth: 20, minHeight: 20)
+            .background(Capsule().fill(palette.accent))
+            .fixedSize()
             .accessibilityHidden(true)
     }
 
-    func countBadge(_ count: Int, emphasized: Bool) -> some View {
-        Text(verbatim: "\(count)")
-            .bitchatFont(size: 11, weight: emphasized ? .bold : .medium)
-            .foregroundColor(emphasized ? Color.white : palette.secondary)
-            .padding(.horizontal, 7)
-            .padding(.vertical, 3)
+    func channelPeopleMetric(_ count: Int) -> some View {
+        HStack(spacing: 3) {
+            Image(systemName: "person.2")
+                .font(.bitchatSystem(size: 9, weight: .medium))
+            Text(verbatim: "\(count)")
+        }
+        .fixedSize()
+    }
+
+    @ViewBuilder
+    func channelMessageMetric(_ count: Int) -> some View {
+        if count > 0 {
+            HStack(spacing: 3) {
+                Image(systemName: "bubble.left.fill")
+                    .font(.bitchatSystem(size: 9, weight: .semibold))
+                Text(verbatim: "\(count)")
+                    .bitchatFont(size: 11, weight: .semibold)
+            }
+            .foregroundColor(palette.accent)
+            .padding(.horizontal, 6)
+            .padding(.vertical, 2)
             .background(
-                Capsule().fill(
-                    emphasized ? Color.orange : palette.secondary.opacity(0.12)
-                )
+                Capsule().fill(palette.accent.opacity(0.11))
             )
+            .fixedSize()
+        }
     }
 
     func availabilityText(for peer: MeshPeerRow) -> String {
@@ -1499,11 +1591,13 @@ private extension MeshChatSidebarView {
     }
 
     func peerHasUnread(_ peer: MeshPeerRow) -> Bool {
-        peer.hasUnread || privateInboxModel.unreadPeerIDs.contains(peer.peerID)
+        peer.hasUnread || peer.conversationPeerIDs.contains {
+            privateInboxModel.unreadPeerIDs.contains($0)
+        }
     }
 
     func isSelected(geohash: String) -> Bool {
-        guard showsConversationSelection else { return false }
+        guard showsPublicChannelSelection else { return false }
         guard case .location(let channel) = locationChannelsModel.selectedChannel else {
             return false
         }
@@ -1564,33 +1658,47 @@ private extension MeshChatSidebarView {
         )
     }
 
-    func channelAccessibilityLabel(title: String, subtitle: String?, count: Int) -> String {
+    func channelAccessibilityLabel(
+        title: String,
+        subtitle: String?,
+        peopleCount: Int,
+        messageCount: Int
+    ) -> String {
         var parts = [title]
         if let subtitle, !subtitle.isEmpty { parts.append(subtitle) }
-        if count > 0 { parts.append("\(count)") }
+        let peopleFormat = AppLanguageSettings.localized(
+            "content.accessibility.people_count",
+            comment: "Accessibility label announcing number of people in a channel"
+        )
+        parts.append(
+            String(format: peopleFormat, locale: .current, peopleCount)
+        )
+        if messageCount > 0 {
+            parts.append("💬 \(messageCount)")
+        }
         return parts.joined(separator: ", ")
     }
 
-    func groupAccessibilityLabel(_ group: GroupChatRow, hasUnread: Bool) -> String {
+    func groupAccessibilityLabel(_ group: GroupChatRow, unreadCount: Int) -> String {
         var parts = [group.name, groupMemberCount(group.memberCount)]
         if group.isCreator { parts.append(Strings.creator) }
-        if hasUnread { parts.append(Strings.unread) }
+        if unreadCount > 0 { parts.append(unreadAccessibilityText(unreadCount)) }
         return parts.joined(separator: ", ")
     }
 
-    func peerAccessibilityLabel(_ peer: MeshPeerRow, hasUnread: Bool) -> String {
+    func peerAccessibilityLabel(_ peer: MeshPeerRow, unreadCount: Int) -> String {
         var parts = [peer.displayName, availabilityText(for: peer)]
         parts.append(peer.identityLockState.accessibilityDescription)
         if peer.showsVouchedBadge { parts.append(Strings.vouched) }
         if peer.isFavorite { parts.append(Strings.favorite) }
-        if hasUnread { parts.append(Strings.unread) }
+        if unreadCount > 0 { parts.append(unreadAccessibilityText(unreadCount)) }
         if peer.isBlocked { parts.append(Strings.blocked) }
         return parts.joined(separator: ", ")
     }
 
     func recentPeerAccessibilityLabel(
         _ peer: RecentMeshPeerRow,
-        hasUnread: Bool
+        unreadCount: Int
     ) -> String {
         var parts = [
             peer.displayName,
@@ -1598,16 +1706,24 @@ private extension MeshChatSidebarView {
             Strings.recent
         ]
         parts.append(peer.identityLockState.accessibilityDescription)
-        if hasUnread { parts.append(Strings.unread) }
+        if unreadCount > 0 { parts.append(unreadAccessibilityText(unreadCount)) }
         if peer.isBlocked { parts.append(Strings.blocked) }
         return parts.joined(separator: ", ")
     }
 
-    func geohashPersonAccessibilityLabel(_ person: GeohashPersonRow) -> String {
+    func geohashPersonAccessibilityLabel(
+        _ person: GeohashPersonRow,
+        unreadCount: Int
+    ) -> String {
         var parts = [person.displayName]
         if person.isMe { parts.append(Strings.you) }
         parts.append(person.isTeleported ? Strings.teleported : Strings.nearby)
+        if unreadCount > 0 { parts.append(unreadAccessibilityText(unreadCount)) }
         if person.isBlocked { parts.append(Strings.blocked) }
         return parts.joined(separator: ", ")
+    }
+
+    func unreadAccessibilityText(_ count: Int) -> String {
+        "\(Strings.unread): \(count)"
     }
 }

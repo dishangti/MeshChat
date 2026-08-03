@@ -2,6 +2,11 @@ import BitFoundation
 import Foundation
 import SwiftUI
 
+enum MessageTextPresentation: String {
+    case transcript
+    case bubble
+}
+
 @MainActor
 final class ChatMessageFormatter {
     typealias Patterns = MessageFormattingEngine.Patterns
@@ -14,67 +19,55 @@ final class ChatMessageFormatter {
         self.viewModel = viewModel
     }
 
-    func formatMessageAsText(_ message: BitchatMessage, colorScheme: ColorScheme, theme: AppTheme = .defaultTheme) -> AttributedString {
+    func formatMessageAsText(
+        _ message: BitchatMessage,
+        colorScheme: ColorScheme,
+        theme: AppTheme = .defaultTheme,
+        presentation: MessageTextPresentation = .transcript
+    ) -> AttributedString {
         let design = theme.bodyFontDesign
-        let isSelf: Bool = {
-            if let spid = message.senderPeerID {
-                if case .location(let channel) = viewModel.activeChannel, spid.isGeoChat {
-                    let myGeo: NostrIdentity? = {
-                        if let cached = viewModel.cachedGeohashIdentity, cached.geohash == channel.geohash {
-                            return cached.identity
-                        }
-                        if let identity = try? viewModel.idBridge.deriveIdentity(forGeohash: channel.geohash) {
-                            viewModel.cachedGeohashIdentity = (channel.geohash, identity)
-                            return identity
-                        }
-                        return nil
-                    }()
-                    if let myGeo {
-                        return spid == PeerID(nostr: myGeo.publicKeyHex)
-                    }
-                }
-                return spid == viewModel.meshService.myPeerID
-            }
-            if message.sender == viewModel.nickname { return true }
-            if message.sender.hasPrefix(viewModel.nickname + "#") { return true }
-            return false
-        }()
+        let isSelf = isSelfMessage(message)
 
         let isDark = colorScheme == .dark
         let isVerifiedSender = !isSelf && isVerifiedSender(of: message)
-        let cacheVariant = theme.formatCacheVariant + (isVerifiedSender ? "-vf" : "")
+        let cacheVariant = theme.formatCacheVariant
+            + "\(presentation.rawValue):"
+            + (isVerifiedSender ? "-vf" : "")
         if let cachedText = message.getCachedFormattedText(isDark: isDark, isSelf: isSelf, variant: cacheVariant) {
             return cachedText
         }
 
         var result = AttributedString()
-        let baseColor: Color = isSelf ? .orange : peerColor(for: message, isDark: isDark)
+        let semanticPalette = theme.palette(for: colorScheme)
+        let baseColor: Color = presentation == .bubble
+            ? semanticPalette.primary
+            : (isSelf ? .orange : peerColor(for: message, isDark: isDark))
+        let emphasizesSelf = isSelf && presentation == .transcript
 
         if message.sender != "system" {
-            let (baseName, suffix) = message.sender.splitSuffix()
-            var senderStyle = AttributeContainer()
-            senderStyle.foregroundColor = baseColor
-            let fontWeight: Font.Weight = isSelf ? .bold : .medium
-            senderStyle.font = .bitchatSystem(size: 14, weight: fontWeight, design: design)
-            if let spid = message.senderPeerID,
-               let url = URL(string: "bitchat://user/\(spid.toPercentEncoded())") {
-                senderStyle.link = url
-            }
+            if presentation == .transcript {
+                let (baseName, suffix) = message.sender.splitSuffix()
+                var senderStyle = AttributeContainer()
+                senderStyle.foregroundColor = baseColor
+                let fontWeight: Font.Weight = isSelf ? .bold : .medium
+                senderStyle.font = .bitchatSystem(size: 14, weight: fontWeight, design: design)
+                if let spid = message.senderPeerID,
+                   let url = URL(string: "bitchat://user/\(spid.toPercentEncoded())") {
+                    senderStyle.link = url
+                }
 
-            result.append(AttributedString("<@").mergingAttributes(senderStyle))
-            result.append(AttributedString(baseName).mergingAttributes(senderStyle))
-            if !suffix.isEmpty {
-                var suffixStyle = senderStyle
-                suffixStyle.foregroundColor = baseColor.opacity(0.6)
-                result.append(AttributedString(suffix).mergingAttributes(suffixStyle))
+                result.append(AttributedString("<@").mergingAttributes(senderStyle))
+                result.append(AttributedString(baseName).mergingAttributes(senderStyle))
+                if !suffix.isEmpty {
+                    var suffixStyle = senderStyle
+                    suffixStyle.foregroundColor = baseColor.opacity(0.6)
+                    result.append(AttributedString(suffix).mergingAttributes(suffixStyle))
+                }
+                if isVerifiedSender, !message.isPrivate {
+                    appendVerifiedSeal(to: &result, baseColor: baseColor, design: design)
+                }
+                result.append(AttributedString("> ").mergingAttributes(senderStyle))
             }
-            // Private rows render a filled SF Symbol seal beside the lock
-            // (TextMessageView / MediaMessageView); skip the in-string ✓ there
-            // so verified DMs don't show two markers.
-            if isVerifiedSender, !message.isPrivate {
-                appendVerifiedSeal(to: &result, baseColor: baseColor, design: design)
-            }
-            result.append(AttributedString("> ").mergingAttributes(senderStyle))
 
             let content = message.content
             let nsContent = content as NSString
@@ -83,7 +76,7 @@ final class ChatMessageFormatter {
             if content.isOversizedForRichFormatting() {
                 var plainStyle = AttributeContainer()
                 plainStyle.foregroundColor = baseColor
-                plainStyle.font = isSelf
+                plainStyle.font = emphasizesSelf
                     ? .bitchatSystem(size: 14, weight: .bold, design: design)
                     : .bitchatSystem(size: 14, design: design)
                 result.append(AttributedString(content).mergingAttributes(plainStyle))
@@ -202,7 +195,7 @@ final class ChatMessageFormatter {
                         if !beforeText.isEmpty {
                             var beforeStyle = AttributeContainer()
                             beforeStyle.foregroundColor = baseColor
-                            beforeStyle.font = isSelf
+                            beforeStyle.font = emphasizesSelf
                                 ? .bitchatSystem(size: 14, weight: .bold, design: design)
                                 : .bitchatSystem(size: 14, design: design)
                             if isMentioned {
@@ -235,10 +228,12 @@ final class ChatMessageFormatter {
                         var mentionStyle = AttributeContainer()
                         mentionStyle.font = .bitchatSystem(
                             size: 14,
-                            weight: isSelf ? .bold : .semibold,
+                            weight: emphasizesSelf ? .bold : .semibold,
                             design: design
                         )
-                        let mentionColor: Color = isMentionToMe ? .orange : baseColor
+                        let mentionColor: Color = isMentionToMe
+                            ? (presentation == .bubble ? semanticPalette.accent : .orange)
+                            : baseColor
                         mentionStyle.foregroundColor = mentionColor
                         let at = "@"
                         result.append(AttributedString("\(at)").mergingAttributes(mentionStyle))
@@ -272,7 +267,7 @@ final class ChatMessageFormatter {
                         }()
 
                         var tagStyle = AttributeContainer()
-                        tagStyle.font = isSelf
+                        tagStyle.font = emphasizesSelf
                             ? .bitchatSystem(size: 14, weight: .bold, design: design)
                             : .bitchatSystem(size: 14, design: design)
                         tagStyle.foregroundColor = baseColor
@@ -285,7 +280,7 @@ final class ChatMessageFormatter {
                     } else if type == "cashu" || type == "lightning" || type == "bolt11" || type == "lnurl" {
                         var spacer = AttributeContainer()
                         spacer.foregroundColor = baseColor
-                        spacer.font = isSelf
+                        spacer.font = emphasizesSelf
                             ? .bitchatSystem(size: 14, weight: .bold, design: design)
                             : .bitchatSystem(size: 14, design: design)
                         result.append(AttributedString(" ").mergingAttributes(spacer))
@@ -293,11 +288,13 @@ final class ChatMessageFormatter {
                         var matchStyle = AttributeContainer()
                         matchStyle.font = .bitchatSystem(
                             size: 14,
-                            weight: isSelf ? .bold : .semibold,
+                            weight: emphasizesSelf ? .bold : .semibold,
                             design: design
                         )
                         if type == "url" {
-                            matchStyle.foregroundColor = isSelf ? .orange : .blue
+                            matchStyle.foregroundColor = presentation == .bubble
+                                ? semanticPalette.accentBlue
+                                : (isSelf ? .orange : .blue)
                             matchStyle.underlineStyle = .single
                             if let url = URL(string: matchText) {
                                 matchStyle.link = url
@@ -315,7 +312,7 @@ final class ChatMessageFormatter {
                     let remainingText = String(content[lastEnd...])
                     var remainingStyle = AttributeContainer()
                     remainingStyle.foregroundColor = baseColor
-                    remainingStyle.font = isSelf
+                    remainingStyle.font = emphasizesSelf
                         ? .bitchatSystem(size: 14, weight: .bold, design: design)
                         : .bitchatSystem(size: 14, design: design)
                     if isMentioned {
@@ -325,11 +322,13 @@ final class ChatMessageFormatter {
                 }
             }
 
-            let timestamp = AttributedString(" [\(message.formattedTimestamp)]")
-            var timestampStyle = AttributeContainer()
-            timestampStyle.foregroundColor = Color.gray.opacity(0.7)
-            timestampStyle.font = .bitchatSystem(size: 10, design: design)
-            result.append(timestamp.mergingAttributes(timestampStyle))
+            if presentation == .transcript {
+                let timestamp = AttributedString(" [\(message.formattedTimestamp)]")
+                var timestampStyle = AttributeContainer()
+                timestampStyle.foregroundColor = Color.gray.opacity(0.7)
+                timestampStyle.font = .bitchatSystem(size: 10, design: design)
+                result.append(timestamp.mergingAttributes(timestampStyle))
+            }
         } else {
             var contentStyle = AttributeContainer()
             contentStyle.foregroundColor = Color.gray

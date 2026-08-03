@@ -18,6 +18,7 @@ struct GeohashPeopleList: View {
         static var teleported: String { AppLanguageSettings.localized("geohash_people.state.teleported", comment: "State label for someone who joined the location channel from elsewhere") }
         static var nearby: String { AppLanguageSettings.localized("geohash_people.state.nearby", comment: "State label for someone physically in the location channel's area") }
         static var blockedState: String { AppLanguageSettings.localized("mesh_peers.state.blocked", comment: "State label for a blocked peer") }
+        static var unread: String { AppLanguageSettings.localized("mesh_peers.state.unread", comment: "State label for an unread conversation") }
         static var youState: String { AppLanguageSettings.localized("geohash_people.state.you", comment: "State label marking your own row in the people list") }
         static var openDMHint: String { AppLanguageSettings.localized("mesh_peers.accessibility.open_dm_hint", comment: "Accessibility hint on a peer row explaining activation opens a private chat") }
     }
@@ -87,6 +88,15 @@ struct GeohashPeopleList: View {
                                 .help(Strings.blockedTooltip)
                         }
                         Spacer()
+                        if person.unreadMessageCount > 0 {
+                            Text(verbatim: person.unreadMessageCount > 99 ? "99+" : "\(person.unreadMessageCount)")
+                                .font(.system(size: 10, weight: .bold, design: .rounded))
+                                .foregroundColor(.white)
+                                .padding(.horizontal, person.unreadMessageCount > 9 ? 5 : 0)
+                                .frame(minWidth: 20, minHeight: 20)
+                                .background(Capsule().fill(palette.accent))
+                                .fixedSize()
+                        }
                     }
                     .padding(.horizontal)
                     .padding(.vertical, 4)
@@ -160,6 +170,9 @@ struct GeohashPeopleList: View {
         var parts: [String] = [person.displayName]
         if person.isMe { parts.append(Strings.youState) }
         parts.append(person.isTeleported ? Strings.teleported : Strings.nearby)
+        if person.unreadMessageCount > 0 {
+            parts.append("\(Strings.unread): \(person.unreadMessageCount)")
+        }
         if person.isBlocked { parts.append(Strings.blockedState) }
         return parts.joined(separator: ", ")
     }

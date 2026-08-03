@@ -91,7 +91,7 @@ struct MessageListView: View {
                 if messageItems.isEmpty && privatePeer == nil {
                     publicEmptyState(fillHeight: geometry.size.height)
                 }
-                LazyVStack(alignment: .leading, spacing: 0) {
+                LazyVStack(alignment: .leading, spacing: 2) {
                     ForEach(messageItems) { item in
                         let message = item.message
                         messageRow(for: message)
@@ -163,10 +163,7 @@ struct MessageListView: View {
                                 }
                             }
                             .padding(.horizontal, 12)
-                            .padding(.vertical, 1)
-                            // Archived echoes read as one tinted block, not
-                            // just faded rows.
-                            .background(message.isArchivedEcho ? palette.secondary.opacity(0.08) : Color.clear)
+                            .padding(.vertical, 2)
                     }
                 }
                 .transaction { tx in if conversationUIModel.isBatchingPublic { tx.disablesAnimations = true } }
@@ -521,13 +518,23 @@ private extension MessageListView {
 
     @ViewBuilder
     func messageRow(for message: BitchatMessage) -> some View {
+        let showsSenderName = privatePeer == nil || privatePeer?.isGroup == true
+
         Group {
             if message.sender == "system" {
                 systemMessageRow(message)
             } else if let media = conversationUIModel.mediaAttachment(for: message) {
-                MediaMessageView(message: message, media: media, imagePreviewURL: $imagePreviewURL)
+                MediaMessageView(
+                    message: message,
+                    media: media,
+                    imagePreviewURL: $imagePreviewURL,
+                    showsSenderName: showsSenderName
+                )
             } else {
-                TextMessageView(message: message)
+                TextMessageView(
+                    message: message,
+                    showsSenderName: showsSenderName
+                )
             }
         }
         // Archived echoes ("heard here earlier") render dimmed: real history,
@@ -539,7 +546,13 @@ private extension MessageListView {
     func systemMessageRow(_ message: BitchatMessage) -> some View {
         Text(conversationUIModel.formatMessage(message, colorScheme: colorScheme, theme: theme))
             .fixedSize(horizontal: false, vertical: true)
-            .frame(maxWidth: .infinity, alignment: .leading)
+            .multilineTextAlignment(.center)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 5)
+            .background(
+                Capsule().fill(palette.secondary.opacity(0.08))
+            )
+            .frame(maxWidth: .infinity, alignment: .center)
     }
 
     func expandWindow(ifNeededFor message: BitchatMessage,

@@ -800,9 +800,44 @@ struct AppArchitectureTests {
         // Reads are synchronous against the single-writer store.
         #expect(inboxModel.selectedPeerID == selectedOnlyPeerID)
         #expect(inboxModel.unreadPeerIDs == Set([messagePeerID, unreadOnlyPeerID]))
+        #expect(inboxModel.unreadMessageCount(for: messagePeerID) == 1)
+        #expect(inboxModel.unreadMessageCount(for: unreadOnlyPeerID) == 1)
         #expect(inboxModel.messages(for: messagePeerID).map(\.id) == ["dm-1"])
         #expect(inboxModel.messages(for: unreadOnlyPeerID).isEmpty)
         #expect(inboxModel.messages(for: selectedOnlyPeerID).isEmpty)
+    }
+
+    @Test("PrivateInboxModel republishes when an unread badge increments")
+    @MainActor
+    func privateInboxModelPublishesUnreadCountChanges() {
+        let store = ConversationStore()
+        let inboxModel = PrivateInboxModel(conversations: store)
+        let peerID = PeerID(str: "peer-count")
+        let id = ConversationID.directPeer(peerID)
+
+        store.append(
+            makeArchitectureMessage(id: "dm-1", isPrivate: true, senderPeerID: peerID),
+            to: id
+        )
+        store.append(
+            makeArchitectureMessage(id: "dm-2", isPrivate: true, senderPeerID: peerID),
+            to: id
+        )
+
+        var emissions = 0
+        let cancellable = inboxModel.objectWillChange.sink { _ in emissions += 1 }
+        defer { cancellable.cancel() }
+
+        #expect(store.recordUnreadMessage("dm-1", in: id))
+        let afterFirstUnread = emissions
+        #expect(afterFirstUnread > 0)
+        #expect(store.recordUnreadMessage("dm-2", in: id))
+        #expect(emissions > afterFirstUnread)
+        #expect(inboxModel.unreadMessageCount(for: peerID) == 2)
+
+        store.markRead(id)
+        #expect(inboxModel.unreadMessageCount(for: peerID) == 0)
+        #expect(!inboxModel.unreadPeerIDs.contains(peerID))
     }
 
     @Test("PrivateInboxModel republishes only for the selected conversation")
@@ -875,7 +910,7 @@ struct AppArchitectureTests {
         }
     }
 
-    @Test("PublicChatModel ignores appends to background conversations")
+    @Test("PublicChatModel republishes background public counts but isolates private appends")
     @MainActor
     func publicChatModelIsolatesBackgroundConversations() {
         let store = ConversationStore()
@@ -891,14 +926,18 @@ struct AppArchitectureTests {
         #expect(afterActiveAppend >= 1)
         #expect(model.messages.map(\.id) == ["mesh-1"])
 
-        // Appends to a background geohash channel and to a private chat do
-        // not invalidate the observer of the active conversation.
+        // A background public append republishes the model so channel count
+        // metrics update, without retargeting the active message timeline.
         store.append(makeArchitectureMessage(id: "geo-1"), to: .geohash("u4pruyd"))
+        let afterBackgroundPublicAppend = emissions
+        #expect(afterBackgroundPublicAppend > afterActiveAppend)
+
+        // Private-chat mutations remain isolated from the public model.
         store.append(
             makeArchitectureMessage(id: "dm-1", isPrivate: true),
             to: .directPeer(PeerID(str: "peer-1"))
         )
-        #expect(emissions == afterActiveAppend)
+        #expect(emissions == afterBackgroundPublicAppend)
         #expect(model.messages.map(\.id) == ["mesh-1"])
 
         // Switching the channel retargets the observation.
@@ -906,6 +945,86 @@ struct AppArchitectureTests {
         #expect(model.messages.map(\.id) == ["geo-1"])
         store.append(makeArchitectureMessage(id: "geo-2", timestamp: 1), to: .geohash("u4pruyd"))
         #expect(model.messages.map(\.id) == ["geo-1", "geo-2"])
+    }
+
+    @Test("PublicChatModel shows only unread human messages and clears them when read")
+    @MainActor
+    func publicChatModelCountsUnreadMessagesWithoutCreatingConversations() {
+        let store = ConversationStore()
+        let model = PublicChatModel(conversations: store)
+        let channel = GeohashChannel(level: .city, geohash: "u4pruy")
+        let channelID = ChannelID.location(channel)
+
+        store.append(
+            makeArchitectureMessage(id: "visible", content: "hello"),
+            to: .geohash(channel.geohash)
+        )
+        store.append(
+            makeArchitectureMessage(id: "blank", content: "  \n "),
+            to: .geohash(channel.geohash)
+        )
+        store.append(
+            BitchatMessage(
+                id: "system",
+                sender: "system",
+                content: "joined",
+                timestamp: Date(),
+                isRelay: false
+            ),
+            to: .geohash(channel.geohash)
+        )
+        store.append(
+            makeArchitectureMessage(id: "echo-archived", content: "old echo"),
+            to: .geohash(channel.geohash)
+        )
+
+        #expect(model.unreadMessageCount(for: channelID) == 1)
+
+        let knownConversationIDs = store.conversationIDs
+        let unknown = GeohashChannel(level: .city, geohash: "zzzzz")
+        #expect(model.unreadMessageCount(for: .location(unknown)) == 0)
+        #expect(store.conversationIDs == knownConversationIDs)
+
+        model.setVisibleChannel(channelID)
+        #expect(model.unreadMessageCount(for: channelID) == 0)
+
+        store.append(
+            makeArchitectureMessage(id: "visible-now", timestamp: 1),
+            to: .geohash(channel.geohash)
+        )
+        #expect(model.unreadMessageCount(for: channelID) == 0)
+
+        model.setVisibleChannel(nil)
+        store.append(
+            makeArchitectureMessage(id: "unread-again", timestamp: 2),
+            to: .geohash(channel.geohash)
+        )
+        #expect(model.unreadMessageCount(for: channelID) == 1)
+
+        store.removeMessage(withID: "unread-again", from: .geohash(channel.geohash))
+        #expect(model.unreadMessageCount(for: channelID) == 0)
+    }
+
+    @Test("Public channel selection is hidden while a private conversation is active")
+    func publicChannelSelectionAndPrivateSelectionAreMutuallyExclusive() {
+        #expect(
+            MeshChatSidebarSelection.showsPublicChannel(
+                showsConversationSelection: true,
+                activePeerID: nil
+            )
+        )
+        #expect(
+            !MeshChatSidebarSelection.showsPublicChannel(
+                showsConversationSelection: true,
+                activePeerID: PeerID(str: "private-peer")
+            )
+        )
+        #expect(
+            !MeshChatSidebarSelection.showsPublicChannel(
+                showsConversationSelection: false,
+                activePeerID: nil
+            )
+        )
     }
 
     @Test("AppChromeModel mirrors nickname and unread state through focused models")
@@ -2016,7 +2135,24 @@ struct AppArchitectureTests {
             ),
             to: .directPeer(aliceStableID)
         )
-        viewModel.conversations.markUnread(.directPeer(aliceStableID))
+        #expect(
+            viewModel.conversations.recordUnreadMessage(
+                "alice-short",
+                in: .directPeer(aliceShortID)
+            )
+        )
+        #expect(
+            viewModel.conversations.recordUnreadMessage(
+                "alice-short-older-alias-extra",
+                in: .directPeer(aliceShortID)
+            )
+        )
+        #expect(
+            viewModel.conversations.recordUnreadMessage(
+                "alice-stable",
+                in: .directPeer(aliceStableID)
+            )
+        )
 
         // Empty selections and non-mesh direct timelines never become Recents.
         viewModel.conversations.setSelectedPrivatePeer(PeerID(publicKey: Data(repeating: 0xC3, count: 32)))
@@ -2071,6 +2207,7 @@ struct AppArchitectureTests {
             aliceStableID
         ])
         #expect(model.recentMeshRows.first?.hasUnread == true)
+        #expect(model.recentMeshRows.first?.unreadMessageCount == 3)
         #expect(model.recentMeshRows.first?.identityLockState == .unverified)
 
         viewModel.peerIdentityStore.setVerified(
@@ -2124,6 +2261,7 @@ struct AppArchitectureTests {
         viewModel.conversations.markRead(.directPeer(aliceStableID))
         await waitUntil { model.recentMeshRows.first?.hasUnread == false }
         #expect(model.recentMeshRows.first?.hasUnread == false)
+        #expect(model.recentMeshRows.first?.unreadMessageCount == 0)
 
         transport.updatePeerSnapshots([
             makeArchitectureSnapshot(

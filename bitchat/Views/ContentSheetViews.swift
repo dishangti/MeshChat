@@ -580,7 +580,12 @@ private struct ContentPrivateChatSheetView: View {
                 Divider()
             }
 
-            privacyCaption
+            PrivateConversationPrivacyCaption(
+                peerID: privateConversationModel.selectedPeerID,
+                encryptionStatus: privateConversationModel
+                    .selectedHeaderState?
+                    .encryptionStatus
+            )
 
             #if os(iOS)
             ContentComposerView(
@@ -631,51 +636,6 @@ private struct ContentPrivateChatSheetView: View {
             }
     }
 
-    /// Persistent one-line reminder that this composer feeds a private
-    /// conversation — the DM sheet otherwise renders identically to the
-    /// public timeline. Claims end-to-end encryption only once the session
-    /// is actually secured.
-    private var privacyCaption: some View {
-        HStack(spacing: 5) {
-            Image(systemName: "lock.fill")
-                .font(.bitchatSystem(size: 9))
-                // Optical centering: lock.fill's ink is bottom-heavy, so
-                // geometric centering reads low next to the caption text.
-                .offset(y: -1)
-            Text(verbatim: privacyCaptionText)
-                .bitchatFont(size: 11, weight: .medium)
-        }
-        .foregroundColor(Color.orange)
-        .frame(maxWidth: .infinity)
-        .padding(.vertical, 4)
-        // The orange text is signature enough; a tinted band here reads as a
-        // stray strip against the untinted composer chrome below it, so the
-        // caption sits on the same surface as the rest of the bottom chrome.
-        .themedSurface()
-        .accessibilityElement(children: .combine)
-    }
-
-    private var privacyCaptionText: String {
-        // Group chats are ChaCha20-Poly1305 sealed to the roster's shared key.
-        if privateConversationModel.selectedPeerID?.isGroup == true {
-            return AppLanguageSettings.localized("content.private.caption_group", comment: "Caption above the group chat composer noting messages are encrypted to group members")
-        }
-        // Geohash DMs use BitChat's private-envelope encryption over Nostr —
-        // always end-to-end encrypted,
-        // even though they carry no Noise session status. Mesh DMs earn the
-        // "encrypted" claim only once the Noise handshake has secured.
-        let isGeoDM = privateConversationModel.selectedPeerID?.isGeoDM == true
-        let noiseSecured: Bool = {
-            switch privateConversationModel.selectedHeaderState?.encryptionStatus {
-            case .noiseSecured, .noiseVerified: return true
-            default: return false
-            }
-        }()
-        if isGeoDM || noiseSecured {
-            return AppLanguageSettings.localized("content.private.caption_encrypted", comment: "Caption above the private chat composer once the session is end-to-end encrypted")
-        }
-        return AppLanguageSettings.localized("content.private.caption", comment: "Caption above the private chat composer before encryption is established")
-    }
 }
 
 /// Chrome for the private-chat header. Matrix keeps its orange privacy wash

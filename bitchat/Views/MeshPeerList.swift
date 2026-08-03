@@ -168,10 +168,14 @@ struct MeshPeerList: View {
                         Spacer()
 
                         // Unread message indicator for this peer
-                        if peer.hasUnread {
-                            Image(systemName: "envelope.fill")
-                                .font(.bitchatSystem(size: 10))
-                                .foregroundColor(.orange)
+                        if peer.unreadMessageCount > 0 {
+                            Text(verbatim: peer.unreadMessageCount > 99 ? "99+" : "\(peer.unreadMessageCount)")
+                                .font(.system(size: 10, weight: .bold, design: .rounded))
+                                .foregroundColor(.white)
+                                .padding(.horizontal, peer.unreadMessageCount > 9 ? 5 : 0)
+                                .frame(minWidth: 20, minHeight: 20)
+                                .background(Capsule().fill(palette.accent))
+                                .fixedSize()
                                 .help(Strings.newMessagesTooltip)
                         }
 
@@ -292,7 +296,9 @@ struct MeshPeerList: View {
         }
         if peer.showsVouchedBadge { parts.append(Strings.vouched) }
         if peer.isFavorite { parts.append(Strings.favorite) }
-        if peer.hasUnread { parts.append(Strings.unread) }
+        if peer.unreadMessageCount > 0 {
+            parts.append("\(Strings.unread): \(peer.unreadMessageCount)")
+        }
         if peer.isBlocked { parts.append(Strings.blocked) }
         return parts.joined(separator: ", ")
     }

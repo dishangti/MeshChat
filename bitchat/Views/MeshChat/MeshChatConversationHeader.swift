@@ -243,7 +243,7 @@ struct MeshChatConversationHeader: View {
         }
         .padding(.horizontal, 10)
         .padding(.vertical, 7)
-        .background(.regularMaterial)
+        .themedChromePanel(edge: .top)
         .overlay(alignment: .bottom) {
             Rectangle()
                 .fill(palette.divider)

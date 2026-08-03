@@ -253,7 +253,7 @@ private extension ContentComposerView {
     }
 
     var composerAccentColor: Color {
-        privateConversationModel.selectedPeerID != nil ? Color.orange : palette.accent
+        palette.accent
     }
 
     var attachmentButton: some View {

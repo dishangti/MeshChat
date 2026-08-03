@@ -33,6 +33,17 @@ final class PrivateInboxModel: ObservableObject {
         return conversations.conversationsByID[.directPeer(peerID)]?.messages ?? []
     }
 
+    func unreadMessageCount(for peerID: PeerID) -> Int {
+        conversations.unreadMessageCount(for: .directPeer(peerID))
+    }
+
+    /// Counts distinct unread items across routing aliases. Mirrored message
+    /// IDs are unioned by the store, so one DM cannot inflate the badge just
+    /// because it is retained under both an ephemeral and a stable peer ID.
+    func unreadMessageCount(for peerIDs: [PeerID]) -> Int {
+        conversations.unreadMessageCount(forDirectPeerIDs: Set(peerIDs))
+    }
+
     private func bind() {
         conversations.$selectedPrivatePeerID
             .dropFirst()
@@ -54,22 +65,26 @@ final class PrivateInboxModel: ObservableObject {
         case .appended(let id, _),
              .updated(let id, _),
              .statusChanged(let id, _, _),
-             .messageRemoved(let id, _),
-             .cleared(let id):
+             .messageRemoved(let id, _):
+            republishIfSelected(id)
+
+        case .cleared(let id):
+            guard isDirect(id) else { return }
+            refreshUnreadPeerIDs(forcePublish: true)
             republishIfSelected(id)
 
         case .unreadChanged(let id, _):
             guard isDirect(id) else { return }
-            refreshUnreadPeerIDs()
+            refreshUnreadPeerIDs(forcePublish: true)
 
         case .removed(let id):
             guard isDirect(id) else { return }
-            refreshUnreadPeerIDs()
+            refreshUnreadPeerIDs(forcePublish: true)
             republishIfSelected(id)
 
         case .migrated(let source, let destination):
             guard isDirect(source) || isDirect(destination) else { return }
-            refreshUnreadPeerIDs()
+            refreshUnreadPeerIDs(forcePublish: true)
             republishIfSelected(source)
             republishIfSelected(destination)
         }
@@ -80,10 +95,13 @@ final class PrivateInboxModel: ObservableObject {
         objectWillChange.send()
     }
 
-    private func refreshUnreadPeerIDs() {
+    private func refreshUnreadPeerIDs(forcePublish: Bool = false) {
         let next = conversations.unreadDirectRoutingPeerIDs()
-        guard unreadPeerIDs != next else { return }
-        unreadPeerIDs = next
+        if unreadPeerIDs != next {
+            unreadPeerIDs = next
+        } else if forcePublish {
+            objectWillChange.send()
+        }
     }
 
     private func isDirect(_ id: ConversationID) -> Bool {

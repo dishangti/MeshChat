@@ -15,6 +15,7 @@ struct TextMessageView: View {
     @EnvironmentObject private var conversationUIModel: ConversationUIModel
 
     let message: BitchatMessage
+    let showsSenderName: Bool
     /// Value snapshot of the message's mutable delivery status, captured at
     /// construction. `BitchatMessage` is a reference type mutated in place by
     /// `ConversationStore`, and SwiftUI compares reference-typed view fields
@@ -26,115 +27,77 @@ struct TextMessageView: View {
     @State private var expandedMessageIDs: Set<String> = []
     @State private var showDeliveryDetail = false
 
-    init(message: BitchatMessage) {
+    init(message: BitchatMessage, showsSenderName: Bool = true) {
         self.message = message
+        self.showsSenderName = showsSenderName
         self.deliveryStatus = message.deliveryStatus
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            // Precompute heavy token scans once per row
-            let cashuLinks = message.content.extractCashuLinks()
-            let lightningLinks = message.content.extractLightningLinks()
-            // Baseline alignment keeps the lock and delivery glyphs on the
-            // first text line; a fixed top padding left the lock's solid body
-            // hanging below the line's visual center.
-            HStack(alignment: .firstTextBaseline, spacing: 0) {
-                let isLong = message.content.isLongForDisplay()
-                let isExpanded = expandedMessageIDs.contains(message.id)
-                if message.isPrivate {
-                    Image(systemName: "lock.fill")
-                        .font(.bitchatSystem(size: 8))
-                        .foregroundColor(Color.orange.opacity(0.75))
-                        .padding(.trailing, 4)
-                        .accessibilityHidden(true)
-                }
-                if conversationUIModel.showsVerifiedSeal(for: message) {
-                    Image(systemName: "checkmark.seal.fill")
-                        .font(.bitchatSystem(size: 8))
-                        .foregroundColor(Color.green.opacity(0.85))
-                        .padding(.trailing, 4)
-                        .accessibilityLabel(
-                            AppLanguageSettings.localized("content.accessibility.verified_sender", defaultValue: "Verified sender", comment: "Accessibility label for the seal next to a verified peer's name on a private message")
-                        )
-                }
-                if message.isBridged {
-                    Image(systemName: "network")
-                        .font(.bitchatSystem(size: 8))
-                        .foregroundColor(Color.cyan.opacity(0.75))
-                        .padding(.trailing, 4)
-                        .accessibilityLabel(
-                            AppLanguageSettings.localized("content.accessibility.bridged_message", defaultValue: "Arrived across a mesh bridge", comment: "Accessibility label for the glyph marking a message that arrived across a mesh bridge")
-                        )
-                }
-                Text(conversationUIModel.formatMessage(message, colorScheme: colorScheme, theme: theme))
-                    .fixedSize(horizontal: false, vertical: true)
-                    .lineLimit(isLong && !isExpanded ? TransportConfig.uiLongMessageLineLimit : nil)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                
-                // Delivery status indicator for private messages. Tappable:
-                // .help() tooltips only exist on macOS, so iOS users get the
-                // explanation as a caption under the row instead.
-                if message.isPrivate && conversationUIModel.isSentByCurrentUser(message),
-                   deliveryStatus != .notSentYet {
-                    Button {
-                        showDeliveryDetail.toggle()
-                    } label: {
-                        DeliveryStatusView(status: deliveryStatus)
-                            .padding(.leading, 4)
-                            .contentShape(Rectangle())
+        let isFromCurrentUser = conversationUIModel.isSentByCurrentUser(message)
+        let isLong = message.content.isLongForDisplay()
+        let isExpanded = expandedMessageIDs.contains(message.id)
+        let cashuLinks = message.content.extractCashuLinks()
+        let lightningLinks = message.content.extractLightningLinks()
+
+        return MessageBubble(
+            isFromCurrentUser: isFromCurrentUser,
+            highlightsFailure: isFailure
+        ) {
+            MessageBubbleContentLayout(spacing: 5) {
+                VStack(alignment: .leading, spacing: 5) {
+                    if showsSenderName && !isFromCurrentUser {
+                        MessageBubbleSenderLabel(message: message)
                     }
-                    .buttonStyle(.plain)
-                    .accessibilityHint(
-                        AppLanguageSettings.localized("content.accessibility.delivery_detail_hint", comment: "Accessibility hint for the delivery status glyph explaining a tap reveals details")
+
+                    Text(
+                        conversationUIModel.formatMessageContent(
+                            message,
+                            colorScheme: colorScheme,
+                            theme: theme
+                        )
                     )
-                }
-            }
+                    .fixedSize(horizontal: false, vertical: true)
+                    .lineLimit(
+                        isLong && !isExpanded
+                            ? TransportConfig.uiLongMessageLineLimit
+                            : nil
+                    )
 
-            // Failure reasons stay visible without a tap; other statuses
-            // reveal on demand.
-            if message.isPrivate && conversationUIModel.isSentByCurrentUser(message),
-               deliveryStatus != .notSentYet {
-                if case .failed = deliveryStatus {
-                    Text(verbatim: deliveryStatus.bitchatDescription)
-                        .bitchatFont(size: 11)
-                        .foregroundColor(Color.red.opacity(0.9))
-                        .fixedSize(horizontal: false, vertical: true)
-                        .padding(.top, 2)
-                } else if showDeliveryDetail {
-                    Text(verbatim: deliveryStatus.bitchatDescription)
-                        .bitchatFont(size: 11)
-                        .foregroundColor(palette.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
-                        .padding(.top, 2)
-                }
-            }
-            
-            // Expand/Collapse for very long messages
-            if message.content.isLongForDisplay() {
-                let isExpanded = expandedMessageIDs.contains(message.id)
-                let labelKey = isExpanded ? LocalizedStringKey("content.message.show_less") : LocalizedStringKey("content.message.show_more")
-                Button(labelKey) {
-                    if isExpanded { expandedMessageIDs.remove(message.id) }
-                    else { expandedMessageIDs.insert(message.id) }
-                }
-                .bitchatFont(size: 11, weight: .medium)
-                .foregroundColor(palette.accentBlue)
-                .padding(.top, 4)
-            }
-
-            // Render payment chips (Lightning / Cashu) with rounded background
-            if !lightningLinks.isEmpty || !cashuLinks.isEmpty {
-                HStack(spacing: 8) {
-                    ForEach(lightningLinks, id: \.self) { link in
-                        PaymentChipView(paymentType: .lightning(link))
+                    if isLong {
+                        let labelKey = isExpanded
+                            ? LocalizedStringKey("content.message.show_less")
+                            : LocalizedStringKey("content.message.show_more")
+                        Button(labelKey) {
+                            if isExpanded {
+                                expandedMessageIDs.remove(message.id)
+                            } else {
+                                expandedMessageIDs.insert(message.id)
+                            }
+                        }
+                        .bitchatFont(size: 11, weight: .medium)
+                        .foregroundColor(palette.accentBlue)
                     }
-                    ForEach(cashuLinks, id: \.self) { link in
-                        PaymentChipView(paymentType: .cashu(link))
+
+                    if !lightningLinks.isEmpty || !cashuLinks.isEmpty {
+                        HStack(spacing: 8) {
+                            ForEach(lightningLinks, id: \.self) { link in
+                                PaymentChipView(paymentType: .lightning(link))
+                            }
+                            ForEach(cashuLinks, id: \.self) { link in
+                                PaymentChipView(paymentType: .cashu(link))
+                            }
+                        }
+                        .padding(.top, 2)
                     }
                 }
-                .padding(.top, 6)
-                .padding(.leading, 2)
+
+                MessageBubbleMetadata(
+                    message: message,
+                    deliveryStatus: deliveryStatus,
+                    isFromCurrentUser: isFromCurrentUser,
+                    showDeliveryDetail: $showDeliveryDetail
+                )
             }
         }
         // Collapse the revealed caption when the status advances (e.g.
@@ -148,6 +111,11 @@ struct TextMessageView: View {
                 showDeliveryDetail = false
             }
         }
+    }
+
+    private var isFailure: Bool {
+        if case .failed = deliveryStatus { return true }
+        return false
     }
 }
 

@@ -1448,7 +1448,18 @@ final class ChatViewModel: ObservableObject, BitchatDelegate, SynchronousMessage
     @MainActor
     @discardableResult
     func addFriend(peerID: PeerID) -> Bool {
-        unifiedPeerService.addFriend(peerID) != nil
+        addFriend(peerID: peerID, localPetname: nil)
+    }
+
+    /// Adds a known peer and optionally assigns a device-local nickname as
+    /// one persistence operation. A nil nickname keeps any existing alias.
+    @MainActor
+    @discardableResult
+    func addFriend(peerID: PeerID, localPetname: String?) -> Bool {
+        unifiedPeerService.addFriend(
+            peerID,
+            localPetname: localPetname
+        ) != nil
     }
 
     /// Adds the identity carried by a validated QR without marking it verified.
@@ -2014,6 +2025,11 @@ final class ChatViewModel: ObservableObject, BitchatDelegate, SynchronousMessage
         // A hand-added relay names an operator someone chose to route through,
         // which is the kind of trace a wipe should not leave behind.
         NostrRelaySettings.reset()
+        // Proxy endpoints and usernames are routing metadata; the password is
+        // kept separately in Keychain. Remove both, then restore the system
+        // proxy policy before internet services are allowed to restart.
+        OuterProxySettings.reset(defaults: userDefaults, keychain: keychain)
+        _ = OuterProxySettings.applyStored(defaults: userDefaults, keychain: keychain)
 
         // Drop private group keys and rosters (keychain + disk)
         groupStore.wipe()

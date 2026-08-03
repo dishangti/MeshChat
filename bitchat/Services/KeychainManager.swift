@@ -98,6 +98,7 @@ final class KeychainManager: KeychainManagerProtocol {
         "chat.bitchat.nostr",
         "chat.bitchat.favorites",
         "chat.bitchat.outbox",
+        "chat.meshchat.proxy",
         "com.bitchat.passwords",
         "com.bitchat.deviceidentity",
         "com.bitchat.noise.identity",

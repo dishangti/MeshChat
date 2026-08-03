@@ -65,6 +65,29 @@ struct AppURLRoutingTests {
         ))
     }
 
+    @Test
+    func directAndFriendActivityNotificationsOpenTheMatchingConversation() {
+        let peerID = PeerID(str: "aabbccdd00112233")
+        let userInfo: [AnyHashable: Any] = ["peerID": peerID.id]
+
+        #expect(AppNotificationRoute.directPeerID(
+            identifier: "private-1",
+            userInfo: userInfo
+        ) == peerID)
+        #expect(AppNotificationRoute.directPeerID(
+            identifier: "friend-added-\(peerID.id)",
+            userInfo: userInfo
+        ) == peerID)
+        #expect(AppNotificationRoute.directPeerID(
+            identifier: "friend-removed-\(peerID.id)",
+            userInfo: userInfo
+        ) == peerID)
+        #expect(AppNotificationRoute.directPeerID(
+            identifier: "network-available",
+            userInfo: userInfo
+        ) == nil)
+    }
+
     @Test @MainActor
     func pendingDirectRouteSurvivesColdLaunchUntilTheRootConsumesIt() {
         let routes = AppRouteModel()

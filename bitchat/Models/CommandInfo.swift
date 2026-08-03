@@ -60,8 +60,10 @@ enum CommandInfo: String, Identifiable {
         case .slap:         AppLanguageSettings.localized("content.commands.slap")
         case .unblock:      AppLanguageSettings.localized("content.commands.unblock")
         case .who:          AppLanguageSettings.localized("content.commands.who")
-        case .favorite:     AppLanguageSettings.localized("content.commands.favorite")
-        case .unfavorite:   AppLanguageSettings.localized("content.commands.unfavorite")
+        // `/fav` and `/unfav` remain wire/command compatibility aliases for
+        // Bitchat, while MeshChat presents the relationship as friendship.
+        case .favorite:     AppLanguageSettings.localized("friends.action.add")
+        case .unfavorite:   AppLanguageSettings.localized("content.accessibility.remove_favorite")
         case .ping:         AppLanguageSettings.localized("content.commands.ping")
         case .trace:        AppLanguageSettings.localized("content.commands.trace")
         case .drop:         AppLanguageSettings.localized("content.commands.drop")

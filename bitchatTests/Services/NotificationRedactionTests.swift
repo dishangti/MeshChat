@@ -92,6 +92,22 @@ struct NotificationRedactionTests {
         #expect(!content.body.contains("regroup"))
     }
 
+    @Test func redactedFriendActivityAlertsWithholdSenderButKeepRouting() throws {
+        let (service, deliverer) = makeService(hidePreviews: true)
+        let peerID = PeerID(str: "00112233445566ff")
+
+        service.sendFriendActivityNotification(from: "alice", peerID: peerID, isAdded: true)
+        service.sendFriendActivityNotification(from: "alice", peerID: peerID, isAdded: false)
+
+        #expect(deliverer.requests.count == 2)
+        for request in deliverer.requests {
+            let content = request.content
+            #expect(!content.title.lowercased().contains("alice"))
+            #expect(!content.body.lowercased().contains("alice"))
+            #expect(content.userInfo["peerID"] as? String == peerID.id)
+        }
+    }
+
     @Test func redactedGeohashActivityWithholdsTheGeohash() throws {
         let (service, deliverer) = makeService(hidePreviews: true)
 

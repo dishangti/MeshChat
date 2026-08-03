@@ -18,6 +18,17 @@ private final class NWPathMonitor {
 @_silgen_name("arti_start")
 private func arti_start(_ dataDir: UnsafePointer<CChar>, _ socksPort: UInt16) -> Int32
 
+@_silgen_name("arti_start_with_proxy")
+private func arti_start_with_proxy(
+    _ dataDir: UnsafePointer<CChar>,
+    _ socksPort: UInt16,
+    _ proxyKind: UInt8,
+    _ proxyHost: UnsafePointer<CChar>,
+    _ proxyPort: UInt16,
+    _ username: UnsafePointer<CChar>?,
+    _ password: UnsafePointer<CChar>?
+) -> Int32
+
 @_silgen_name("arti_stop")
 private func arti_stop() -> Int32
 
@@ -84,6 +95,9 @@ public final class TorManager: ObservableObject {
     private var shutdownsInFlight = 0
     private var startPendingAfterShutdown = false
     private var bootstrapMonitorStarted = false
+    private var bootstrapRetryTask: Task<Void, Never>?
+    private var bootstrapRetryAttempt = 0
+    private let maxAutomaticBootstrapRetries = 3
     // Fences the detached poll loop: shutdown, dormancy, and restart each bump
     // this, so a loop from a previous attempt cannot run out its deadline and
     // report a stall over state that a newer lifecycle event already owns.
@@ -93,6 +107,7 @@ public final class TorManager: ObservableObject {
     private var lastRestartAt: Date? = nil
     private var startedAt: Date? = nil  // Tracks initial startup time for grace period
     private(set) var allowAutoStart: Bool = false
+    private var upstreamProxy: TorUpstreamProxy?
 
     private init() {}
 
@@ -121,6 +136,26 @@ public final class TorManager: ObservableObject {
 
     public func setAppForeground(_ foreground: Bool) {
         isAppForeground = foreground
+    }
+
+    /// Changes the proxy used before the first Tor hop. A running Arti client must
+    /// restart because its runtime owns the outbound TCP provider.
+    public func setUpstreamProxy(_ proxy: TorUpstreamProxy?) {
+        guard upstreamProxy != proxy else { return }
+        upstreamProxy = proxy
+        bootstrapRetryAttempt = 0
+        // Configuration can change while network activation is intentionally
+        // suspended (for example during a data wipe). Remember it for the next
+        // start without racing the shutdown by launching a replacement client.
+        guard allowAutoStart else { return }
+        guard didStart || arti_is_running() != 0 else { return }
+        guard !restarting else { return }
+        restarting = true
+        Task { [weak self] in
+            guard let self else { return }
+            await self.restartArti()
+            self.restarting = false
+        }
     }
 
     public func isForeground() -> Bool { isAppForeground }
@@ -183,8 +218,27 @@ public final class TorManager: ObservableObject {
             return
         }
 
-        let result = dir.withCString { dptr in
-            arti_start(dptr, UInt16(socksPort))
+        let result: Int32
+        if let proxy = upstreamProxy {
+            result = dir.withCString { dataPointer in
+                proxy.host.withCString { hostPointer in
+                    withOptionalCString(proxy.username) { usernamePointer in
+                        withOptionalCString(proxy.password) { passwordPointer in
+                            arti_start_with_proxy(
+                                dataPointer,
+                                UInt16(socksPort),
+                                proxy.kind.artiFFIValue,
+                                hostPointer,
+                                proxy.port,
+                                usernamePointer,
+                                passwordPointer
+                            )
+                        }
+                    }
+                }
+            }
+        } else {
+            result = dir.withCString { arti_start($0, UInt16(socksPort)) }
         }
 
         if result != 0 {
@@ -194,21 +248,37 @@ public final class TorManager: ObservableObject {
             return
         }
 
-        SecureLogger.info("TorManager: arti_start OK (SOCKS \(socksHost):\(socksPort))", category: .session)
+        let routeDescription: String
+        if let proxy = upstreamProxy {
+            let kind = proxy.kind == .socks5 ? "SOCKS5" : "HTTP CONNECT"
+            routeDescription = "upstream=\(kind) \(proxy.host):\(proxy.port)"
+        } else {
+            routeDescription = "upstream=system route"
+        }
+        SecureLogger.info(
+            "TorManager: arti_start OK (SOCKS \(socksHost):\(socksPort), \(routeDescription))",
+            category: .session
+        )
         startBootstrapMonitor()
+        let readinessGeneration = bootstrapGeneration
 
         // Start SOCKS readiness probe
         Task.detached(priority: .userInitiated) { [weak self] in
             guard let self else { return }
             let ready = await self.waitForSocksReady(timeout: 60.0)
             await MainActor.run {
+                guard self.bootstrapGeneration == readinessGeneration else { return }
                 self.socksReady = ready
                 if ready {
                     SecureLogger.info("TorManager: SOCKS ready at \(self.socksHost):\(self.socksPort)", category: .session)
-                } else {
+                } else if arti_is_running() != 0 {
                     self.lastError = NSError(domain: "TorManager", code: -14, userInfo: [NSLocalizedDescriptionKey: "SOCKS not reachable"])
                     SecureLogger.error("TorManager: SOCKS not reachable (timeout)", category: .session)
                 }
+                // The bootstrap monitor may observe 100% and exit just before
+                // this probe succeeds. Recompute here as well so readiness is
+                // independent of which asynchronous observer wins that race.
+                self.recomputeReady()
             }
         }
     }
@@ -216,7 +286,13 @@ public final class TorManager: ObservableObject {
     private func waitForSocksReady(timeout: TimeInterval) async -> Bool {
         let deadline = Date().addingTimeInterval(timeout)
         while Date() < deadline {
-            if await probeSocksOnce() { return true }
+            // The listener is intentionally created only after bootstrap.
+            // Probing before then produces hundreds of expected ECONNREFUSED
+            // lines in Xcode and can materially slow debug sessions.
+            if arti_is_running() == 0 { return false }
+            if arti_bootstrap_progress() >= 100, await probeSocksOnce() {
+                return true
+            }
             try? await Task.sleep(nanoseconds: 250_000_000)
         }
         return false
@@ -296,6 +372,13 @@ public final class TorManager: ObservableObject {
                 didComplete = true
                 break
             }
+            if arti_is_running() == 0 {
+                self.handleBootstrapTermination(
+                    generation: generation,
+                    summary: summary
+                )
+                return
+            }
             try? await Task.sleep(nanoseconds: 1_000_000_000)
         }
 
@@ -312,6 +395,69 @@ public final class TorManager: ObservableObject {
                 category: .session
             )
             NotificationCenter.default.post(name: .TorBootstrapDidStall, object: nil)
+            scheduleBootstrapRetryIfNeeded(generation: generation)
+        }
+    }
+
+    private func handleBootstrapTermination(generation: Int, summary: String) {
+        guard generation == bootstrapGeneration else { return }
+        let detail = summary.isEmpty ? "Arti stopped before SOCKS became ready" : summary
+        isStarting = false
+        socksReady = false
+        bootstrapDidStall = true
+        bootstrapMonitorStarted = false
+        lastError = NSError(
+            domain: "TorManager",
+            code: -15,
+            userInfo: [NSLocalizedDescriptionKey: detail]
+        )
+        SecureLogger.error(
+            "TorManager: bootstrap terminated before readiness (\(detail))",
+            category: .session
+        )
+        NotificationCenter.default.post(name: .TorBootstrapDidStall, object: nil)
+        scheduleBootstrapRetryIfNeeded(generation: generation)
+    }
+
+    private func scheduleBootstrapRetryIfNeeded(generation: Int) {
+        guard generation == bootstrapGeneration,
+              allowAutoStart,
+              isAppForeground,
+              bootstrapRetryAttempt < maxAutomaticBootstrapRetries else { return }
+
+        bootstrapRetryAttempt += 1
+        let attempt = bootstrapRetryAttempt
+        let delay = min(pow(2.0, Double(attempt)), 15.0)
+        bootstrapRetryTask?.cancel()
+        bootstrapRetryTask = Task { @MainActor [weak self] in
+            do {
+                try await Task<Never, Never>.sleep(
+                    nanoseconds: UInt64(delay * 1_000_000_000)
+                )
+            } catch {
+                return
+            }
+            guard let self,
+                  generation == self.bootstrapGeneration,
+                  self.allowAutoStart,
+                  self.isAppForeground,
+                  !self.isReady else { return }
+
+            self.bootstrapRetryTask = nil
+            SecureLogger.warning(
+                "TorManager: retrying bootstrap after failure (attempt \(attempt)/\(self.maxAutomaticBootstrapRetries))",
+                category: .session
+            )
+            if arti_is_running() != 0 {
+                guard !self.restarting else { return }
+                self.restarting = true
+                await self.restartArti()
+                self.restarting = false
+            } else {
+                self.didStart = false
+                self.bootstrapMonitorStarted = false
+                self.startIfNeeded()
+            }
         }
     }
 
@@ -356,6 +502,8 @@ public final class TorManager: ObservableObject {
         // iOS will suspend the runtime anyway. On foreground we do a full restart.
         // Clear isStarting so foreground recovery can proceed if bootstrap was interrupted.
         SecureLogger.debug("TorManager: goDormantOnBackground() called", category: .session)
+        bootstrapRetryTask?.cancel()
+        bootstrapRetryTask = nil
         Task { @MainActor in
             self.bootstrapGeneration += 1
             self.isReady = false
@@ -366,6 +514,9 @@ public final class TorManager: ObservableObject {
 
     public func shutdownCompletely() {
         SecureLogger.debug("TorManager: shutdownCompletely() called", category: .session)
+        bootstrapRetryTask?.cancel()
+        bootstrapRetryTask = nil
+        bootstrapRetryAttempt = 0
         startPendingAfterShutdown = false
         bootstrapGeneration += 1
         shutdownsInFlight += 1
@@ -440,6 +591,9 @@ public final class TorManager: ObservableObject {
             }
             isReady = ready
             if ready {
+                bootstrapRetryTask?.cancel()
+                bootstrapRetryTask = nil
+                bootstrapRetryAttempt = 0
                 NotificationCenter.default.post(name: .TorDidBecomeReady, object: nil)
             }
         }
@@ -479,9 +633,18 @@ public final class TorManager: ObservableObject {
             return
         }
         if isReady { return }
+        bootstrapRetryAttempt = 0
         SecureLogger.debug("TorManager: pokeTorOnPathChange() - Arti not ready, initiating recovery", category: .session)
         ensureRunningOnForeground()
     }
+}
+
+private func withOptionalCString<Result>(
+    _ value: String?,
+    body: (UnsafePointer<CChar>?) -> Result
+) -> Result {
+    guard let value else { return body(nil) }
+    return value.withCString { body($0) }
 }
 
 // MARK: - Start policy configuration

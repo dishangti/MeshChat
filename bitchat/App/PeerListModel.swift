@@ -13,6 +13,10 @@ struct MeshPeerRow: Identifiable, Equatable {
     let isConnected: Bool
     let isReachable: Bool
     let isMutualFavorite: Bool
+    /// True when this contact has a configured Nostr mailbox route. Nostr is
+    /// store-and-forward, so this deliberately does not claim the remote app
+    /// or any particular relay is online at this instant.
+    let isNostrAvailable: Bool
     let encryptionStatus: EncryptionStatus
     let identityLockState: IdentityLockState
     /// Vouched-for by someone I verified, without an explicit verification of
@@ -59,6 +63,7 @@ struct RecentMeshPeerRow: Identifiable, Equatable {
     let lastMessageAt: Date
     let hasUnread: Bool
     let isBlocked: Bool
+    let isNostrAvailable: Bool
     let identityLockState: IdentityLockState
 
     var id: String { fingerprint }
@@ -368,6 +373,7 @@ final class PeerListModel: ObservableObject {
             let vouchedBadge = identityLockState != .identityMismatch
                 && !isVerifiedFingerprint
                 && (fingerprint.map { chatViewModel.isVouchedFingerprint($0) } ?? false)
+            let hasNostrRoute = peer.hasNostrRoute
 
             return MeshPeerRow(
                 peerID: peer.peerID,
@@ -379,6 +385,7 @@ final class PeerListModel: ObservableObject {
                 isConnected: peer.isConnected,
                 isReachable: peer.isReachable,
                 isMutualFavorite: peer.isMutualFavorite,
+                isNostrAvailable: hasNostrRoute,
                 encryptionStatus: chatViewModel.getEncryptionStatus(for: peer.peerID),
                 identityLockState: identityLockState,
                 showsVouchedBadge: vouchedBadge
@@ -408,7 +415,7 @@ final class PeerListModel: ObservableObject {
         self.groupRows = groupRows
         renderID = (
             meshRows.map {
-                "\($0.id)-\($0.displayName)-\($0.isConnected)-\($0.isReachable)-\($0.hasUnread)-\($0.isFavorite)-\($0.isBlocked)"
+                "\($0.id)-\($0.displayName)-\($0.isConnected)-\($0.isReachable)-\($0.isNostrAvailable)-\($0.hasUnread)-\($0.isFavorite)-\($0.isBlocked)"
             } +
             geohashPeople.map {
                 "geo:\($0.id)-\($0.isTeleported)-\($0.isBlocked)-\($0.displayName)"
@@ -514,6 +521,9 @@ final class PeerListModel: ObservableObject {
             let displayName = social?.localPetname?.trimmedOrNilIfEmpty
                 ?? livePeer?.localPetname?.trimmedOrNilIfEmpty
                 ?? claimedNickname
+            let isNostrAvailable = FavoritesPersistenceService.shared
+                .getFavoriteStatus(for: item.identity.noisePublicKey)?
+                .peerNostrPublicKey != nil
 
             return RecentMeshPeerRow(
                 stablePeerID: item.identity.stablePeerID,
@@ -530,6 +540,7 @@ final class PeerListModel: ObservableObject {
                     || chatViewModel.identityManager.isBlocked(
                         fingerprint: item.identity.fingerprint
                     ),
+                isNostrAvailable: isNostrAvailable,
                 identityLockState: peerIdentityStore.identityLockState(
                     fingerprint: item.identity.fingerprint
                 )

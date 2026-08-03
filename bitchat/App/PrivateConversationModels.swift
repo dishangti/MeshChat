@@ -170,10 +170,18 @@ final class PrivateConversationModel: ObservableObject {
         refreshSelectedConversation()
     }
 
+    /// Target-specific variant used by the add-friend sheet. Keeping the
+    /// captured peer ID prevents a navigation change behind the sheet from
+    /// applying the action to a newly selected conversation.
     @discardableResult
-    func addFriendForSelectedConversation() -> Bool {
-        guard let headerPeerID = selectedHeaderState?.headerPeerID else { return false }
-        let added = chatViewModel.addFriend(peerID: headerPeerID)
+    func addFriend(
+        peerID: PeerID,
+        localNickname: String? = nil
+    ) -> Bool {
+        let added = chatViewModel.addFriend(
+            peerID: peerID,
+            localPetname: localNickname
+        )
         refreshSelectedConversation()
         return added
     }
@@ -285,10 +293,8 @@ final class PrivateConversationModel: ObservableObject {
         let headerPeerID = chatViewModel.getShortIDForNoiseKey(conversationPeerID)
         let peer = chatViewModel.getPeer(byID: headerPeerID)
         let displayName = resolveDisplayName(for: conversationPeerID, headerPeerID: headerPeerID, peer: peer)
-        // Geo DMs are always routed through BitChat private envelopes over
-        // Nostr; their nostr_ keys never resolve to a reachable mesh peer, so
-        // resolveAvailability would report .offline. Report .nostrAvailable
-        // so the header shows the globe instead of a misleading "offline" tag.
+        // Geo DMs always have a Nostr mailbox route. This is a route-capability
+        // label, not a claim that the remote app is online right now.
         let availability = conversationPeerID.isGeoDM
             ? .nostrAvailable
             : resolveAvailability(for: headerPeerID, peer: peer)
@@ -366,31 +372,38 @@ final class PrivateConversationModel: ObservableObject {
     }
 
     private func resolveAvailability(for headerPeerID: PeerID, peer: BitchatPeer?) -> PrivateConversationAvailability {
-        if let connectionState = peer?.connectionState {
-            switch connectionState {
-            case .bluetoothConnected:
-                return .bluetoothConnected
-            case .meshReachable:
-                return .meshReachable
-            case .nostrAvailable:
-                return .nostrAvailable
-            case .offline:
-                return .offline
-            }
+        if peer?.isConnected == true {
+            return .bluetoothConnected
         }
-
-        if chatViewModel.meshService.isPeerReachable(headerPeerID) {
+        if peer?.isReachable == true {
             return .meshReachable
         }
-        if let noiseKey = Data(hexString: headerPeerID.id),
-           let favoriteStatus = FavoritesPersistenceService.shared.getFavoriteStatus(for: noiseKey),
-           favoriteStatus.isMutual {
-            return .nostrAvailable
-        }
+
         if chatViewModel.meshService.isPeerConnected(headerPeerID) || chatViewModel.connectedPeers.contains(headerPeerID) {
             return .bluetoothConnected
         }
+        if chatViewModel.meshService.isPeerReachable(headerPeerID) {
+            return .meshReachable
+        }
+        if let favoriteStatus = favoriteStatus(for: headerPeerID, peer: peer),
+           favoriteStatus.peerNostrPublicKey != nil {
+            return .nostrAvailable
+        }
 
         return .offline
+    }
+
+    private func favoriteStatus(
+        for headerPeerID: PeerID,
+        peer: BitchatPeer?
+    ) -> FavoritesPersistenceService.FavoriteRelationship? {
+        if let status = peer?.favoriteStatus {
+            return status
+        }
+        if let noiseKey = peer?.noisePublicKey ?? headerPeerID.noiseKey,
+           let status = FavoritesPersistenceService.shared.getFavoriteStatus(for: noiseKey) {
+            return status
+        }
+        return FavoritesPersistenceService.shared.getFavoriteStatus(forPeerID: headerPeerID)
     }
 }

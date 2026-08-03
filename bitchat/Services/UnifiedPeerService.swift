@@ -45,6 +45,10 @@ final class UnifiedPeerService: ObservableObject, TransportPeerEventsDelegate {
     weak var messageRouter: MessageRouter?
     private let favoritesService: FavoritesPersistenceService
     private var cancellables = Set<AnyCancellable>()
+    /// Favorite identity announcements are normally sent when a contact is
+    /// first added. Re-send once per app session when that contact next has a
+    /// direct link so older or missed records can recover the Nostr route.
+    private var refreshedFavoriteIdentities = Set<Data>()
     
     // MARK: - Initialization
     
@@ -101,6 +105,7 @@ final class UnifiedPeerService: ObservableObject, TransportPeerEventsDelegate {
         var connected: Set<PeerID> = []
         var addedPeerIDs: Set<PeerID> = []
         var meshNoiseKeys: Set<Data> = []
+        var favoriteIdentityRefreshTargets: [PeerID] = []
 
         // Phase 1: Add all mesh peers (connected and reachable)
         for peerInfo in meshPeers {
@@ -121,6 +126,11 @@ final class UnifiedPeerService: ObservableObject, TransportPeerEventsDelegate {
             if let publicKey = peerInfo.noisePublicKey {
                 meshNoiseKeys.insert(publicKey)
                 fingerprintCache[peerID] = publicKey.sha256Fingerprint()
+                if peerInfo.isConnected,
+                   favorites[publicKey]?.isFavorite == true,
+                   refreshedFavoriteIdentities.insert(publicKey).inserted {
+                    favoriteIdentityRefreshTargets.append(peerID)
+                }
             }
         }
 
@@ -172,8 +182,8 @@ final class UnifiedPeerService: ObservableObject, TransportPeerEventsDelegate {
         
         // Phase 5: Keep every friend the local user explicitly saved. A
         // one-way favorite is still a contact and must remain visible while
-        // offline; mutuality only controls Nostr availability, not whether the
-        // person exists in the contact list.
+        // offline; mutuality records reciprocity, not whether the person exists
+        // in the contact list or can use a separately known Nostr route.
         let filtered = enrichedPeers.filter { p in
             p.isConnected || p.isReachable || p.isFavorite
         }
@@ -182,6 +192,17 @@ final class UnifiedPeerService: ObservableObject, TransportPeerEventsDelegate {
         self.favorites = favoritesList
         self.mutualFavorites = mutualsList
         self.peerIndex = newIndex
+
+        // Use the established Bitchat favorite marker unchanged. Besides
+        // refreshing the peer's view of this relationship, it carries our
+        // current npub so the receiver can repair a missing Nostr route.
+        for peerID in favoriteIdentityRefreshTargets {
+            if let messageRouter {
+                messageRouter.sendFavoriteNotification(to: peerID, isFavorite: true)
+            } else {
+                meshService.sendFavoriteNotification(to: peerID, isFavorite: true)
+            }
+        }
         
         // Log summary (commented out to reduce noise)
         // let connectedCount = connected.count
@@ -267,7 +288,10 @@ final class UnifiedPeerService: ObservableObject, TransportPeerEventsDelegate {
     /// state. The relationship remains explicitly unverified until the user
     /// completes a fingerprint or QR proof.
     @discardableResult
-    func addFriend(_ peerID: PeerID) -> FriendPersistenceOutcome? {
+    func addFriend(
+        _ peerID: PeerID,
+        localPetname: String? = nil
+    ) -> FriendPersistenceOutcome? {
         let resolvedPeer: BitchatPeer?
         if let noiseKey = peerID.noiseKey {
             let shortPeerID = PeerID(publicKey: noiseKey)
@@ -282,7 +306,8 @@ final class UnifiedPeerService: ObservableObject, TransportPeerEventsDelegate {
         return addFriend(
             noisePublicKey: peer.noisePublicKey,
             nostrPublicKey: peer.nostrPublicKey,
-            claimedNickname: peer.nickname
+            claimedNickname: peer.nickname,
+            localPetname: localPetname
         )
     }
 
@@ -294,13 +319,26 @@ final class UnifiedPeerService: ObservableObject, TransportPeerEventsDelegate {
     func addFriend(
         noisePublicKey: Data,
         nostrPublicKey: String?,
-        claimedNickname: String
+        claimedNickname: String,
+        localPetname: String? = nil
     ) -> FriendPersistenceOutcome? {
         guard noisePublicKey.count == 32,
               noisePublicKey != meshService.noiseStaticPublicKeyData(),
               let normalizedNickname = VerificationService.VerificationQR
                 .normalizedProtocolNickname(claimedNickname) else {
             return nil
+        }
+
+        let normalizedLocalPetname: String?
+        if let proposedPetname = localPetname?.trimmedOrNilIfEmpty {
+            guard let validatedPetname = InputValidator.validateNickname(
+                proposedPetname
+            ) else {
+                return nil
+            }
+            normalizedLocalPetname = validatedPetname
+        } else {
+            normalizedLocalPetname = nil
         }
 
         let fingerprint = noisePublicKey.sha256Fingerprint()
@@ -311,11 +349,22 @@ final class UnifiedPeerService: ObservableObject, TransportPeerEventsDelegate {
         let existingSocial = identityManager.getSocialIdentity(for: fingerprint)
         guard existingSocial?.isBlocked != true else { return nil }
         let wasAlreadyFriend = favoritesService.isFavorite(noisePublicKey)
+        let connectedNow = meshService.currentPeerSnapshots().contains {
+            $0.isConnected && $0.noisePublicKey == noisePublicKey
+        }
+        // The favorites publisher fires synchronously during persistence. If
+        // this is a live add, reserve the refresh slot before that callback so
+        // the explicit notification below is not duplicated.
+        let reservedRefresh = connectedNow
+            && refreshedFavoriteIdentities.insert(noisePublicKey).inserted
         guard favoritesService.addFavorite(
             peerNoisePublicKey: noisePublicKey,
             peerNostrPublicKey: nostrPublicKey,
             peerNickname: normalizedNickname
         ) else {
+            if reservedRefresh {
+                refreshedFavoriteIdentities.remove(noisePublicKey)
+            }
             return nil
         }
 
@@ -329,10 +378,16 @@ final class UnifiedPeerService: ObservableObject, TransportPeerEventsDelegate {
             notes: nil
         )
         social.claimedNickname = normalizedNickname
+        if let normalizedLocalPetname {
+            social.localPetname = normalizedLocalPetname
+        }
         social.isFavorite = true
         guard identityManager.persistSocialIdentity(social) else {
             if !wasAlreadyFriend {
                 _ = favoritesService.removeFavorite(peerNoisePublicKey: noisePublicKey)
+            }
+            if reservedRefresh {
+                refreshedFavoriteIdentities.remove(noisePublicKey)
             }
             return nil
         }
@@ -351,6 +406,65 @@ final class UnifiedPeerService: ObservableObject, TransportPeerEventsDelegate {
             displayName: social.localPetname?.trimmedOrNilIfEmpty ?? normalizedNickname,
             wasAdded: !wasAlreadyFriend
         )
+    }
+
+    /// Repairs an existing friend's Nostr route after the caller validates a
+    /// freshly scanned QR signature. This is an explicit user-authorized route
+    /// update, not a network-learned identity binding: a previously pinned
+    /// signing key still wins and any mismatch is rejected.
+    @discardableResult
+    func refreshFriendNostrRouteFromValidatedQR(
+        noisePublicKey: Data,
+        signingPublicKey: Data,
+        nostrPublicKey: String
+    ) -> Bool {
+        guard noisePublicKey.count == 32,
+              signingPublicKey.count == 32,
+              noisePublicKey != meshService.noiseStaticPublicKeyData(),
+              let decoded = try? Bech32.decode(nostrPublicKey),
+              decoded.hrp == "npub",
+              decoded.data.count == 32,
+              let canonicalNpub = try? Bech32.encode(
+                  hrp: "npub",
+                  data: decoded.data
+              ),
+              canonicalNpub == nostrPublicKey else {
+            return false
+        }
+
+        let fingerprint = noisePublicKey.sha256Fingerprint()
+        guard !identityManager.isBlocked(fingerprint: fingerprint),
+              identityManager.getSocialIdentity(for: fingerprint)?.isBlocked != true,
+              let relationship = favoritesService.getFavoriteStatus(
+                for: noisePublicKey
+              ),
+              relationship.isFavorite else {
+            return false
+        }
+        if let pinnedSigningKey = identityManager
+            .authenticatedSigningPublicKey(forFingerprint: fingerprint)
+            ?? identityManager.signingPublicKey(forFingerprint: fingerprint),
+           pinnedSigningKey != signingPublicKey {
+            return false
+        }
+
+        if relationship.peerNostrPublicKey == canonicalNpub {
+            return true
+        }
+        guard favoritesService.addFavorite(
+            peerNoisePublicKey: noisePublicKey,
+            peerNostrPublicKey: canonicalNpub,
+            peerNickname: relationship.peerNickname
+        ) else {
+            return false
+        }
+
+        SecureLogger.info(
+            "Refreshed an existing friend's Nostr route from a validated QR",
+            category: .session
+        )
+        updatePeers()
+        return true
     }
 
     /// Persists the exact identity proven by the QR challenge-response without
@@ -428,6 +542,11 @@ final class UnifiedPeerService: ObservableObject, TransportPeerEventsDelegate {
         guard favoritesService.isFavorite(peer.noisePublicKey) else {
             return true
         }
+        // The one-way relationship record may be deleted completely below,
+        // so retain its Nostr route until the compatible `[UNFAVORITED]`
+        // payload has been handed to the transport.
+        let recipientNpub = peer.nostrPublicKey
+            ?? peer.favoriteStatus?.peerNostrPublicKey
         guard favoritesService.removeFavorite(
             peerNoisePublicKey: peer.noisePublicKey
         ) else {
@@ -441,7 +560,11 @@ final class UnifiedPeerService: ObservableObject, TransportPeerEventsDelegate {
         }
 
         if let messageRouter {
-            messageRouter.sendFavoriteNotification(to: peer.peerID, isFavorite: false)
+            messageRouter.sendFavoriteNotification(
+                to: peer.peerID,
+                recipientNpub: recipientNpub,
+                isFavorite: false
+            )
         } else {
             meshService.sendFavoriteNotification(to: peer.peerID, isFavorite: false)
         }

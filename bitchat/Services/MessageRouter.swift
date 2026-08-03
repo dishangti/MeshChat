@@ -581,6 +581,31 @@ final class MessageRouter {
         }
     }
 
+    /// Routes a relationship notification using a Nostr address captured
+    /// before local relationship removal. A live mesh connection still wins;
+    /// otherwise the explicit address avoids racing the favorites-store
+    /// deletion that would make the normal Nostr lookup fail.
+    func sendFavoriteNotification(
+        to peerID: PeerID,
+        recipientNpub: String?,
+        isFavorite: Bool
+    ) {
+        if let transport = connectedTransport(for: peerID) {
+            transport.sendFavoriteNotification(to: peerID, isFavorite: isFavorite)
+        } else if let recipientNpub,
+                  let transport = transports.first(where: {
+                      $0 is NostrAddressedFavoriteNotificationTransport
+                  }) as? NostrAddressedFavoriteNotificationTransport {
+            transport.sendFavoriteNotification(
+                to: peerID,
+                recipientNpub: recipientNpub,
+                isFavorite: isFavorite
+            )
+        } else if let transport = reachableTransport(for: peerID) {
+            transport.sendFavoriteNotification(to: peerID, isFavorite: isFavorite)
+        }
+    }
+
     /// Retries only messages that the router previously transmitted through
     /// an already-established secure session and that still await an ack.
     ///

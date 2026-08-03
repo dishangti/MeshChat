@@ -230,6 +230,41 @@ struct UnifiedPeerServiceTests {
     }
 
     @Test @MainActor
+    func connectedFriendRefreshesNostrIdentityOnlyOncePerSession() async {
+        let favoritesService = FavoritesPersistenceService(keychain: MockKeychain())
+        let transport = MockTransport()
+        let service = UnifiedPeerService(
+            meshService: transport,
+            idBridge: NostrIdentityBridge(keychain: MockKeychainHelper()),
+            identityManager: TestIdentityManager(),
+            favoritesService: favoritesService
+        )
+        let noiseKey = Data(repeating: 0xD3, count: 32)
+        let peerID = PeerID(publicKey: noiseKey)
+        favoritesService.addFavorite(
+            peerNoisePublicKey: noiseKey,
+            peerNickname: "Alice"
+        )
+        let snapshots = [
+            TransportPeerSnapshot(
+                peerID: peerID,
+                nickname: "Alice",
+                isConnected: true,
+                noisePublicKey: noiseKey,
+                lastSeen: Date()
+            )
+        ]
+
+        transport.updatePeerSnapshots(snapshots)
+        service.didUpdatePeerSnapshots(snapshots)
+        service.didUpdatePeerSnapshots(snapshots)
+
+        #expect(transport.sentFavoriteNotifications.count == 1)
+        #expect(transport.sentFavoriteNotifications.first?.peerID == peerID)
+        #expect(transport.sentFavoriteNotifications.first?.isFavorite == true)
+    }
+
+    @Test @MainActor
     func addFriend_savesContactWithoutPinningOrVerifyingIdentity() async {
         let favoritesService = FavoritesPersistenceService(keychain: MockKeychain())
         let transport = MockTransport()
@@ -275,6 +310,70 @@ struct UnifiedPeerServiceTests {
         #expect(identity.signingPublicKey(forFingerprint: fingerprint) == nil)
         #expect(!identity.isVerified(fingerprint: fingerprint))
         #expect(transport.sentFavoriteNotifications.count == 1)
+    }
+
+    @Test @MainActor
+    func addFriend_savesOptionalLocalPetnameAndRejectsInvalidInputBeforePersistence() async {
+        let favoritesService = FavoritesPersistenceService(keychain: MockKeychain())
+        let transport = MockTransport()
+        let identity = TestIdentityManager()
+        let service = UnifiedPeerService(
+            meshService: transport,
+            idBridge: NostrIdentityBridge(keychain: MockKeychainHelper()),
+            identityManager: identity,
+            favoritesService: favoritesService
+        )
+        let validNoiseKey = Data(repeating: 0xC5, count: 32)
+        let invalidNoiseKey = Data(repeating: 0xC6, count: 32)
+        let validPeerID = PeerID(publicKey: validNoiseKey)
+        let invalidPeerID = PeerID(publicKey: invalidNoiseKey)
+        let snapshots = [
+            TransportPeerSnapshot(
+                peerID: validPeerID,
+                nickname: "Alice",
+                isConnected: true,
+                noisePublicKey: validNoiseKey,
+                lastSeen: Date()
+            ),
+            TransportPeerSnapshot(
+                peerID: invalidPeerID,
+                nickname: "Mallory",
+                isConnected: true,
+                noisePublicKey: invalidNoiseKey,
+                lastSeen: Date()
+            )
+        ]
+        transport.updatePeerSnapshots(snapshots)
+        service.didUpdatePeerSnapshots(snapshots)
+
+        let added = service.addFriend(
+            validPeerID,
+            localPetname: "  Trail Buddy  "
+        )
+        let rejected = service.addFriend(
+            invalidPeerID,
+            localPetname: "bad\u{0007}name"
+        )
+
+        #expect(
+            added == FriendPersistenceOutcome(
+                displayName: "Trail Buddy",
+                wasAdded: true
+            )
+        )
+        #expect(
+            identity.getSocialIdentity(
+                for: validNoiseKey.sha256Fingerprint()
+            )?.localPetname == "Trail Buddy"
+        )
+        #expect(favoritesService.isFavorite(validNoiseKey))
+        #expect(rejected == nil)
+        #expect(!favoritesService.isFavorite(invalidNoiseKey))
+        #expect(
+            identity.getSocialIdentity(
+                for: invalidNoiseKey.sha256Fingerprint()
+            ) == nil
+        )
     }
 
     @Test @MainActor
@@ -408,6 +507,84 @@ struct UnifiedPeerServiceTests {
         #expect(blocked == nil)
         #expect(!favoritesService.isFavorite(noiseKey))
         #expect(transport.sentFavoriteNotifications.isEmpty)
+    }
+
+    @Test @MainActor
+    func validatedQRRefreshesExistingFriendNostrRouteWithoutPriorKeyBinding() async throws {
+        let favoritesService = FavoritesPersistenceService(keychain: MockKeychain())
+        let transport = MockTransport()
+        let identity = TestIdentityManager()
+        let service = UnifiedPeerService(
+            meshService: transport,
+            idBridge: NostrIdentityBridge(keychain: MockKeychainHelper()),
+            identityManager: identity,
+            favoritesService: favoritesService
+        )
+        let noiseKey = Data(repeating: 0xA4, count: 32)
+        let signingKey = Data(repeating: 0xB4, count: 32)
+        let npub = try Bech32.encode(
+            hrp: "npub",
+            data: Data(repeating: 0xC4, count: 32)
+        )
+        favoritesService.addFavorite(
+            peerNoisePublicKey: noiseKey,
+            peerNickname: "Alice"
+        )
+        #expect(
+            service.refreshFriendNostrRouteFromValidatedQR(
+                noisePublicKey: noiseKey,
+                signingPublicKey: signingKey,
+                nostrPublicKey: npub
+            )
+        )
+        #expect(
+            favoritesService.getFavoriteStatus(for: noiseKey)?.peerNostrPublicKey
+                == npub
+        )
+        #expect(
+            favoritesService.getFavoriteStatus(for: noiseKey)?.peerNickname
+                == "Alice"
+        )
+    }
+
+    @Test @MainActor
+    func QRWithPinnedSigningKeyMismatchDoesNotChangeExistingFriendNostrRoute() async throws {
+        let favoritesService = FavoritesPersistenceService(keychain: MockKeychain())
+        let transport = MockTransport()
+        let identity = TestIdentityManager()
+        let service = UnifiedPeerService(
+            meshService: transport,
+            idBridge: NostrIdentityBridge(keychain: MockKeychainHelper()),
+            identityManager: identity,
+            favoritesService: favoritesService
+        )
+        let noiseKey = Data(repeating: 0xA5, count: 32)
+        let authenticatedSigningKey = Data(repeating: 0xB5, count: 32)
+        let scannedSigningKey = Data(repeating: 0xB6, count: 32)
+        let npub = try Bech32.encode(
+            hrp: "npub",
+            data: Data(repeating: 0xC5, count: 32)
+        )
+        favoritesService.addFavorite(
+            peerNoisePublicKey: noiseKey,
+            peerNickname: "Alice"
+        )
+        identity.bindAuthenticatedSigningPublicKey(
+            authenticatedSigningKey,
+            fingerprint: noiseKey.sha256Fingerprint()
+        )
+
+        #expect(
+            !service.refreshFriendNostrRouteFromValidatedQR(
+                noisePublicKey: noiseKey,
+                signingPublicKey: scannedSigningKey,
+                nostrPublicKey: npub
+            )
+        )
+        #expect(
+            favoritesService.getFavoriteStatus(for: noiseKey)?.peerNostrPublicKey
+                == nil
+        )
     }
 
     @Test @MainActor

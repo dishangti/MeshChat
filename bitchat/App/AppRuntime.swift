@@ -32,6 +32,20 @@ enum AppNotificationVisibilityPolicy {
     }
 }
 
+enum AppNotificationRoute {
+    static func directPeerID(
+        identifier: String,
+        userInfo: [AnyHashable: Any]
+    ) -> PeerID? {
+        guard identifier.hasPrefix("private-")
+                || identifier.hasPrefix("friend-added-")
+                || identifier.hasPrefix("friend-removed-") else {
+            return nil
+        }
+        return PeerID(str: userInfo["peerID"] as? String)
+    }
+}
+
 @MainActor
 final class AppRuntime: ObservableObject {
     let chatViewModel: ChatViewModel
@@ -172,6 +186,7 @@ final class AppRuntime: ObservableObject {
             }
         }
 
+        OuterProxySettings.applyStored()
         NetworkActivationService.shared.start()
         // Bridge is enabled by default, but its rendezvous identity needs a
         // coarse local geohash. Ask at the normal app-start boundary so a
@@ -295,7 +310,10 @@ final class AppRuntime: ObservableObject {
             return
         }
 
-        if identifier.hasPrefix("private-"), let peerID = PeerID(str: userInfo["peerID"] as? String) {
+        if let peerID = AppNotificationRoute.directPeerID(
+            identifier: identifier,
+            userInfo: userInfo
+        ) {
             record(.notificationOpened(peerID: peerID))
             chatViewModel.startPrivateChat(with: peerID)
             // Preserve the navigation intent across cold launch even if the
@@ -327,7 +345,10 @@ final class AppRuntime: ObservableObject {
 
 private extension AppRuntime {
     func bindRuntimeObservers() {
-        NostrRelayManager.shared.$isConnected
+        // Private-message lifecycle must follow the standing DM relay set.
+        // A geohash-only socket cannot carry the account mailbox or flush a
+        // retained direct-message outbox.
+        NostrRelayManager.shared.$isDMRelayConnected
             .receive(on: DispatchQueue.main)
             .sink { [weak self] isConnected in
                 self?.handleNostrRelayConnectionChanged(isConnected)
@@ -430,6 +451,13 @@ private extension AppRuntime {
             chatViewModel.setupNostrMessageHandling()
             chatViewModel.nostrHandlersSetup = true
         }
+
+        // Messages sent while Tor was bootstrapping or every DM relay was
+        // reconnecting live in the durable router outbox. RelayManager also
+        // has a volatile event queue, but a message never handed to the Nostr
+        // transport cannot be present there. Retry both old and new sends as
+        // soon as a real account-mailbox relay becomes usable.
+        chatViewModel.messageRouter.flushAllOutbox()
 
         guard !isInitialConnection else { return }
 

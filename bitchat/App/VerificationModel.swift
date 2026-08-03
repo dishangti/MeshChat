@@ -145,6 +145,18 @@ final class VerificationModel: ObservableObject {
                 .getSocialIdentity(for: fingerprint)?
                 .localPetname
         )
+
+        // The complete QR was signature-checked above. An explicit scan may
+        // therefore refresh route metadata for an existing contact, while a
+        // signing key that conflicts with an already pinned key is rejected.
+        if let routableNpub = qr.routableNpub {
+            _ = chatViewModel.unifiedPeerService
+                .refreshFriendNostrRouteFromValidatedQR(
+                    noisePublicKey: noisePublicKey,
+                    signingPublicKey: signingPublicKey,
+                    nostrPublicKey: routableNpub
+                )
+        }
         if let previous = friendCandidate, previous.id != candidate.id {
             chatViewModel.cancelFriendVerification(with: previous.qr)
         }

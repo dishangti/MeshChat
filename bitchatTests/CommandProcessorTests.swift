@@ -384,7 +384,7 @@ struct CommandProcessorTests {
 
         switch result {
         case .error(let message):
-            #expect(message == "Favorites are only for mesh peers in #mesh")
+            #expect(message == "Friends are only available for mesh peers in #mesh")
         default:
             Issue.record("Expected error result")
         }

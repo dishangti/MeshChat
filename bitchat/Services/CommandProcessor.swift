@@ -139,10 +139,10 @@ final class CommandProcessor {
             if inGeoPublic || inGeoDM { return .error(message: "Groups are only for mesh peers in #mesh") }
             return handleGroup(args)
         case "/fav":
-            if inGeoPublic || inGeoDM { return .error(message: "Favorites are only for mesh peers in #mesh") }
+            if inGeoPublic || inGeoDM { return .error(message: "Friends are only available for mesh peers in #mesh") }
             return handleFavorite(args, add: true)
         case "/unfav":
-            if inGeoPublic || inGeoDM { return .error(message: "Favorites are only for mesh peers in #mesh") }
+            if inGeoPublic || inGeoDM { return .error(message: "Friends are only available for mesh peers in #mesh") }
             return handleFavorite(args, add: false)
         case "/ping":
             if inGeoPublic || inGeoDM { return .error(message: "Ping only works for mesh peers in #mesh") }
@@ -172,7 +172,7 @@ final class CommandProcessor {
     /hug @name — Send a hug
     /slap @name — Slap with a large trout
     /block @name · /unblock @name
-    /fav @name · /unfav @name — Favorites (mesh only)
+    /fav @name · /unfav @name — Add or remove friends (mesh only)
     /group create <name> — Start an encrypted group
     /group invite @name · /group remove @name — Manage members (creator)
     /group leave · /group list — Leave or list your groups

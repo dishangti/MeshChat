@@ -239,6 +239,8 @@ struct LocalizationCoverageTests {
             "fingerprint.badge.verified": "Verified",
             "fingerprint.local_alias.label": "Local Nickname",
             "friends.action.add": "Add Friend",
+            "friends.activity.added_you": "%@ added you as a friend.",
+            "friends.activity.removed_you": "%@ removed you as a friend.",
             "friends.remove.confirm_title": "Remove %@ from Friends?",
             "friends.remove.confirm_message": "Their chat history, local nickname, verification, and block setting will be preserved.",
             "mesh_peers.section.friends": "Friends",
@@ -296,6 +298,8 @@ struct LocalizationCoverageTests {
         ).allLocales
         let newKeys = [
             "content.clear.confirm_message",
+            "friends.activity.added_you",
+            "friends.activity.removed_you",
             "friends.remove.confirm_title",
             "friends.remove.confirm_message",
             "recent_chat.delete.action",
@@ -305,6 +309,8 @@ struct LocalizationCoverageTests {
             "meshchat.help.chats.description"
         ]
         let formattedTitleKeys = Set([
+            "friends.activity.added_you",
+            "friends.activity.removed_you",
             "friends.remove.confirm_title",
             "recent_chat.delete.confirm_title"
         ])

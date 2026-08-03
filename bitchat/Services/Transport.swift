@@ -155,6 +155,21 @@ protocol SynchronousMessageTransportEventDelegate: TransportEventDelegate {
     func didReceiveTransportMessageSynchronously(_ message: BitchatMessage) -> Bool
 }
 
+/// Optional routing capability for relationship notifications whose Nostr
+/// destination was captured before the local relationship was removed.
+///
+/// `[FAVORITED]` and `[UNFAVORITED]` remain ordinary BitChat-compatible
+/// private-message payloads. This capability only keeps the outer Nostr
+/// address available long enough to deliver a removal notification after the
+/// local favorite record — which normally owns that address — is gone.
+protocol NostrAddressedFavoriteNotificationTransport: AnyObject {
+    func sendFavoriteNotification(
+        to peerID: PeerID,
+        recipientNpub: String,
+        isFavorite: Bool
+    )
+}
+
 protocol Transport: AnyObject {
     // Event sink
     var delegate: BitchatDelegate? { get set }

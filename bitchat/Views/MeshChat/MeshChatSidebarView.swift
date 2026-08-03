@@ -978,10 +978,10 @@ private extension MeshChatSidebarView {
                         .truncationMode(.middle)
 
                     HStack(spacing: 5) {
-                        Image(systemName: "antenna.radiowaves.left.and.right.slash")
+                        Image(systemName: peer.isNostrAvailable ? "globe" : "antenna.radiowaves.left.and.right.slash")
                             .font(.bitchatSystem(size: 9, weight: .medium))
                             .accessibilityHidden(true)
-                        Text(verbatim: Strings.offline)
+                        Text(verbatim: peer.isNostrAvailable ? Strings.nostr : Strings.offline)
                             .lineLimit(1)
                         Text(verbatim: "•")
                             .accessibilityHidden(true)
@@ -989,7 +989,7 @@ private extension MeshChatSidebarView {
                             .lineLimit(1)
                     }
                     .bitchatFont(size: 11)
-                    .foregroundColor(palette.secondary)
+                    .foregroundColor(peer.isNostrAvailable ? .purple : palette.secondary)
                 }
 
                 Spacer(minLength: 6)
@@ -1248,21 +1248,21 @@ private extension MeshChatSidebarView {
     func availabilityText(for peer: MeshPeerRow) -> String {
         if peer.isConnected { return Strings.connected }
         if peer.isReachable { return Strings.reachable }
-        if peer.isMutualFavorite { return Strings.nostr }
+        if peer.isNostrAvailable { return Strings.nostr }
         return Strings.offline
     }
 
     func availabilityIcon(for peer: MeshPeerRow) -> String {
         if peer.isConnected { return "antenna.radiowaves.left.and.right" }
         if peer.isReachable { return "point.3.filled.connected.trianglepath.dotted" }
-        if peer.isMutualFavorite { return "globe" }
+        if peer.isNostrAvailable { return "globe" }
         return "antenna.radiowaves.left.and.right.slash"
     }
 
     func availabilityColor(for peer: MeshPeerRow) -> Color {
         if peer.isConnected { return palette.accent }
         if peer.isReachable { return palette.accentBlue }
-        if peer.isMutualFavorite { return .purple }
+        if peer.isNostrAvailable { return .purple }
         return palette.secondary
     }
 
@@ -1430,7 +1430,7 @@ private extension MeshChatSidebarView {
                 peer.displayName,
                 peer.claimedNickname,
                 Strings.recent,
-                Strings.offline,
+                peer.isNostrAvailable ? Strings.nostr : Strings.offline,
                 peer.isBlocked ? Strings.blocked : "",
                 recentPeerHasUnread(peer) ? Strings.unread : ""
             ])
@@ -1494,7 +1494,7 @@ private extension MeshChatSidebarView {
     func availabilityRank(_ peer: MeshPeerRow) -> Int {
         if peer.isConnected { return 0 }
         if peer.isReachable { return 1 }
-        if peer.isMutualFavorite { return 2 }
+        if peer.isNostrAvailable { return 2 }
         return 3
     }
 
@@ -1592,7 +1592,11 @@ private extension MeshChatSidebarView {
         _ peer: RecentMeshPeerRow,
         hasUnread: Bool
     ) -> String {
-        var parts = [peer.displayName, Strings.offline, Strings.recent]
+        var parts = [
+            peer.displayName,
+            peer.isNostrAvailable ? Strings.nostr : Strings.offline,
+            Strings.recent
+        ]
         parts.append(peer.identityLockState.accessibilityDescription)
         if hasUnread { parts.append(Strings.unread) }
         if peer.isBlocked { parts.append(Strings.blocked) }

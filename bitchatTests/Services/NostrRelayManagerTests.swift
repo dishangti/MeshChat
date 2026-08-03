@@ -4,7 +4,9 @@ import XCTest
 
 @MainActor
 final class NostrRelayManagerTests: XCTestCase {
-    private let expectedDefaultRelayCount = 4
+    private var expectedDefaultRelayCount: Int {
+        NostrRelayManager.builtInRelayURLs.count
+    }
 
     func test_connect_directMode_connectsExistingDefaultRelaysWhenActivationBecomesAllowed() async {
         let context = makeContext(permission: .authorized, activationAllowed: false)
@@ -1139,6 +1141,18 @@ final class NostrRelayManagerTests: XCTestCase {
             !NostrRelayManager.pendingGiftWrapIDs.contains(failureID)
         }
         XCTAssertTrue(failureCleared)
+    }
+
+    func test_pendingGiftWrapTracking_isBoundedWhenRelaysNeverAcknowledge() {
+        let context = makeContext(permission: .denied)
+        context.manager.resetForPanicWipe()
+        defer { context.manager.resetForPanicWipe() }
+
+        for index in 0..<2_100 {
+            NostrRelayManager.registerPendingGiftWrap(id: "unacknowledged-\(index)")
+        }
+
+        XCTAssertEqual(NostrRelayManager.pendingGiftWrapIDs.count, 2_048)
     }
 
     func test_eoseCallback_waitsForAllTargetedRelays() async throws {

@@ -177,6 +177,11 @@ private final class MockChatPeerIdentityContext: ChatPeerIdentityContext {
     var geohashPeople: [GeoPerson] = []
     private(set) var registeredNostrKeyMappings: [(pubkey: String, peerID: PeerID)] = []
     private(set) var nostrFavoriteNotifications: [(noisePublicKey: Data, isFavorite: Bool)] = []
+    private(set) var routedAddressedFavoriteNotifications: [(
+        peerID: PeerID,
+        recipientNpub: String?,
+        isFavorite: Bool
+    )] = []
 
     func visibleGeohashPeople() -> [GeoPerson] { geohashPeople }
 
@@ -186,6 +191,14 @@ private final class MockChatPeerIdentityContext: ChatPeerIdentityContext {
 
     func sendFavoriteNotificationViaNostr(noisePublicKey: Data, isFavorite: Bool) {
         nostrFavoriteNotifications.append((noisePublicKey, isFavorite))
+    }
+
+    func routeFavoriteNotification(
+        to peerID: PeerID,
+        recipientNpub: String?,
+        isFavorite: Bool
+    ) {
+        routedAddressedFavoriteNotifications.append((peerID, recipientNpub, isFavorite))
     }
 
     // Favorites
@@ -416,13 +429,15 @@ struct ChatPeerIdentityCoordinatorContextTests {
         #expect(coordinator.getPeerIDForNickname("carol") == meshPeer)
     }
     @Test @MainActor
-    func removeFriend_forOfflineNoiseKeyIsRemovalOnlyAndIdempotent() async {
+    func removeFriend_forOfflineNoiseKeyIsRemovalOnlyAndIdempotent() async throws {
         let context = MockChatPeerIdentityContext()
         let coordinator = ChatPeerIdentityCoordinator(context: context)
         let noiseKey = Data(repeating: 0xAC, count: 32)
         let peerID = PeerID(hexData: noiseKey)
+        let recipient = try NostrIdentity.generate()
         context.favoriteRelationshipsByNoiseKey[noiseKey] = makeFavoriteRelationship(
             noiseKey: noiseKey,
+            nostrPublicKey: recipient.npub,
             isFavorite: true
         )
 
@@ -432,9 +447,10 @@ struct ChatPeerIdentityCoordinatorContextTests {
         #expect(context.socialFavoriteUpdates.count == 1)
         #expect(context.socialFavoriteUpdates.first?.isFavorite == false)
         #expect(context.socialFavoriteUpdates.first?.noiseKey == noiseKey)
-        #expect(context.nostrFavoriteNotifications.count == 1)
-        #expect(context.nostrFavoriteNotifications.first?.noisePublicKey == noiseKey)
-        #expect(context.nostrFavoriteNotifications.first?.isFavorite == false)
+        #expect(context.routedAddressedFavoriteNotifications.count == 1)
+        #expect(context.routedAddressedFavoriteNotifications.first?.peerID == peerID)
+        #expect(context.routedAddressedFavoriteNotifications.first?.recipientNpub == recipient.npub)
+        #expect(context.routedAddressedFavoriteNotifications.first?.isFavorite == false)
     }
 
 }

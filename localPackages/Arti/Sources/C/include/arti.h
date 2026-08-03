@@ -21,6 +21,23 @@ extern "C" {
 int32_t arti_start(const char *data_dir, uint16_t socks_port);
 
 /**
+ * Start Arti with an outer proxy for all Tor bootstrap and relay connections.
+ *
+ * @param proxy_kind 1 for SOCKS5 or 2 for HTTP CONNECT
+ * @param username Optional proxy username; supply together with password
+ * @param password Optional proxy password; supply together with username
+ */
+int32_t arti_start_with_proxy(
+    const char *data_dir,
+    uint16_t socks_port,
+    uint8_t proxy_kind,
+    const char *proxy_host,
+    uint16_t proxy_port,
+    const char *username,
+    const char *password
+);
+
+/**
  * Stop Arti gracefully.
  *
  * @return 0 on success, -1 if not running

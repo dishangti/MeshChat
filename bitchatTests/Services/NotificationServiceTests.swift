@@ -100,6 +100,29 @@ final class NotificationServiceTests: XCTestCase {
         XCTAssertEqual(request?.content.userInfo["peerID"] as? String, peerID.id)
     }
 
+    func test_sendFriendActivityNotifications_areRoutableAndUseFriendLanguage() {
+        let deliverer = RecordingNotificationRequestDeliverer()
+        let service = NotificationService(
+            isRunningTestsProvider: { false },
+            authorizer: RecordingNotificationAuthorizer(),
+            requestDeliverer: deliverer,
+            hidePreviewsProvider: { false }
+        )
+        let peerID = PeerID(str: "0123456789abcdef")
+
+        service.sendFriendActivityNotification(from: "Alice", peerID: peerID, isAdded: true)
+        service.sendFriendActivityNotification(from: "Alice", peerID: peerID, isAdded: false)
+
+        XCTAssertEqual(deliverer.requests.count, 2)
+        XCTAssertTrue(deliverer.requests[0].identifier.hasPrefix("friend-added-\(peerID.id)-"))
+        XCTAssertEqual(deliverer.requests[0].content.title, "Alice added you as a friend.")
+        XCTAssertEqual(deliverer.requests[0].content.body, "Opens a private chat")
+        XCTAssertEqual(deliverer.requests[0].content.userInfo["peerID"] as? String, peerID.id)
+        XCTAssertEqual(deliverer.requests[0].content.userInfo["senderName"] as? String, "Alice")
+        XCTAssertTrue(deliverer.requests[1].identifier.hasPrefix("friend-removed-\(peerID.id)-"))
+        XCTAssertEqual(deliverer.requests[1].content.title, "Alice removed you as a friend.")
+    }
+
     func test_wrapperNotifications_setExpectedIdentifiersAndDeepLinks() {
         let deliverer = RecordingNotificationRequestDeliverer()
         let service = NotificationService(
@@ -173,14 +196,43 @@ final class NotificationServiceTests: XCTestCase {
         )
 
         service.sendNetworkAvailableNotification(peerCount: 2)
+        service.sendFriendActivityNotification(
+            from: "Bob",
+            peerID: PeerID(str: "0123456789abcdef"),
+            isAdded: false
+        )
         service.sendPrivateMessageNotification(
             from: "Alice",
             message: "hello",
             peerID: PeerID(str: "deadbeefdeadbeef")
         )
 
-        XCTAssertEqual(deliverer.requests.count, 1)
-        XCTAssertTrue(deliverer.requests[0].identifier.hasPrefix("private-"))
+        XCTAssertEqual(deliverer.requests.count, 2)
+        XCTAssertTrue(deliverer.requests.contains {
+            $0.identifier.hasPrefix("friend-removed-")
+        })
+        XCTAssertTrue(deliverer.requests.contains {
+            $0.identifier.hasPrefix("private-")
+        })
+    }
+
+    func test_friendActivity_obeysDirectMessageTopic() {
+        let deliverer = RecordingNotificationRequestDeliverer()
+        let service = NotificationService(
+            isRunningTestsProvider: { false },
+            authorizer: RecordingNotificationAuthorizer(),
+            requestDeliverer: deliverer,
+            notificationPolicyProvider: { $0 != .directMessages }
+        )
+
+        service.sendFriendActivityNotification(
+            from: "Bob",
+            peerID: PeerID(str: "0123456789abcdef"),
+            isAdded: true
+        )
+        service.sendNetworkAvailableNotification(peerCount: 2)
+
+        XCTAssertEqual(deliverer.requests.map(\.identifier), ["network-available"])
     }
 
     func test_securityNotification_honorsPreviewRedaction() {

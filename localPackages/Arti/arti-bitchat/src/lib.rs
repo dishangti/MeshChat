@@ -6,41 +6,45 @@
 use std::ffi::{c_char, c_int, CStr};
 use std::net::SocketAddr;
 use std::path::PathBuf;
-use std::sync::atomic::{AtomicBool, AtomicI32, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicI32, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 
 use arti_client::TorClient;
 use once_cell::sync::OnceCell;
 use tokio::net::TcpListener;
-use tokio::runtime::Runtime;
+use tokio::runtime::Runtime as TokioRuntime;
 use tokio::sync::oneshot;
-use tor_rtcompat::PreferredRuntime;
+use tor_rtcompat::{PreferredRuntime, RuntimeSubstExt as _};
 
+mod proxy;
 mod socks;
+
+use proxy::{ProxyConfig, ProxyKind, ProxyTcpProvider};
 
 /// Global state for the Arti instance
 struct ArtiState {
     /// Tokio runtime (owned, single instance)
-    runtime: Runtime,
+    runtime: TokioRuntime,
     /// Shutdown signal sender
     shutdown_tx: Option<oneshot::Sender<()>>,
-    /// TorClient handle for status queries
-    client: Option<Arc<TorClient<PreferredRuntime>>>,
 }
 
 static ARTI_STATE: OnceCell<Mutex<ArtiState>> = OnceCell::new();
 static BOOTSTRAP_PROGRESS: AtomicI32 = AtomicI32::new(0);
 static IS_RUNNING: AtomicBool = AtomicBool::new(false);
+/// Identifies the task that currently owns the exported running/progress
+/// state. A delayed completion from a stopped task must not overwrite a newer
+/// start attempt.
+static RUN_GENERATION: AtomicU64 = AtomicU64::new(0);
 static BOOTSTRAP_SUMMARY: Mutex<String> = Mutex::new(String::new());
 
 /// Initialize the global state with a new runtime
 fn init_state() -> Result<(), &'static str> {
     ARTI_STATE.get_or_try_init(|| -> Result<Mutex<ArtiState>, &'static str> {
-        let runtime = Runtime::new().map_err(|_| "Failed to create tokio runtime")?;
+        let runtime = TokioRuntime::new().map_err(|_| "Failed to create tokio runtime")?;
         Ok(Mutex::new(ArtiState {
             runtime,
             shutdown_tx: None,
-            client: None,
         }))
     })?;
     Ok(())
@@ -60,15 +64,73 @@ fn init_state() -> Result<(), &'static str> {
 /// * -4 if bootstrap failed
 #[no_mangle]
 pub extern "C" fn arti_start(data_dir: *const c_char, socks_port: u16) -> c_int {
+    start_arti(data_dir, socks_port, None)
+}
+
+/// Start Arti and route all of its outbound TCP connections through an outer proxy.
+///
+/// `proxy_kind` is 1 for SOCKS5 and 2 for HTTP CONNECT. Credentials must either both
+/// be null or both contain valid UTF-8 strings.
+#[no_mangle]
+pub extern "C" fn arti_start_with_proxy(
+    data_dir: *const c_char,
+    socks_port: u16,
+    proxy_kind: u8,
+    proxy_host: *const c_char,
+    proxy_port: u16,
+    username: *const c_char,
+    password: *const c_char,
+) -> c_int {
+    let kind = match proxy_kind {
+        1 => ProxyKind::Socks5,
+        2 => ProxyKind::HttpConnect,
+        _ => return -5,
+    };
+    let host = match c_string(proxy_host) {
+        Ok(Some(value)) if !value.trim().is_empty() => value,
+        _ => return -5,
+    };
+    let username = match c_string(username) {
+        Ok(value) => value,
+        Err(()) => return -5,
+    };
+    let password = match c_string(password) {
+        Ok(value) => value,
+        Err(()) => return -5,
+    };
+    let proxy = ProxyConfig {
+        kind,
+        host,
+        port: proxy_port,
+        username,
+        password,
+    };
+    if proxy.validate().is_err() {
+        return -5;
+    }
+    start_arti(data_dir, socks_port, Some(proxy))
+}
+
+fn c_string(pointer: *const c_char) -> Result<Option<String>, ()> {
+    if pointer.is_null() {
+        return Ok(None);
+    }
+    unsafe { CStr::from_ptr(pointer) }
+        .to_str()
+        .map(|value| Some(value.to_owned()))
+        .map_err(|_| ())
+}
+
+fn start_arti(data_dir: *const c_char, socks_port: u16, proxy: Option<ProxyConfig>) -> c_int {
     // Check if already running
     if IS_RUNNING.load(Ordering::SeqCst) {
         return -1;
     }
 
     // Parse data directory
-    let data_path = match unsafe { CStr::from_ptr(data_dir) }.to_str() {
-        Ok(s) => PathBuf::from(s),
-        Err(_) => return -2,
+    let data_path = match c_string(data_dir) {
+        Ok(Some(value)) => PathBuf::from(value),
+        _ => return -2,
     };
 
     // Initialize runtime if needed
@@ -94,10 +156,19 @@ pub extern "C" fn arti_start(data_dir: *const c_char, socks_port: u16) -> c_int 
         .parse()
         .expect("valid addr");
 
-    // Spawn the main Arti task
+    // Publish running before spawning. The task can fail immediately (for
+    // example on corrupt state or an unavailable proxy); publishing after
+    // spawn lets that failure write `false` and then be overwritten with
+    // `true`, leaving callers stuck with a ghost process and no SOCKS listener.
+    let generation = RUN_GENERATION.fetch_add(1, Ordering::SeqCst) + 1;
+    IS_RUNNING.store(true, Ordering::SeqCst);
+    BOOTSTRAP_PROGRESS.store(0, Ordering::SeqCst);
+    update_summary("Starting...");
+
+    // Spawn the main Arti task.
     let data_path_clone = data_path.clone();
     guard.runtime.spawn(async move {
-        match run_arti(data_path_clone, socks_addr, shutdown_rx).await {
+        match run_arti(data_path_clone, socks_addr, proxy, shutdown_rx).await {
             Ok(_) => {
                 tracing::info!("Arti shutdown cleanly");
             }
@@ -106,13 +177,11 @@ pub extern "C" fn arti_start(data_dir: *const c_char, socks_port: u16) -> c_int 
                 update_summary(&format!("Error: {}", e));
             }
         }
-        IS_RUNNING.store(false, Ordering::SeqCst);
-        BOOTSTRAP_PROGRESS.store(0, Ordering::SeqCst);
+        if RUN_GENERATION.load(Ordering::SeqCst) == generation {
+            IS_RUNNING.store(false, Ordering::SeqCst);
+            BOOTSTRAP_PROGRESS.store(0, Ordering::SeqCst);
+        }
     });
-
-    IS_RUNNING.store(true, Ordering::SeqCst);
-    BOOTSTRAP_PROGRESS.store(0, Ordering::SeqCst);
-    update_summary("Starting...");
 
     0
 }
@@ -142,9 +211,6 @@ pub extern "C" fn arti_stop() -> c_int {
     if let Some(tx) = guard.shutdown_tx.take() {
         let _ = tx.send(());
     }
-
-    // Clear client reference
-    guard.client = None;
 
     // Give async tasks time to complete
     std::thread::sleep(std::time::Duration::from_millis(200));
@@ -248,6 +314,7 @@ fn update_summary(s: &str) {
 async fn run_arti(
     data_dir: PathBuf,
     socks_addr: SocketAddr,
+    proxy: Option<ProxyConfig>,
     mut shutdown_rx: oneshot::Receiver<()>,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     // Ensure data directory exists
@@ -261,29 +328,57 @@ async fn run_arti(
 
     // Use from_directories which sets up storage correctly
     use arti_client::config::TorClientConfigBuilder;
-    let config = TorClientConfigBuilder::from_directories(state_dir, cache_dir)
-        .build()?;
+    let config = TorClientConfigBuilder::from_directories(state_dir, cache_dir).build()?;
 
     update_summary("Bootstrapping...");
 
-    // Create and bootstrap the Tor client
-    let client = TorClient::create_bootstrapped(config).await?;
-    let client = Arc::new(client);
-
-    // Store client reference for status queries
-    if let Some(state) = ARTI_STATE.get() {
-        if let Ok(mut guard) = state.lock() {
-            guard.client = Some(client.clone());
-        }
+    let runtime = PreferredRuntime::current()?;
+    if let Some(proxy) = proxy {
+        let proxy_addresses: Vec<SocketAddr> =
+            tokio::net::lookup_host((proxy.host.as_str(), proxy.port))
+                .await?
+                .collect();
+        let provider = ProxyTcpProvider::new(runtime.clone(), proxy_addresses, proxy)?;
+        let runtime = runtime.with_tcp_provider(provider);
+        let client_builder = TorClient::with_runtime(runtime).config(config);
+        let bootstrap = client_builder.create_bootstrapped();
+        let client = tokio::select! {
+            result = bootstrap => result?,
+            _ = &mut shutdown_rx => {
+                update_summary("Shutting down...");
+                return Ok(());
+            }
+        };
+        serve_socks(Arc::new(client), socks_addr, &mut shutdown_rx).await
+    } else {
+        let client_builder = TorClient::with_runtime(runtime).config(config);
+        let bootstrap = client_builder.create_bootstrapped();
+        let client = tokio::select! {
+            result = bootstrap => result?,
+            _ = &mut shutdown_rx => {
+                update_summary("Shutting down...");
+                return Ok(());
+            }
+        };
+        serve_socks(Arc::new(client), socks_addr, &mut shutdown_rx).await
     }
+}
 
-    // Mark bootstrap complete
-    BOOTSTRAP_PROGRESS.store(100, Ordering::SeqCst);
-    update_summary("Ready");
-
+async fn serve_socks<R>(
+    client: Arc<TorClient<R>>,
+    socks_addr: SocketAddr,
+    shutdown_rx: &mut oneshot::Receiver<()>,
+) -> Result<(), Box<dyn std::error::Error + Send + Sync>>
+where
+    R: tor_rtcompat::Runtime,
+{
     // Bind SOCKS listener
     let listener = TcpListener::bind(socks_addr).await?;
     tracing::info!("SOCKS5 proxy listening on {}", socks_addr);
+
+    // Do not publish readiness until the endpoint actually accepts sockets.
+    BOOTSTRAP_PROGRESS.store(100, Ordering::SeqCst);
+    update_summary("Ready");
 
     // Accept connections until shutdown
     loop {
@@ -303,7 +398,7 @@ async fn run_arti(
                     }
                 }
             }
-            _ = &mut shutdown_rx => {
+            _ = &mut *shutdown_rx => {
                 tracing::info!("Shutdown signal received");
                 break;
             }

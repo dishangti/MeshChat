@@ -641,8 +641,8 @@ struct ChatViewModelNostrExtensionTests {
         #expect(viewModel.findNoiseKey(for: nostrHex) == noiseKey)
     }
 
-    /// An inbound Nostr [FAVORITED] marker must flip theyFavoritedUs and stay
-    /// out of the conversation transcript.
+    /// An inbound Nostr [FAVORITED] marker must flip theyFavoritedUs and turn
+    /// into a local relationship event instead of exposing the wire marker.
     @Test @MainActor
     func handlePrivateMessage_nostrFavoritedMarkerUpdatesRelationship() async throws {
         let (viewModel, _) = makeTestableViewModel()
@@ -678,7 +678,9 @@ struct ChatViewModelNostrExtensionTests {
         #expect(relationship?.theyFavoritedUs == true)
         #expect(relationship?.isMutual == true)
         #expect(relationship?.peerNostrPublicKey == identity.npub)
-        #expect(viewModel.privateChats[convKey, default: []].isEmpty)
+        let messages = viewModel.privateChats[convKey, default: []]
+        #expect(messages.map(\.sender) == ["system"])
+        #expect(messages.map(\.content) == ["Alice added you as a friend."])
     }
 
     @Test @MainActor

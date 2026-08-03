@@ -451,6 +451,8 @@ private extension ContentPeopleListView {
 private struct ContentPrivateChatSheetView: View {
     @EnvironmentObject private var privateConversationModel: PrivateConversationModel
 
+    @State private var pendingFriendAddition: FriendAdditionTarget?
+
     @Binding var showSidebar: Bool
     @Binding var showVerifySheet: Bool
     @Binding var messageText: String
@@ -509,7 +511,10 @@ private struct ContentPrivateChatSheetView: View {
                                 if headerState.isFavorite {
                                     privateConversationModel.removeFriendForSelectedConversation()
                                 } else {
-                                    _ = privateConversationModel.addFriendForSelectedConversation()
+                                    pendingFriendAddition = FriendAdditionTarget(
+                                        peerID: headerState.headerPeerID,
+                                        displayName: headerState.displayName
+                                    )
                                 }
                             }) {
                                 Image(
@@ -600,6 +605,17 @@ private struct ContentPrivateChatSheetView: View {
         }
         .themedSheetBackground()
         .foregroundColor(palette.primary)
+        .sheet(
+            item: $pendingFriendAddition,
+            onDismiss: { pendingFriendAddition = nil }
+        ) { target in
+            FriendAdditionSheetView(target: target) { localNickname in
+                privateConversationModel.addFriend(
+                    peerID: target.peerID,
+                    localNickname: localNickname
+                )
+            }
+        }
     }
 
     private var swipeToLeaveGesture: some Gesture {

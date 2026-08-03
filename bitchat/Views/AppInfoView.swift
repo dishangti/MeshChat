@@ -65,6 +65,12 @@ struct AppInfoView: View {
     @State private var customRelays = NostrRelaySettings.customRelays()
     @State private var relayInput = ""
     @State private var relayError: String?
+    @State private var outerProxyDraft = OuterProxySettings.loadDraft()
+    @State private var outerProxyStatus: String?
+    @State private var outerProxyStatusIsError = false
+    #if os(macOS)
+    @State private var detectedSystemProxy = OuterProxySettings.systemProxyDescription()
+    #endif
     @ObservedObject private var locationManager = LocationChannelManager.shared
     /// The presenting entry point chooses Help (app logo) or Settings (gear)
     /// by writing this shared selection before the sheet appears. Info remains
@@ -141,6 +147,23 @@ struct AppInfoView: View {
             static var torSubtitle: String { AppLanguageSettings.localized("app_info.settings.tor.subtitle", defaultValue: "Sends internet traffic through Tor, so relay operators see Tor's address instead of yours. Covers location channels and private messages delivered over the internet. Recommended: on.", comment: "Subtitle for the Tor routing toggle in settings, explaining what it covers") }
             static var torOffWarning: String { AppLanguageSettings.localized("app_info.settings.tor.off_warning", defaultValue: "Tor is off: every relay you connect to can see your IP address, including relays carrying your private messages.", comment: "Warning shown under the Tor toggle while Tor is switched off, stating that relay operators can see the device IP address") }
 
+            static var outerProxyTitle: String { AppLanguageSettings.localized("app_info.settings.outer_proxy.title", defaultValue: "Outer Proxy", comment: "Title of the proxy configuration card") }
+            static var outerProxySubtitle: String { AppLanguageSettings.localized("app_info.settings.outer_proxy.subtitle_apple", defaultValue: "Routes relay traffic through system routing or a custom proxy. The path is Proxy → optional Tor → relay, so turning Tor on still keeps this proxy on the outside.", comment: "Description of how the outer proxy and optional Tor routing are ordered") }
+            static var proxyCustom: String { AppLanguageSettings.localized("app_info.settings.outer_proxy.custom", defaultValue: "Custom", comment: "Proxy mode configured separately inside MeshChat") }
+            static var proxyDetected: String { AppLanguageSettings.localized("app_info.settings.outer_proxy.detected", defaultValue: "Detected: %@", comment: "Status showing the static proxy detected in macOS settings; placeholder is the proxy description") }
+            static var proxyNotDetected: String { AppLanguageSettings.localized("app_info.settings.outer_proxy.not_detected", defaultValue: "No static system proxy detected. Direct connections still follow macOS, while Tor connects directly unless a Custom proxy is configured.", comment: "Status shown when macOS has no static HTTP or SOCKS proxy available for the embedded Tor client") }
+            static var proxyIOSSystem: String { AppLanguageSettings.localized("app_info.settings.outer_proxy.ios_system", defaultValue: "System Default follows iOS network routing. An active VPN already carries MeshChat and Tor traffic; choose Custom only for a separate HTTP or SOCKS5 proxy.", comment: "Explanation of system proxy behavior on iOS and iPadOS") }
+            static var proxyType: String { AppLanguageSettings.localized("app_info.settings.outer_proxy.type", defaultValue: "Type", comment: "Label for the custom proxy protocol picker") }
+            static var proxyHost: String { AppLanguageSettings.localized("app_info.settings.outer_proxy.host", defaultValue: "Host", comment: "Label for the custom proxy host field") }
+            static var proxyPort: String { AppLanguageSettings.localized("app_info.settings.outer_proxy.port", defaultValue: "Port", comment: "Label for the custom proxy port field") }
+            static var proxyUsername: String { AppLanguageSettings.localized("app_info.settings.outer_proxy.username", defaultValue: "Username (Optional)", comment: "Label for the optional custom proxy username field") }
+            static var proxyPassword: String { AppLanguageSettings.localized("app_info.settings.outer_proxy.password", defaultValue: "Password (Optional)", comment: "Label for the optional custom proxy password field") }
+            static var proxyCredentialNote: String { AppLanguageSettings.localized("app_info.settings.outer_proxy.credentials_note", defaultValue: "Proxy credentials authenticate the outer hop and are stored in Keychain. They do not replace Tor or message encryption.", comment: "Security note below custom proxy credential fields") }
+            static var proxyApply: String { AppLanguageSettings.localized("app_info.settings.outer_proxy.apply", defaultValue: "Apply Proxy", comment: "Button that saves and applies proxy settings") }
+            static var proxyApplied: String { AppLanguageSettings.localized("app_info.settings.outer_proxy.applied", defaultValue: "Proxy settings applied. Active relay connections are reconnecting.", comment: "Success status after applying proxy settings") }
+            static var proxyErrorSettings: String { AppLanguageSettings.localized("app_info.settings.outer_proxy.error.settings", defaultValue: "Check the proxy host and enter a port from 1 to 65535.", comment: "Validation error for an invalid custom proxy host or port") }
+            static var proxyErrorCredentials: String { AppLanguageSettings.localized("app_info.settings.outer_proxy.error.credentials", defaultValue: "Enter both a username and password, or leave both empty.", comment: "Validation error for incomplete custom proxy credentials") }
+            static var proxyErrorSave: String { AppLanguageSettings.localized("app_info.settings.outer_proxy.error.save", defaultValue: "The proxy password could not be saved to Keychain.", comment: "Error shown when saving the proxy password fails") }
             static var proofOfWorkTitle: String { AppLanguageSettings.localized("app_info.settings.proof_of_work.title", defaultValue: "Proof of Work", comment: "Title of the toggle that controls NIP-13 proof-of-work on outgoing location-channel messages") }
             static var proofOfWorkSubtitle: String { AppLanguageSettings.localized("app_info.settings.proof_of_work.subtitle", defaultValue: "Adds a small computational cost to outgoing #location messages to reduce spam and qualify for less restrictive sender rate limits. BitChat enables this by default.", comment: "Subtitle explaining the effect and default of the outgoing location-channel proof-of-work toggle") }
 
@@ -438,6 +461,8 @@ struct AppInfoView: View {
                             .fixedSize(horizontal: false, vertical: true)
                     }
                 }
+
+                outerProxySettingsCard
 
                 relaySettingsCard
 
@@ -1016,6 +1041,121 @@ struct AppInfoView: View {
 
     private func reloadCustomRelays() {
         customRelays = NostrRelaySettings.customRelays()
+    }
+
+    @ViewBuilder
+    private var outerProxySettingsCard: some View {
+        settingsCard {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(verbatim: Strings.Settings.outerProxyTitle)
+                    .bitchatFont(size: 12, weight: .semibold)
+                    .foregroundColor(textColor)
+                Text(verbatim: Strings.Settings.outerProxySubtitle)
+                    .bitchatFont(size: 11)
+                    .foregroundColor(secondaryTextColor)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            Picker(Strings.Settings.outerProxyTitle, selection: $outerProxyDraft.mode) {
+                Text(verbatim: Strings.Settings.languageSystem).tag(OuterProxyMode.systemDefault)
+                Text(verbatim: Strings.Settings.proxyCustom).tag(OuterProxyMode.custom)
+            }
+            .pickerStyle(.segmented)
+
+            if outerProxyDraft.mode == .systemDefault {
+                Text(verbatim: systemProxyStatusText)
+                    .bitchatFont(size: 11)
+                    .foregroundColor(secondaryTextColor)
+                    .fixedSize(horizontal: false, vertical: true)
+            } else {
+                Picker(Strings.Settings.proxyType, selection: $outerProxyDraft.kind) {
+                    Text(verbatim: "HTTP CONNECT").tag(OuterProxyKind.httpConnect)
+                    Text(verbatim: "SOCKS5").tag(OuterProxyKind.socks5)
+                }
+
+                proxyTextField(Strings.Settings.proxyHost, text: $outerProxyDraft.host)
+                proxyTextField(Strings.Settings.proxyPort, text: $outerProxyDraft.port)
+                proxyTextField(Strings.Settings.proxyUsername, text: $outerProxyDraft.username)
+                SecureField(Strings.Settings.proxyPassword, text: $outerProxyDraft.password)
+                    .textFieldStyle(.roundedBorder)
+                    .bitchatFont(size: 11)
+
+                Text(verbatim: Strings.Settings.proxyCredentialNote)
+                    .bitchatFont(size: 10)
+                    .foregroundColor(secondaryTextColor)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            HStack {
+                Button(action: applyOuterProxySettings) {
+                    Text(verbatim: Strings.Settings.proxyApply)
+                        .bitchatFont(size: 11, weight: .semibold)
+                }
+                .buttonStyle(.borderedProminent)
+
+                Spacer(minLength: 8)
+
+                if let outerProxyStatus {
+                    Text(verbatim: outerProxyStatus)
+                        .bitchatFont(size: 10)
+                        .foregroundColor(outerProxyStatusIsError ? palette.alertRed : secondaryTextColor)
+                        .multilineTextAlignment(.trailing)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+        }
+    }
+
+    private var systemProxyStatusText: String {
+        #if os(macOS)
+        guard let detectedSystemProxy else { return Strings.Settings.proxyNotDetected }
+        return String(format: Strings.Settings.proxyDetected, locale: .current, detectedSystemProxy)
+        #else
+        return Strings.Settings.proxyIOSSystem
+        #endif
+    }
+
+    private func proxyTextField(_ title: String, text: Binding<String>) -> some View {
+        TextField(title, text: text)
+            .textFieldStyle(.roundedBorder)
+            .bitchatFont(size: 11)
+            .autocorrectionDisabled(true)
+    }
+
+    private func applyOuterProxySettings() {
+        switch OuterProxySettings.save(outerProxyDraft) {
+        case .success:
+            switch OuterProxySettings.applyStored() {
+            case .success:
+                // In System Default mode the saved password is removed. Reload
+                // the draft so it is not retained in this view's memory.
+                outerProxyDraft = OuterProxySettings.loadDraft()
+                #if os(macOS)
+                detectedSystemProxy = OuterProxySettings.systemProxyDescription()
+                #endif
+                outerProxyStatus = Strings.Settings.proxyApplied
+                outerProxyStatusIsError = false
+                NostrRelayManager.shared.resetAllConnections()
+            case .failure(let error):
+                showOuterProxyError(error)
+            }
+        case .failure(let error):
+            showOuterProxyError(error)
+        }
+    }
+
+    private func showOuterProxyError(_ error: OuterProxySettingsError) {
+        switch error {
+        case .invalidHost, .invalidPort:
+            outerProxyStatus = Strings.Settings.proxyErrorSettings
+        case .incompleteCredentials:
+            outerProxyStatus = Strings.Settings.proxyErrorCredentials
+        case .oversizedCredentials:
+            outerProxyStatus = Strings.Settings.proxyErrorCredentials
+        case .passwordSaveFailed:
+            outerProxyStatus = Strings.Settings.proxyErrorSave
+        }
+        outerProxyStatusIsError = true
     }
 
     private var torToggleBinding: Binding<Bool> {

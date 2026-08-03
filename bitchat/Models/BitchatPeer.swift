@@ -24,7 +24,7 @@ struct BitchatPeer: Equatable {
     enum ConnectionState {
         case bluetoothConnected
         case meshReachable      // Seen via mesh recently, not directly connected
-        case nostrAvailable     // Mutual favorite, reachable via Nostr
+        case nostrAvailable     // A Nostr mailbox route is configured
         case offline            // Not connected via any transport
     }
     
@@ -33,8 +33,9 @@ struct BitchatPeer: Equatable {
             return .bluetoothConnected
         } else if isReachable {
             return .meshReachable
-        } else if favoriteStatus?.isMutual == true {
-            // Mutual favorites can communicate via Nostr when offline
+        } else if hasNostrRoute {
+            // Nostr routing depends on the recipient public key, not on
+            // mutual-favorite state or a live-presence signal.
             return .nostrAvailable
         } else {
             return .offline
@@ -43,6 +44,10 @@ struct BitchatPeer: Equatable {
     
     var isFavorite: Bool {
         favoriteStatus?.isFavorite ?? false
+    }
+
+    var hasNostrRoute: Bool {
+        nostrPublicKey != nil || favoriteStatus?.peerNostrPublicKey != nil
     }
     
     var isMutualFavorite: Bool {

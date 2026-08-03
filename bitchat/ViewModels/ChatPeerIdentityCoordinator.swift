@@ -98,6 +98,13 @@ protocol ChatPeerIdentityContext: AnyObject {
     func visibleGeohashPeople() -> [GeoPerson]
     /// Records the Nostr pubkey behind a (possibly virtual) peer ID.
     func registerNostrKeyMapping(_ pubkey: String, for peerID: PeerID)
+    /// Routes a relationship notification with a Nostr destination captured
+    /// before a one-way favorite record is removed.
+    func routeFavoriteNotification(
+        to peerID: PeerID,
+        recipientNpub: String?,
+        isFavorite: Bool
+    )
     func sendFavoriteNotificationViaNostr(noisePublicKey: Data, isFavorite: Bool)
 }
 
@@ -292,16 +299,19 @@ final class ChatPeerIdentityCoordinator {
                 return removed
             }
 
-            guard context.favoriteRelationship(forNoiseKey: noisePublicKey)?.isFavorite == true else {
+            guard let relationship = context.favoriteRelationship(forNoiseKey: noisePublicKey),
+                  relationship.isFavorite else {
                 return true
             }
+            let recipientNpub = relationship.peerNostrPublicKey
             guard context.removeFavorite(noiseKey: noisePublicKey) else {
                 return false
             }
             context.setSocialFavorite(false, noiseKey: noisePublicKey)
             context.notifyUIChanged()
-            context.sendFavoriteNotificationViaNostr(
-                noisePublicKey: noisePublicKey,
+            context.routeFavoriteNotification(
+                to: peerID,
+                recipientNpub: recipientNpub,
                 isFavorite: false
             )
             return true
@@ -427,9 +437,23 @@ final class ChatPeerIdentityCoordinator {
 
             if let isFavorite = notification.userInfo?["isFavorite"] as? Bool {
                 let peerID = PeerID(hexData: peerPublicKey)
-                let action = isFavorite ? "favorited" : "unfavorited"
                 let peerNickname = favoriteNotificationNickname(for: peerID, peerPublicKey: peerPublicKey)
-                context.addSystemMessage("\(peerNickname) \(action) you")
+                let key = isFavorite
+                    ? "friends.activity.added_you"
+                    : "friends.activity.removed_you"
+                let fallback = isFavorite
+                    ? "%@ added you as a friend."
+                    : "%@ removed you as a friend."
+                let message = String(
+                    format: AppLanguageSettings.localized(
+                        key,
+                        defaultValue: fallback,
+                        comment: "Local relationship event; %@ is the other person's display name"
+                    ),
+                    locale: .current,
+                    peerNickname
+                )
+                context.addSystemMessage(message)
             }
         }
     }

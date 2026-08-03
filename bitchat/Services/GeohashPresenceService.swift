@@ -83,7 +83,11 @@ final class GeohashPresenceService: ObservableObject {
         self.torReadyPublisher = NotificationCenter.default.publisher(for: .TorDidBecomeReady)
             .map { _ in () }
             .eraseToAnyPublisher()
-        self.torIsReady = { TorManager.shared.isReady }
+        // Direct relay mode does not require an Arti circuit. When Tor is
+        // explicitly enabled, keep presence fail-closed until Arti is ready.
+        self.torIsReady = {
+            !NetworkActivationService.persistedTorPreference() || TorManager.shared.isReady
+        }
         self.torIsForeground = { TorManager.shared.isForeground() }
         self.deriveIdentity = { try idBridge.deriveIdentity(forGeohash: $0) }
         self.relayLookup = { geohash, count in
@@ -241,7 +245,7 @@ final class GeohashPresenceService: ObservableObject {
 
         // 1. Check preconditions
         guard torIsReady() else {
-            SecureLogger.debug("Presence: skipping heartbeat (Tor not ready)", category: .session)
+            SecureLogger.debug("Presence: skipping heartbeat (active Tor route not ready)", category: .session)
             return
         }
         

@@ -151,11 +151,16 @@ private extension NostrRelayManagerDependencies {
 final class NostrRelayManager: ObservableObject {
     static let shared = NostrRelayManager()
     // Track gift-wraps (kind 1059) we initiated so we can log OK acks at info.
-    // Entries are removed only on OK acks (or panic wipe); relays that never
-    // ack leave entries behind for the process lifetime. Observability-only
-    // state, bounded in practice by outbound DM volume.
+    // This is observability-only state: relays that never ack must not turn a
+    // long-running offline session into unbounded memory growth.
+    private static let maxPendingGiftWrapIDs = 2_048
     private(set) static var pendingGiftWrapIDs = Set<String>()
     static func registerPendingGiftWrap(id: String) {
+        if pendingGiftWrapIDs.count >= maxPendingGiftWrapIDs,
+           !pendingGiftWrapIDs.contains(id),
+           let expendableID = pendingGiftWrapIDs.first {
+            pendingGiftWrapIDs.remove(expendableID)
+        }
         pendingGiftWrapIDs.insert(id)
     }
     
@@ -177,7 +182,12 @@ final class NostrRelayManager: ObservableObject {
         "wss://relay.damus.io",
         "wss://nos.lol",
         "wss://relay.primal.net",
-        "wss://offchain.pub"
+        "wss://offchain.pub",
+        // Regional redundancy for networks that cannot reach the four
+        // western relay hostnames. Its NIP-11 document advertises NIP-20 and
+        // NIP-40 with unrestricted writes; gift-wrap cryptography remains
+        // entirely end-to-end and does not trust the relay.
+        "wss://relay.ru.ac.th"
         // For local testing, you can add: "ws://localhost:8080"
     ]
     /// Exposed so the relay settings UI can reject re-adding a built-in.
@@ -187,8 +197,8 @@ final class NostrRelayManager: ObservableObject {
     )
 
     /// The relays private messages target: the built-in set plus any added by
-    /// hand. Four hardcoded hostnames are four names for a censor to block, so
-    /// the added ones are what keeps this reachable without a new build.
+    /// hand. Any finite built-in set can be blocked, so user-added relays keep
+    /// the transport recoverable without requiring a new build.
     ///
     /// Cached rather than computed per access: `allowedRelayList` consults the
     /// set once per candidate URL, and recomputing would mean a `UserDefaults`
@@ -1390,8 +1400,15 @@ final class NostrRelayManager: ObservableObject {
         case .ok(let eventId, let success, let reason):
             resolveConfirmedSend(eventID: eventId, relayURL: relayUrl, accepted: success)
             if success {
-                _ = Self.pendingGiftWrapIDs.remove(eventId)
-                SecureLogger.debug("✅ Accepted id=\(eventId.prefix(16))… relay=\(relayUrl)", category: .session)
+                let isGiftWrap = Self.pendingGiftWrapIDs.remove(eventId) != nil
+                if isGiftWrap {
+                    SecureLogger.info(
+                        "📮 Nostr private message accepted id=\(eventId.prefix(16))… relay=\(relayUrl)",
+                        category: .session
+                    )
+                } else {
+                    SecureLogger.debug("✅ Accepted id=\(eventId.prefix(16))… relay=\(relayUrl)", category: .session)
+                }
             } else {
                 let isGiftWrap = Self.pendingGiftWrapIDs.remove(eventId) != nil
                 if isGiftWrap {

@@ -4,7 +4,9 @@ import Foundation
 import Combine
 
 // Minimal Nostr transport conforming to Transport for offline sending
-final class NostrTransport: Transport, @unchecked Sendable {
+final class NostrTransport: Transport,
+    NostrAddressedFavoriteNotificationTransport,
+    @unchecked Sendable {
     struct Dependencies {
         let notificationCenter: NotificationCenter
         let loadFavorites: @MainActor () -> [Data: FavoritesPersistenceService.FavoriteRelationship]
@@ -278,16 +280,26 @@ final class NostrTransport: Transport, @unchecked Sendable {
 
     func sendFavoriteNotification(to peerID: PeerID, isFavorite: Bool) {
         Task { @MainActor in
-            guard let recipientNpub = resolveRecipientNpub(for: peerID),
-                  let recipientHex = npubToHex(recipientNpub),
-                  let senderIdentity = try? dependencies.currentIdentity() else { return }
-            let content = isFavorite ? "[FAVORITED]:\(senderIdentity.npub)" : "[UNFAVORITED]:\(senderIdentity.npub)"
-            SecureLogger.debug("NostrTransport: preparing FAVORITE(\(isFavorite)) to \(recipientNpub.prefix(16))…", category: .session)
-            guard let embedded = NostrEmbeddedBitChat.encodePMForNostr(content: content, messageID: UUID().uuidString, recipientPeerID: peerID, senderPeerID: senderPeerID) else {
-                SecureLogger.error("NostrTransport: failed to embed favorite notification", category: .session)
-                return
-            }
-            sendWrappedMessage(content: embedded, recipientHex: recipientHex, senderIdentity: senderIdentity)
+            guard let recipientNpub = resolveRecipientNpub(for: peerID) else { return }
+            sendFavoriteNotification(
+                to: peerID,
+                resolvedRecipientNpub: recipientNpub,
+                isFavorite: isFavorite
+            )
+        }
+    }
+
+    func sendFavoriteNotification(
+        to peerID: PeerID,
+        recipientNpub: String,
+        isFavorite: Bool
+    ) {
+        Task { @MainActor in
+            sendFavoriteNotification(
+                to: peerID,
+                resolvedRecipientNpub: recipientNpub,
+                isFavorite: isFavorite
+            )
         }
     }
 
@@ -327,6 +339,40 @@ extension NostrTransport {
 // MARK: - Private Helpers
 
 extension NostrTransport {
+    @MainActor
+    private func sendFavoriteNotification(
+        to peerID: PeerID,
+        resolvedRecipientNpub recipientNpub: String,
+        isFavorite: Bool
+    ) {
+        guard let recipientHex = npubToHex(recipientNpub),
+              let senderIdentity = try? dependencies.currentIdentity() else { return }
+        let content = isFavorite
+            ? "[FAVORITED]:\(senderIdentity.npub)"
+            : "[UNFAVORITED]:\(senderIdentity.npub)"
+        SecureLogger.debug(
+            "NostrTransport: preparing FAVORITE(\(isFavorite)) to \(recipientNpub.prefix(16))…",
+            category: .session
+        )
+        guard let embedded = NostrEmbeddedBitChat.encodePMForNostr(
+            content: content,
+            messageID: UUID().uuidString,
+            recipientPeerID: peerID,
+            senderPeerID: senderPeerID
+        ) else {
+            SecureLogger.error(
+                "NostrTransport: failed to embed favorite notification",
+                category: .session
+            )
+            return
+        }
+        sendWrappedMessage(
+            content: embedded,
+            recipientHex: recipientHex,
+            senderIdentity: senderIdentity
+        )
+    }
+
     /// Converts npub bech32 string to hex pubkey
     @MainActor
     private func npubToHex(_ npub: String) -> String? {
@@ -342,7 +388,7 @@ extension NostrTransport {
 
     /// Creates and sends a gift-wrapped private message event
     @MainActor
-    private func sendWrappedMessage(content: String, recipientHex: String, senderIdentity: NostrIdentity, registerPending: Bool = false) {
+    private func sendWrappedMessage(content: String, recipientHex: String, senderIdentity: NostrIdentity, registerPending: Bool = true) {
         guard let event = try? NostrProtocol.createPrivateMessage(content: content, recipientPubkey: recipientHex, senderIdentity: senderIdentity) else {
             SecureLogger.error("NostrTransport: failed to build Nostr event", category: .session)
             return
@@ -350,6 +396,10 @@ extension NostrTransport {
         if registerPending {
             dependencies.registerPendingGiftWrap(event.id)
         }
+        SecureLogger.info(
+            "📮 Queued Nostr private message id=\(event.id.prefix(16))…",
+            category: .session
+        )
         dependencies.sendEvent(event)
     }
 

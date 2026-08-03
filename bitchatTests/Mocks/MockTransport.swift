@@ -14,7 +14,8 @@ import BitFoundation
 
 /// Mock Transport implementation for testing ChatViewModel in isolation.
 /// Records all method calls and allows test code to verify interactions.
-final class MockTransport: Transport, PrivateMediaDeletionPersisting,
+final class MockTransport: Transport, NostrAddressedFavoriteNotificationTransport,
+    PrivateMediaDeletionPersisting,
     MeshFileTransferring, MeshVerifying, MeshCourierTransporting,
     MeshDiagnosing, MeshPublicArchiving, MeshVoiceStreaming,
     MeshGroupMessaging, MeshBoardBroadcasting {
@@ -37,6 +38,11 @@ final class MockTransport: Transport, PrivateMediaDeletionPersisting,
     private(set) var sentReadReceipts: [(receipt: ReadReceipt, peerID: PeerID)] = []
     private(set) var sentDeliveryAcks: [(messageID: String, peerID: PeerID)] = []
     private(set) var sentFavoriteNotifications: [(peerID: PeerID, isFavorite: Bool)] = []
+    private(set) var sentAddressedFavoriteNotifications: [(
+        peerID: PeerID,
+        recipientNpub: String,
+        isFavorite: Bool
+    )] = []
     private(set) var sentBroadcastFiles: [(packet: BitchatFilePacket, transferID: String)] = []
     private(set) var sentPrivateFiles: [(packet: BitchatFilePacket, peerID: PeerID, transferID: String)] = []
     private(set) var sentPrivateFileLegacyAllowances: [Bool] = []
@@ -207,6 +213,14 @@ final class MockTransport: Transport, PrivateMediaDeletionPersisting,
 
     func sendFavoriteNotification(to peerID: PeerID, isFavorite: Bool) {
         sentFavoriteNotifications.append((peerID, isFavorite))
+    }
+
+    func sendFavoriteNotification(
+        to peerID: PeerID,
+        recipientNpub: String,
+        isFavorite: Bool
+    ) {
+        sentAddressedFavoriteNotifications.append((peerID, recipientNpub, isFavorite))
     }
 
     func sendBroadcastAnnounce() {

@@ -96,9 +96,9 @@ protocol ChatPrivateConversationContext: AnyObject {
     func sendGeohashReadReceipt(_ messageID: String, toRecipientHex recipientHex: String, from identity: NostrIdentity)
 
     // MARK: System messages
-    func addMeshOnlySystemMessage(_ content: String)
     /// Appends a local-only system line into a specific private thread —
-    /// errors about a DM belong in that DM, not on the active timeline.
+    /// relationship activity and DM errors belong in that conversation, not
+    /// on the public timeline.
     func addLocalPrivateSystemMessage(_ content: String, to peerID: PeerID)
 
     // MARK: Favorites & notifications
@@ -108,9 +108,15 @@ protocol ChatPrivateConversationContext: AnyObject {
     /// peer ID (matched against the IDs derived from stored noise keys).
     func favoriteRelationship(forPeerID peerID: PeerID) -> FavoritesPersistenceService.FavoriteRelationship?
     /// Persists that the peer favorited/unfavorited us (favorites store write).
-    func updatePeerFavoritedUs(noiseKey: Data, favorited: Bool, nickname: String, nostrPublicKey: String?)
+    @discardableResult
+    func updatePeerFavoritedUs(noiseKey: Data, favorited: Bool, nickname: String, nostrPublicKey: String?) -> Bool
+    /// Sends the existing Bitchat favorite marker through the best available
+    /// route. Used to reciprocate a relationship identity refresh.
+    func routeFavoriteNotification(to peerID: PeerID, isFavorite: Bool)
     /// Posts the incoming-private-message local notification.
     func notifyPrivateMessage(from senderName: String, message: String, peerID: PeerID)
+    /// Posts an alert for an inbound friend relationship transition.
+    func notifyFriendActivity(by senderName: String, peerID: PeerID, isAdded: Bool)
 }
 
 extension ChatViewModel: ChatPrivateConversationContext {
@@ -180,6 +186,18 @@ extension ChatViewModel: ChatPrivateConversationContext {
         messageRouter.sendFavoriteNotification(to: peerID, isFavorite: isFavorite)
     }
 
+    func routeFavoriteNotification(
+        to peerID: PeerID,
+        recipientNpub: String?,
+        isFavorite: Bool
+    ) {
+        messageRouter.sendFavoriteNotification(
+            to: peerID,
+            recipientNpub: recipientNpub,
+            isFavorite: isFavorite
+        )
+    }
+
     func sendMeshReadReceipt(_ receipt: ReadReceipt, to peerID: PeerID) {
         meshService.sendReadReceipt(receipt, to: peerID)
     }
@@ -213,7 +231,8 @@ extension ChatViewModel: ChatPrivateConversationContext {
     // `ChatPeerIdentityContext`; its witness lives in
     // `ChatPeerIdentityCoordinator.swift`.
 
-    func updatePeerFavoritedUs(noiseKey: Data, favorited: Bool, nickname: String, nostrPublicKey: String?) {
+    @discardableResult
+    func updatePeerFavoritedUs(noiseKey: Data, favorited: Bool, nickname: String, nostrPublicKey: String?) -> Bool {
         FavoritesPersistenceService.shared.updatePeerFavoritedUs(
             peerNoisePublicKey: noiseKey,
             favorited: favorited,
@@ -226,6 +245,14 @@ extension ChatViewModel: ChatPrivateConversationContext {
         NotificationService.shared.sendPrivateMessageNotification(from: senderName, message: message, peerID: peerID)
     }
 
+    func notifyFriendActivity(by senderName: String, peerID: PeerID, isAdded: Bool) {
+        NotificationService.shared.sendFriendActivityNotification(
+            from: senderName,
+            peerID: peerID,
+            isAdded: isAdded
+        )
+    }
+
     private func makeGeohashNostrTransport() -> NostrTransport {
         let transport = NostrTransport(keychain: keychain, idBridge: idBridge)
         transport.senderPeerID = meshService.myPeerID
@@ -236,6 +263,10 @@ extension ChatViewModel: ChatPrivateConversationContext {
 @MainActor
 final class ChatPrivateConversationCoordinator {
     private unowned let context: any ChatPrivateConversationContext
+    /// Bounds reciprocal identity refreshes to one response per peer and app
+    /// session. The unchanged Bitchat marker has no request bit, so this guard
+    /// prevents two updated clients from echoing it indefinitely.
+    private var favoriteIdentityRepliesSent = Set<Data>()
 
     // Outbox retries re-wrap the same message in fresh gift-wrap events, so
     // relay-level event-ID dedup can't catch them; track inbound GeoDM
@@ -344,7 +375,7 @@ final class ChatPrivateConversationCoordinator {
         let isReachable = context.isPeerReachable(peerID)
         let favoriteStatus = noiseKey.flatMap { context.favoriteRelationship(forNoiseKey: $0) }
             ?? context.favoriteRelationship(forPeerID: peerID)
-        let isMutualFavorite = favoriteStatus?.isMutual ?? false
+        let isNostrRoutableFavorite = favoriteStatus?.isFavorite == true
         let hasNostrKey = favoriteStatus?.peerNostrPublicKey != nil
 
         // "anon" matches the app's default-nickname convention; "user" is
@@ -384,7 +415,7 @@ final class ChatPrivateConversationCoordinator {
             recipientNickname: recipientNickname,
             messageID: messageID
         )
-        if isConnected || isReachable || (isMutualFavorite && hasNostrKey) {
+        if isConnected || isReachable || (isNostrRoutableFavorite && hasNostrKey) {
             context.setPrivateDeliveryStatus(.sent, forMessageID: messageID, peerID: peerID)
         }
         // Otherwise the message stays "sending"; router callbacks move it to
@@ -804,24 +835,71 @@ final class ChatPrivateConversationCoordinator {
             return
         }
 
-        let prior = context.favoriteRelationship(forNoiseKey: finalNoiseKey)?.theyFavoritedUs ?? false
-        context.updatePeerFavoritedUs(
+        let priorRelationship = context.favoriteRelationship(forNoiseKey: finalNoiseKey)
+        let prior = priorRelationship?.theyFavoritedUs ?? false
+        guard context.updatePeerFavoritedUs(
             noiseKey: finalNoiseKey,
             favorited: isFavorite,
             nickname: senderNickname,
             nostrPublicKey: nostrPubkey
-        )
+        ) else {
+            SecureLogger.error(
+                "Failed to persist an inbound friend relationship update",
+                category: .session
+            )
+            return
+        }
 
         if isFavorite && nostrPubkey != nil {
             SecureLogger.info(
                 "💾 Storing Nostr key association for \(senderNickname): \(nostrPubkey!.prefix(16))...",
                 category: .session
             )
+
+            // A connected favorite may be refreshing a missed identity
+            // exchange. Reply once with our normal Bitchat marker so either
+            // side can heal a missing npub without adding a wire extension.
+            if priorRelationship?.isFavorite == true,
+                favoriteIdentityRepliesSent.insert(finalNoiseKey).inserted {
+                context.routeFavoriteNotification(
+                    to: peerID,
+                    isFavorite: true
+                )
+            }
         }
 
         if prior != isFavorite {
-            let action = isFavorite ? "favorited" : "unfavorited"
-            context.addMeshOnlySystemMessage("\(senderNickname) \(action) you")
+            let key = isFavorite
+                ? "friends.activity.added_you"
+                : "friends.activity.removed_you"
+            let fallback = isFavorite
+                ? "%@ added you as a friend."
+                : "%@ removed you as a friend."
+            let message = String(
+                format: AppLanguageSettings.localized(
+                    key,
+                    defaultValue: fallback,
+                    comment: "Local relationship event; %@ is the other person's display name"
+                ),
+                locale: .current,
+                senderNickname
+            )
+            // Relationship activity belongs to the person's conversation.
+            // Fold the stable Noise-key and connected short-ID aliases first
+            // so the timeline row and notification deep link cannot create
+            // two chats for the same cryptographic identity.
+            let conversationPeerID = consolidateAccountConversationAliases(
+                for: PeerID(hexData: finalNoiseKey)
+            )
+            context.addLocalPrivateSystemMessage(message, to: conversationPeerID)
+            if context.selectedPrivateChatPeer != conversationPeerID {
+                context.markPrivateChatUnread(conversationPeerID)
+            }
+            context.notifyFriendActivity(
+                by: senderNickname,
+                peerID: conversationPeerID,
+                isAdded: isFavorite
+            )
         }
     }
 

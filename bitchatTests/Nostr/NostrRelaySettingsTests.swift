@@ -123,6 +123,7 @@ struct NostrRelaySettingsTests {
         // it has to hold normalized URLs.
         let builtIn = NostrRelayManager.builtInRelayURLs
         #expect(!builtIn.isEmpty)
+        #expect(builtIn.contains("wss://relay.ru.ac.th"))
         for url in builtIn {
             #expect(NostrRelayURL.normalized(url) == url)
         }

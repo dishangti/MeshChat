@@ -172,7 +172,7 @@ struct NostrTransportTests {
         #expect(privateMessage.messageID == "pm-1")
         #expect(privateMessage.content == "hello over nostr")
         #expect(result.packet.recipientID == shortPeerID.routingData)
-        #expect(probe.pendingGiftWrapIDs.isEmpty)
+        #expect(probe.pendingGiftWrapIDs == [probe.sentEvents[0].id])
     }
 
     @Test("Favorite notification embeds current npub")
@@ -214,6 +214,49 @@ struct NostrTransportTests {
         let privateMessage = try decodePrivateMessage(from: result.payload)
 
         #expect(privateMessage.content == "[FAVORITED]:\(sender.npub)")
+    }
+
+    @Test("Addressed removal notification survives local relationship deletion")
+    @MainActor
+    func addressedRemovalNotificationDoesNotRequireStoredFavorite() async throws {
+        let keychain = MockKeychain()
+        let idBridge = NostrIdentityBridge(keychain: keychain)
+        let sender = try NostrIdentity.generate()
+        let recipient = try NostrIdentity.generate()
+        let noiseKey = Data((160..<192).map(UInt8.init))
+        let fullPeerID = PeerID(hexData: noiseKey)
+        let probe = NostrTransportProbe()
+        let transport = NostrTransport(
+            keychain: keychain,
+            idBridge: idBridge,
+            dependencies: makeDependencies(
+                favoriteStatusForNoiseKey: { _ in nil },
+                favoriteStatusForPeerID: { _ in nil },
+                currentIdentity: { sender },
+                registerPendingGiftWrap: probe.recordPendingGiftWrap(id:),
+                sendEvent: probe.record(event:),
+                scheduleAfter: { delay, action in
+                    probe.enqueueScheduledAction(delay: delay, action: action)
+                }
+            )
+        )
+        transport.senderPeerID = PeerID(str: "0123456789abcdef")
+
+        transport.sendFavoriteNotification(
+            to: fullPeerID,
+            recipientNpub: recipient.npub,
+            isFavorite: false
+        )
+
+        let didSend = await TestHelpers.waitUntil(
+            { probe.sentEvents.count == 1 },
+            timeout: TestConstants.settleTimeout
+        )
+        #expect(didSend)
+        let result = try decodeEmbeddedPayload(from: probe.sentEvents[0], recipient: recipient)
+        let privateMessage = try decodePrivateMessage(from: result.payload)
+
+        #expect(privateMessage.content == "[UNFAVORITED]:\(sender.npub)")
     }
 
     @Test("Delivery ACK encodes delivered payload type")

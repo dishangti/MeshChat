@@ -29,6 +29,7 @@ let package = Package(
             sources: [
                 "TorManager.swift",
                 "TorURLSession.swift",
+                "TorUpstreamProxy.swift",
                 "TorNotifications.swift"
             ],
             linkerSettings: [

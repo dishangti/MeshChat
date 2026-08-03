@@ -440,6 +440,28 @@ struct MessageRouterTests {
         #expect(transport.sentFavoriteNotifications.count == 1)
     }
 
+    @Test @MainActor
+    func sendFavoriteNotification_usesCapturedNostrAddressAfterRelationshipRemoval() async {
+        let peerID = PeerID(str: "0000000000000014")
+        let transport = MockTransport()
+        let router = MessageRouter(transports: [transport])
+
+        router.sendFavoriteNotification(
+            to: peerID,
+            recipientNpub: "npub-captured-before-removal",
+            isFavorite: false
+        )
+
+        #expect(transport.sentFavoriteNotifications.isEmpty)
+        #expect(transport.sentAddressedFavoriteNotifications.count == 1)
+        #expect(transport.sentAddressedFavoriteNotifications.first?.peerID == peerID)
+        #expect(
+            transport.sentAddressedFavoriteNotifications.first?.recipientNpub
+                == "npub-captured-before-removal"
+        )
+        #expect(transport.sentAddressedFavoriteNotifications.first?.isFavorite == false)
+    }
+
     // MARK: - Courier deposits
 
     private static func snapshot(_ peerID: PeerID, key: Data, verified: Bool) -> TransportPeerSnapshot {

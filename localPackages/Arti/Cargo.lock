@@ -116,6 +116,9 @@ name = "arti-bitchat"
 version = "0.1.0"
 dependencies = [
  "arti-client",
+ "async-trait",
+ "base64",
+ "futures",
  "libc",
  "once_cell",
  "tokio",

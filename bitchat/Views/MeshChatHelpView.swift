@@ -77,8 +77,8 @@ struct MeshChatHelpView: View {
         Topic(
             id: "favorites",
             icon: "star.fill",
-            title: "app_info.features.favorites.title",
-            description: "app_info.features.favorites.description"
+            title: "mesh_peers.section.friends",
+            description: "meshchat.help.friends.description"
         ),
         Topic(
             id: "qr",
@@ -146,7 +146,7 @@ struct MeshChatHelpView: View {
         SymbolItem(id: "teleported", icon: "face.dashed", color: nil, text: AppLanguageSettings.localized("app_info.legend.teleported")),
         SymbolItem(id: "encryption-failed", icon: "exclamationmark.triangle", color: .orange, text: AppLanguageSettings.localized("app_info.legend.encryption_failed")),
         SymbolItem(id: "private-message", icon: "lock.fill", color: .orange, text: AppLanguageSettings.localized("app_info.legend.private_message")),
-        SymbolItem(id: "favorite", icon: "star.fill", color: nil, text: AppLanguageSettings.localized("app_info.legend.favorite")),
+        SymbolItem(id: "favorite", icon: "star.fill", color: nil, text: AppLanguageSettings.localized("mesh_peers.state.favorite")),
         SymbolItem(id: "unread", icon: "envelope.fill", color: nil, text: AppLanguageSettings.localized("app_info.legend.unread")),
         SymbolItem(id: "blocked", icon: "nosign", color: nil, text: AppLanguageSettings.localized("app_info.legend.blocked"))
     ]

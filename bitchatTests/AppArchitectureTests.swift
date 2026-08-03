@@ -1433,6 +1433,59 @@ struct AppArchitectureTests {
         #expect(verificationModel.friendVerificationState == .ready)
     }
 
+    @Test("Scanning an authenticated existing friend repairs its Nostr route")
+    @MainActor
+    func verificationModelRepairsExistingFriendRouteFromQR() throws {
+        let viewModel = makeArchitectureViewModel()
+        VerificationService.shared.configure(with: viewModel.meshService)
+        let verificationModel = VerificationModel(
+            chatViewModel: viewModel,
+            privateConversationModel: PrivateConversationModel(
+                chatViewModel: viewModel,
+                conversations: viewModel.conversations,
+                locationChannelsModel: LocationChannelsModel(
+                    manager: makeArchitectureLocationManager()
+                )
+            )
+        )
+
+        let friendTransport = MockTransport()
+        let friendQRService = VerificationService()
+        friendQRService.configure(with: friendTransport)
+        let noiseKey = friendTransport.noiseStaticPublicKeyData()
+        let signingKey = friendTransport.noiseSigningPublicKeyData()
+        let npub = try Bech32.encode(
+            hrp: "npub",
+            data: Data(repeating: 0xD6, count: 32)
+        )
+        let payload = try #require(
+            friendQRService.buildMyQRString(nickname: "Alice", npub: npub)
+        )
+
+        FavoritesPersistenceService.shared.addFavorite(
+            peerNoisePublicKey: noiseKey,
+            peerNickname: "Alice"
+        )
+        viewModel.identityManager.bindAuthenticatedSigningPublicKey(
+            signingKey,
+            fingerprint: noiseKey.sha256Fingerprint()
+        )
+        defer {
+            FavoritesPersistenceService.shared.removeFavorite(
+                peerNoisePublicKey: noiseKey
+            )
+        }
+
+        guard case .candidate = verificationModel.verifyScannedPayload(payload) else {
+            Issue.record("Expected the signed friend QR to be accepted")
+            return
+        }
+        #expect(
+            FavoritesPersistenceService.shared
+                .getFavoriteStatus(for: noiseKey)?.peerNostrPublicKey == npub
+        )
+    }
+
     @Test("VerificationModel reports an authentic expired Bitchat QR precisely")
     @MainActor
     func verificationModelDistinguishesExpiredBitchatQR() throws {

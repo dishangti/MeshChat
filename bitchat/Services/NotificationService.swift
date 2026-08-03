@@ -154,6 +154,9 @@ final class NotificationService {
         static var securityTitle: String {
             AppLanguageSettings.localized("notification.redacted.security.title", defaultValue: "Verify Encryption", comment: "Privacy-preserving title for a verification notification when previews are hidden")
         }
+        static var friendActivityTitle: String {
+            AppLanguageSettings.localized("app_info.settings.notifications.direct.title", defaultValue: "Private Messages & Groups", comment: "Privacy-preserving title for a friend relationship notification when previews are hidden")
+        }
     }
 
     /// Notification copy used only when the user has chosen to show previews.
@@ -184,6 +187,24 @@ final class NotificationService {
             }
             let format = AppLanguageSettings.localized("notification.nearby.body.other", defaultValue: "%lld people around", comment: "Notification body when multiple MeshChat users are nearby; %lld is the number of people")
             return String(format: format, locale: .current, Int64(peerCount))
+        }
+
+        static func friendActivityTitle(sender: String, isAdded: Bool) -> String {
+            let key = isAdded
+                ? "friends.activity.added_you"
+                : "friends.activity.removed_you"
+            let fallback = isAdded
+                ? "%@ added you as a friend."
+                : "%@ removed you as a friend."
+            return String(
+                format: AppLanguageSettings.localized(
+                    key,
+                    defaultValue: fallback,
+                    comment: "Notification text for a friend relationship change; %@ is the person's display name"
+                ),
+                locale: .current,
+                sender
+            )
         }
     }
 
@@ -370,6 +391,35 @@ final class NotificationService {
             title: title,
             body: body,
             identifier: identifier,
+            topic: .directMessages,
+            userInfo: userInfo
+        )
+    }
+
+    /// Alerts only for an inbound relationship transition. The caller owns
+    /// transition deduplication so identity-refresh `[FAVORITED]` markers do
+    /// not repeatedly notify the user.
+    func sendFriendActivityNotification(
+        from sender: String,
+        peerID: PeerID,
+        isAdded: Bool
+    ) {
+        let title = hidePreviews
+            ? Redacted.friendActivityTitle
+            : Visible.friendActivityTitle(sender: sender, isAdded: isAdded)
+        let body = hidePreviews
+            ? Redacted.body
+            : AppLanguageSettings.localized(
+                "mesh_peers.accessibility.open_dm_hint",
+                defaultValue: "Opens a private chat",
+                comment: "Notification hint explaining that tapping opens the person's private chat"
+            )
+        let userInfo = ["peerID": peerID.id, "senderName": sender]
+
+        sendLocalNotification(
+            title: title,
+            body: body,
+            identifier: "friend-\(isAdded ? "added" : "removed")-\(peerID.id)-\(UUID().uuidString)",
             topic: .directMessages,
             userInfo: userInfo
         )

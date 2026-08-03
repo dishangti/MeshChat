@@ -21,6 +21,20 @@
 int arti_start(const char *data_dir, uint16_t socks_port);
 
 /**
+ * Start Arti and route all of its outbound TCP connections through an outer proxy.
+ *
+ * `proxy_kind` is 1 for SOCKS5 and 2 for HTTP CONNECT. Credentials must either both
+ * be null or both contain valid UTF-8 strings.
+ */
+int arti_start_with_proxy(const char *data_dir,
+                          uint16_t socks_port,
+                          uint8_t proxy_kind,
+                          const char *proxy_host,
+                          uint16_t proxy_port,
+                          const char *username,
+                          const char *password);
+
+/**
  * Stop Arti gracefully.
  *
  * # Returns

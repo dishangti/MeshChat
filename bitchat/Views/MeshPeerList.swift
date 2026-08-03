@@ -108,8 +108,9 @@ struct MeshPeerList: View {
                                 .font(.bitchatSystem(size: 10))
                                 .foregroundColor(baseColor)
                                 .help(Strings.reachable)
-                        } else if peer.isMutualFavorite {
-                            // Mutual favorite reachable via Nostr: globe icon (purple)
+                        } else if peer.isNostrAvailable {
+                            // A configured store-and-forward mailbox route;
+                            // this does not claim the remote app is live.
                             Image(systemName: "globe")
                                 .font(.bitchatSystem(size: 10))
                                 .foregroundColor(.purple)
@@ -282,7 +283,7 @@ struct MeshPeerList: View {
                 parts.append(Strings.connected)
             } else if peer.isReachable {
                 parts.append(Strings.reachable)
-            } else if peer.isMutualFavorite {
+            } else if peer.isNostrAvailable {
                 parts.append(Strings.nostr)
             } else {
                 parts.append(Strings.offline)

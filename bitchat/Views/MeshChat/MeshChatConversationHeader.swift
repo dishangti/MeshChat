@@ -16,6 +16,7 @@ struct MeshChatConversationHeader: View {
 
     @State private var carriedMailCount = 0
     @State private var pendingHistoryDeletion: ConversationID?
+    @State private var pendingFriendAddition: FriendAdditionTarget?
     @State private var pendingFriendRemoval: HeaderFriendRemovalTarget?
 
     let onOpenHome: () -> Void
@@ -94,7 +95,10 @@ struct MeshChatConversationHeader: View {
                             for: privateHeader
                         )
                     } else {
-                        _ = privateConversationModel.addFriendForSelectedConversation()
+                        pendingFriendAddition = FriendAdditionTarget(
+                            peerID: privateHeader.headerPeerID,
+                            displayName: privateHeader.displayName
+                        )
                     }
                 } label: {
                     Image(
@@ -251,6 +255,17 @@ struct MeshChatConversationHeader: View {
         .onReceive(CourierStore.shared.$carriedCount) { count in
             carriedMailCount = count
         }
+        .sheet(
+            item: $pendingFriendAddition,
+            onDismiss: { pendingFriendAddition = nil }
+        ) { target in
+            FriendAdditionSheetView(target: target) { localNickname in
+                privateConversationModel.addFriend(
+                    peerID: target.peerID,
+                    localNickname: localNickname
+                )
+            }
+        }
         .confirmationDialog(
             AppLanguageSettings.localized(
                  "content.clear.confirm_title",
@@ -318,9 +333,121 @@ struct MeshChatConversationHeader: View {
     }
 }
 
+struct FriendAdditionTarget: Identifiable {
+    let peerID: PeerID
+    let displayName: String
+
+    var id: String { peerID.id }
+}
+
 private struct HeaderFriendRemovalTarget {
     let peerID: PeerID
     let displayName: String
+}
+
+struct FriendAdditionSheetView: View {
+    private enum Feedback {
+        case invalidNickname
+        case persistenceFailed
+    }
+
+    private enum Strings {
+        static let invalidNickname: LocalizedStringKey =
+            "fingerprint.local_alias.invalid"
+        static let persistenceFailed: LocalizedStringKey =
+            "verification.scan.status.persistence_failed"
+    }
+
+    @Environment(\.dismiss) private var dismiss
+    @ThemedPalette private var palette
+    @State private var nicknameDraft = ""
+    @State private var feedback: Feedback?
+
+    let target: FriendAdditionTarget
+    let onAdd: (String?) -> Bool
+
+    var body: some View {
+        VStack(spacing: 20) {
+            HStack {
+                Text("friends.action.add")
+                    .bitchatFont(size: 16, weight: .bold)
+                Spacer()
+                SheetCloseButton { dismiss() }
+            }
+
+            VStack(alignment: .leading, spacing: 10) {
+                Text(verbatim: target.displayName)
+                    .bitchatFont(size: 18, weight: .semibold)
+
+                Text("fingerprint.local_alias.label")
+                    .bitchatFont(size: 12, weight: .bold)
+                    .foregroundColor(palette.secondary)
+
+                TextField(
+                    AppLanguageSettings.localized(
+                        "fingerprint.local_alias.placeholder",
+                        defaultValue: "Nickname on this device",
+                        comment: "Placeholder for an optional device-local nickname while adding a friend"
+                    ),
+                    text: $nicknameDraft
+                )
+                .textFieldStyle(.roundedBorder)
+                #if os(iOS)
+                .textInputAutocapitalization(.words)
+                #endif
+                .onSubmit(addFriend)
+                .onChange(of: nicknameDraft) { _ in feedback = nil }
+                .accessibilityIdentifier("add-friend-local-nickname-field")
+
+                Text("friends.add.nickname_optional_hint")
+                    .bitchatFont(size: 11)
+                    .foregroundColor(palette.secondary)
+
+                if let feedback {
+                    Label(
+                        feedback == .invalidNickname
+                            ? Strings.invalidNickname
+                            : Strings.persistenceFailed,
+                        systemImage: "exclamationmark.circle.fill"
+                    )
+                    .bitchatFont(size: 11, weight: .medium)
+                    .foregroundColor(.orange)
+                }
+            }
+
+            Button("friends.action.add", action: addFriend)
+                .buttonStyle(.borderedProminent)
+                .controlSize(.large)
+                .frame(maxWidth: .infinity)
+
+            Spacer()
+        }
+        .padding(24)
+        .frame(maxWidth: 460, maxHeight: .infinity)
+        .frame(maxWidth: .infinity)
+        .themedSheetBackground()
+    }
+
+    private func addFriend() {
+        let trimmed = nicknameDraft.trimmingCharacters(
+            in: .whitespacesAndNewlines
+        )
+        let localNickname: String?
+        if trimmed.isEmpty {
+            localNickname = nil
+        } else if let validated = InputValidator.validateNickname(trimmed) {
+            localNickname = validated
+        } else {
+            feedback = .invalidNickname
+            return
+        }
+
+        guard onAdd(localNickname) else {
+            feedback = .persistenceFailed
+            return
+        }
+        dismiss()
+    }
 }
 
 private extension MeshChatConversationHeader {

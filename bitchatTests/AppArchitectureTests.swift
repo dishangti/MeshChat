@@ -1048,6 +1048,73 @@ struct AppArchitectureTests {
         #expect(first.id != second.id)
     }
 
+    @Test("Settings lists and unblocks a blocked mesh friend by stable identity")
+    @MainActor
+    func appChromeModelManagesBlockedMeshFriend() throws {
+        let viewModel = makeArchitectureViewModel()
+        let privateInboxModel = PrivateInboxModel(conversations: ConversationStore())
+        let chromeModel = AppChromeModel(
+            chatViewModel: viewModel,
+            privateInboxModel: privateInboxModel
+        )
+        let fingerprint = String(repeating: "a", count: 64)
+        viewModel.identityManager.updateSocialIdentity(
+            SocialIdentity(
+                fingerprint: fingerprint,
+                localPetname: "Bestie",
+                claimedNickname: "alice",
+                trustLevel: .verified,
+                isFavorite: true,
+                isBlocked: true,
+                notes: nil
+            )
+        )
+
+        let row = try #require(
+            chromeModel.blockedPeople().first { $0.stableID == fingerprint }
+        )
+        #expect(row.source == .mesh)
+        #expect(row.displayName == "Bestie")
+        #expect(viewModel.identityManager.isBlocked(fingerprint: fingerprint))
+
+        chromeModel.unblock(row)
+
+        #expect(!viewModel.identityManager.isBlocked(fingerprint: fingerprint))
+        #expect(!chromeModel.blockedPeople().contains { $0.stableID == fingerprint })
+    }
+
+    @Test("Blocked people with equal names have deterministic identity order")
+    @MainActor
+    func blockedPeopleEqualNamesUseStableIdentityOrder() {
+        let viewModel = makeArchitectureViewModel()
+        let privateInboxModel = PrivateInboxModel(conversations: ConversationStore())
+        let chromeModel = AppChromeModel(
+            chatViewModel: viewModel,
+            privateInboxModel: privateInboxModel
+        )
+        let firstFingerprint = String(repeating: "1", count: 64)
+        let secondFingerprint = String(repeating: "2", count: 64)
+
+        for fingerprint in [secondFingerprint, firstFingerprint] {
+            viewModel.identityManager.updateSocialIdentity(
+                SocialIdentity(
+                    fingerprint: fingerprint,
+                    localPetname: "Same Name",
+                    claimedNickname: "same",
+                    trustLevel: .unknown,
+                    isFavorite: false,
+                    isBlocked: true,
+                    notes: nil
+                )
+            )
+        }
+
+        let matchingIDs = chromeModel.blockedPeople()
+            .filter { $0.displayName == "Same Name" }
+            .map(\.stableID)
+        #expect(matchingIDs == [firstFingerprint, secondFingerprint])
+    }
+
     @Test("PrivateConversationModel resolves canonical header state for the selected DM")
     @MainActor
     func privateConversationModelResolvesSelectedHeaderState() async {

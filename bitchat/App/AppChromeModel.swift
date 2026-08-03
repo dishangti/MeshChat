@@ -133,7 +133,14 @@ final class AppChromeModel: ObservableObject {
         }
 
         return (meshRows + nostrRows).sorted {
-            $0.displayName.localizedCaseInsensitiveCompare($1.displayName) == .orderedAscending
+            let nameOrder = $0.displayName.localizedCaseInsensitiveCompare($1.displayName)
+            if nameOrder == .orderedSame {
+                // Nicknames are neither unique nor authenticated. Keep rows
+                // with the same visible name in a deterministic identity order
+                // so the management list never appears to reshuffle them.
+                return $0.id < $1.id
+            }
+            return nameOrder == .orderedAscending
         }
     }
 

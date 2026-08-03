@@ -8,6 +8,14 @@ enum AppInfoPane: String {
     case help
 }
 
+private enum BlockedPeopleStrings {
+    static let title = String(
+        localized: "app_info.settings.blocked.title",
+        defaultValue: "Blocked People",
+        comment: "Title of the settings destination listing people blocked by the user"
+    )
+}
+
 /// The sheet behind the MeshChat logo: a segmented Help/Info/Settings surface.
 /// Help is task-oriented guidance, Info is product context and the symbols
 /// legend, and Settings gathers preferences and destructive controls.
@@ -49,6 +57,7 @@ struct AppInfoView: View {
     @State private var notificationPauseTask: Task<Void, Never>?
     @State private var notificationAuthorizationStatus: UNAuthorizationStatus?
     @State private var blockedPeople: [BlockedPersonRow] = []
+    @State private var showBlockedPeople = false
     @State private var customRelays = NostrRelaySettings.customRelays()
     @State private var relayInput = ""
     @State private var relayError: String?
@@ -311,6 +320,9 @@ struct AppInfoView: View {
                 MeshTopologyView(provider: topologyProvider)
             }
         }
+        .sheet(isPresented: $showBlockedPeople) {
+            blockedPeopleManagementView
+        }
         .onAppear(perform: handleAppear)
         .onDisappear(perform: handleDisappear)
         .onChange(of: scenePhase, perform: handleScenePhaseChange)
@@ -334,6 +346,9 @@ struct AppInfoView: View {
             if let topologyProvider {
                 MeshTopologyView(provider: topologyProvider)
             }
+        }
+        .sheet(isPresented: $showBlockedPeople) {
+            blockedPeopleManagementView
         }
         .onAppear(perform: handleAppear)
         .onDisappear(perform: handleDisappear)
@@ -580,13 +595,41 @@ struct AppInfoView: View {
                         )
                     )
                 }
+
+                settingsCard {
+                    Button {
+                        reloadBlockedPeople()
+                        showBlockedPeople = true
+                    } label: {
+                        HStack(spacing: 10) {
+                            Image(systemName: "person.crop.circle.badge.xmark")
+                                .foregroundColor(palette.secondary)
+                                .frame(width: 22)
+
+                            Text(verbatim: BlockedPeopleStrings.title)
+                                .bitchatFont(size: 12, weight: .semibold)
+                                .foregroundColor(textColor)
+
+                            Spacer()
+
+                            Text(verbatim: blockedPeople.count.formatted())
+                                .bitchatFont(size: 11)
+                                .foregroundColor(secondaryTextColor)
+
+                            Image(systemName: "chevron.right")
+                                .font(.system(size: 11, weight: .semibold))
+                                .foregroundColor(secondaryTextColor)
+                        }
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel(
+                        Text(verbatim: "\(BlockedPeopleStrings.title), \(blockedPeople.count.formatted())")
+                    )
+                }
             }
 
             notificationSettingsSection
-
-            if !blockedPeople.isEmpty {
-                blockedPeopleSection
-            }
 
             // Danger zone
             if onPanicWipe != nil {
@@ -714,42 +757,14 @@ struct AppInfoView: View {
         }
     }
 
-    @ViewBuilder
-    private var blockedPeopleSection: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            SectionHeader("mesh_peers.state.blocked")
-
-            settingsCard {
-                ForEach(blockedPeople) { person in
-                    HStack(spacing: 10) {
-                        Image(systemName: person.source == .mesh ? "antenna.radiowaves.left.and.right" : "globe")
-                            .foregroundColor(palette.secondary)
-                            .frame(width: 22)
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text(verbatim: person.displayName)
-                                .bitchatFont(size: 12, weight: .semibold)
-                                .lineLimit(1)
-                                .truncationMode(.middle)
-                            Text(verbatim: "\(blockedSourceLabel(person.source)) • \(person.identityHint)")
-                                .bitchatFont(size: 10)
-                                .foregroundColor(secondaryTextColor)
-                        }
-                        .accessibilityElement(children: .ignore)
-                        .accessibilityLabel(
-                            Text(verbatim: "\(person.displayName), \(blockedSourceLabel(person.source)), \(person.identityHint)")
-                        )
-                        Spacer()
-                        Button("geohash_people.action.unblock") {
-                            onUnblockPerson?(person)
-                            reloadBlockedPeople()
-                        }
-                        .buttonStyle(.plain)
-                        .bitchatFont(size: 11, weight: .semibold)
-                        .foregroundColor(palette.accent)
-                    }
-                }
+    private var blockedPeopleManagementView: some View {
+        BlockedPeopleManagementView(
+            people: $blockedPeople,
+            onUnblock: { person in
+                onUnblockPerson?(person)
+                reloadBlockedPeople()
             }
-        }
+        )
     }
 
     private var activeNotificationPauseUntil: Date? {
@@ -899,10 +914,6 @@ struct AppInfoView: View {
 
     private func reloadBlockedPeople() {
         blockedPeople = blockedPeopleProvider?() ?? []
-    }
-
-    private func blockedSourceLabel(_ source: BlockedPersonRow.Source) -> String {
-        source == .mesh ? "#mesh" : "Nostr"
     }
 
     private func selectLanguage(_ code: String?) {
@@ -1177,6 +1188,98 @@ struct AppInfoFeatureInfo {
         self.icon = icon
         self.title = Text(resolvedTitle)
         self.description = Text(resolvedDescription)
+    }
+}
+
+/// A discoverable, standard list for reviewing and reversing local blocks.
+/// Rows receive presentation-only data; unblocking still resolves through the
+/// app model by complete Noise fingerprint or complete Nostr public key.
+private struct BlockedPeopleManagementView: View {
+    @Environment(\.dismiss) private var dismiss
+    @Binding var people: [BlockedPersonRow]
+    let onUnblock: @MainActor (BlockedPersonRow) -> Void
+
+    @ThemedPalette private var palette
+
+    private var textColor: Color { palette.primary }
+    private var secondaryTextColor: Color { palette.secondary }
+
+    var body: some View {
+        NavigationStack {
+            Group {
+                if people.isEmpty {
+                    VStack(spacing: 12) {
+                        Image(systemName: "person.crop.circle.badge.checkmark")
+                            .font(.system(size: 36))
+                            .foregroundColor(secondaryTextColor)
+                        Text(verbatim: BlockedPeopleStrings.title)
+                            .bitchatFont(size: 14, weight: .semibold)
+                            .foregroundColor(textColor)
+                    }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .accessibilityElement(children: .combine)
+                } else {
+                    List {
+                        ForEach(people) { person in
+                            blockedPersonRow(person)
+                        }
+                    }
+                    .listStyle(.plain)
+                    .scrollContentBackground(.hidden)
+                }
+            }
+            .themedSheetBackground()
+            .navigationTitle(BlockedPeopleStrings.title)
+            #if os(iOS)
+            .navigationBarTitleDisplayMode(.inline)
+            #endif
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("app_info.done") { dismiss() }
+                }
+            }
+        }
+        #if os(macOS)
+        .frame(width: 500, height: 520)
+        #endif
+    }
+
+    private func blockedPersonRow(_ person: BlockedPersonRow) -> some View {
+        HStack(spacing: 10) {
+            Image(systemName: person.source == .mesh ? "antenna.radiowaves.left.and.right" : "globe")
+                .foregroundColor(palette.secondary)
+                .frame(width: 22)
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(verbatim: person.displayName)
+                    .bitchatFont(size: 12, weight: .semibold)
+                    .foregroundColor(textColor)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+
+                Text(verbatim: "\(sourceLabel(person.source)) • \(person.identityHint)")
+                    .bitchatFont(size: 10)
+                    .foregroundColor(secondaryTextColor)
+            }
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel(
+                Text(verbatim: "\(person.displayName), \(sourceLabel(person.source)), \(person.identityHint)")
+            )
+
+            Spacer()
+
+            Button("geohash_people.action.unblock") {
+                onUnblock(person)
+            }
+            .buttonStyle(.plain)
+            .bitchatFont(size: 11, weight: .semibold)
+            .foregroundColor(palette.accent)
+        }
+        .listRowBackground(palette.secondary.opacity(0.08))
+    }
+
+    private func sourceLabel(_ source: BlockedPersonRow.Source) -> String {
+        source == .mesh ? "#mesh" : "Nostr"
     }
 }
 

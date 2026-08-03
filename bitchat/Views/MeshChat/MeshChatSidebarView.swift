@@ -41,157 +41,227 @@ struct MeshChatSidebarView: View {
     var onDeleteActiveRecent: () -> Void = {}
 
     private enum Strings {
-        static let people = String(
-            localized: "content.header.people",
+        static var people: String {
+            AppLanguageSettings.localized(
+             "content.header.people",
             comment: "Title for the people list sheet"
-        )
-        static let friends = String(
-            localized: "mesh_peers.section.friends",
+            )
+        }
+        static var friends: String {
+            AppLanguageSettings.localized(
+             "mesh_peers.section.friends",
             defaultValue: "Friends",
             comment: "Section title for saved mesh friends"
-        )
-        static let nearbySection = String(
-            localized: "mesh_peers.section.nearby",
+            )
+        }
+        static var nearbySection: String {
+            AppLanguageSettings.localized(
+             "mesh_peers.section.nearby",
             defaultValue: "Nearby",
             comment: "Section title for nearby mesh people who are not friends"
-        )
-        static let recent = String(
-            localized: "mesh_peers.section.recent",
+            )
+        }
+        static var recent: String {
+            AppLanguageSettings.localized(
+             "mesh_peers.section.recent",
             defaultValue: "Recent",
             comment: "Section title for offline non-friends with direct-message history"
-        )
-        static let channels = String(
-            localized: "location_channels.title",
+            )
+        }
+        static var channels: String {
+            AppLanguageSettings.localized(
+             "location_channels.title",
             comment: "Title for location channels"
-        )
+            )
+        }
         static let locationMenu = "#location"
-        static let mesh = String(
-            localized: "location_channels.mesh_label",
+        static var mesh: String {
+            AppLanguageSettings.localized(
+             "location_channels.mesh_label",
             comment: "Label for the mesh channel row"
-        )
-        static let bookmarks = String(
-            localized: "location_channels.bookmarked_section_title",
+            )
+        }
+        static var bookmarks: String {
+            AppLanguageSettings.localized(
+             "location_channels.bookmarked_section_title",
             comment: "Section title for bookmarked location channels"
-        )
-        static let groups = String(
-            localized: "groups.section.header",
+            )
+        }
+        static var groups: String {
+            AppLanguageSettings.localized(
+             "groups.section.header",
             comment: "Section header above the private groups list"
-        )
-        static let notices = String(
-            localized: "notices.title",
+            )
+        }
+        static var notices: String {
+            AppLanguageSettings.localized(
+             "notices.title",
             defaultValue: "Notices",
             comment: "Title of the notices surface"
-        )
-        static let scanQRCode = String(
-            localized: "verification.qr.title",
+            )
+        }
+        static var scanQRCode: String {
+            AppLanguageSettings.localized(
+             "verification.qr.title",
             defaultValue: "QR Code",
             comment: "Action that opens the global identity QR screen"
-        )
-        static let setNickname = String(
-            localized: "fingerprint.local_alias.label",
+            )
+        }
+        static var setNickname: String {
+            AppLanguageSettings.localized(
+             "fingerprint.local_alias.label",
             defaultValue: "Local Nickname",
             comment: "Action that opens the local nickname editor"
-        )
-        static let settings = String(
-            localized: "app_info.tab.settings",
+            )
+        }
+        static var settings: String {
+            AppLanguageSettings.localized(
+             "app_info.tab.settings",
             defaultValue: "Settings",
             comment: "Settings pane label"
-        )
+            )
+        }
 
-        static let connected = String(
-            localized: "content.accessibility.connected_mesh",
+        static var connected: String {
+            AppLanguageSettings.localized(
+             "content.accessibility.connected_mesh",
             comment: "State label for a directly connected mesh peer"
-        )
-        static let reachable = String(
-            localized: "content.accessibility.reachable_mesh",
+            )
+        }
+        static var reachable: String {
+            AppLanguageSettings.localized(
+             "content.accessibility.reachable_mesh",
             comment: "State label for a peer reachable through the mesh"
-        )
-        static let nostr = String(
-            localized: "content.accessibility.available_nostr",
+            )
+        }
+        static var nostr: String {
+            AppLanguageSettings.localized(
+             "content.accessibility.available_nostr",
             comment: "State label for a peer available through Nostr"
-        )
-        static let offline = String(
-            localized: "mesh_peers.state.offline",
+            )
+        }
+        static var offline: String {
+            AppLanguageSettings.localized(
+             "mesh_peers.state.offline",
             comment: "State label for an unavailable peer"
-        )
-        static let favorite = String(
-            localized: "mesh_peers.state.favorite",
+            )
+        }
+        static var favorite: String {
+            AppLanguageSettings.localized(
+             "mesh_peers.state.favorite",
             comment: "State label for a favorite peer"
-        )
-        static let unread = String(
-            localized: "mesh_peers.state.unread",
+            )
+        }
+        static var unread: String {
+            AppLanguageSettings.localized(
+             "mesh_peers.state.unread",
             comment: "State label for an unread conversation"
-        )
-        static let blocked = String(
-            localized: "mesh_peers.state.blocked",
+            )
+        }
+        static var blocked: String {
+            AppLanguageSettings.localized(
+             "mesh_peers.state.blocked",
             comment: "State label for a blocked peer"
-        )
-        static let vouched = String(
-            localized: "mesh_peers.state.vouched",
+            )
+        }
+        static var vouched: String {
+            AppLanguageSettings.localized(
+             "mesh_peers.state.vouched",
             comment: "State label for a vouched peer"
-        )
-        static let creator = String(
-            localized: "groups.state.creator",
+            )
+        }
+        static var creator: String {
+            AppLanguageSettings.localized(
+             "groups.state.creator",
             comment: "State label for a group creator"
-        )
+            )
+        }
 
-        static let directMessage = String(
-            localized: "content.actions.direct_message",
+        static var directMessage: String {
+            AppLanguageSettings.localized(
+             "content.actions.direct_message",
             comment: "Action opening a direct message"
-        )
-        static let showFingerprint = String(
-            localized: "mesh_peers.action.fingerprint",
+            )
+        }
+        static var showFingerprint: String {
+            AppLanguageSettings.localized(
+             "mesh_peers.action.fingerprint",
             comment: "Action opening a peer's fingerprint and verification screen"
-        )
-        static let addFavorite = String(
-            localized: "friends.action.add",
+            )
+        }
+        static var addFavorite: String {
+            AppLanguageSettings.localized(
+             "friends.action.add",
             comment: "Action adding a friend"
-        )
-        static let removeFavorite = String(
-            localized: "content.accessibility.remove_favorite",
+            )
+        }
+        static var removeFavorite: String {
+            AppLanguageSettings.localized(
+             "content.accessibility.remove_favorite",
             comment: "Action removing a favorite"
-        )
-        static let deleteRecentChat = String(
-            localized: "recent_chat.delete.action",
+            )
+        }
+        static var deleteRecentChat: String {
+            AppLanguageSettings.localized(
+             "recent_chat.delete.action",
             defaultValue: "Delete Chat",
             comment: "Action deleting a chat from the Recent section"
-        )
-        static let block = String(
-            localized: "geohash_people.action.block",
+            )
+        }
+        static var block: String {
+            AppLanguageSettings.localized(
+             "geohash_people.action.block",
             comment: "Action blocking a peer"
-        )
-        static let unblock = String(
-            localized: "geohash_people.action.unblock",
+            )
+        }
+        static var unblock: String {
+            AppLanguageSettings.localized(
+             "geohash_people.action.unblock",
             comment: "Action unblocking a peer"
-        )
-        static let openDMHint = String(
-            localized: "mesh_peers.accessibility.open_dm_hint",
+            )
+        }
+        static var openDMHint: String {
+            AppLanguageSettings.localized(
+             "mesh_peers.accessibility.open_dm_hint",
             comment: "Hint for opening a private chat"
-        )
-        static let appInfoHint = String(
-            localized: "meshchat.help.open_hint",
+            )
+        }
+        static var appInfoHint: String {
+            AppLanguageSettings.localized(
+             "meshchat.help.open_hint",
             comment: "Hint for opening Help from the brand header"
-        )
-        static let noneNearby = String(
-            localized: "geohash_people.none_nearby",
+            )
+        }
+        static var noneNearby: String {
+            AppLanguageSettings.localized(
+             "geohash_people.none_nearby",
             comment: "Empty people-list state"
-        )
-        static let teleported = String(
-            localized: "geohash_people.state.teleported",
+            )
+        }
+        static var teleported: String {
+            AppLanguageSettings.localized(
+             "geohash_people.state.teleported",
             comment: "State label for someone who joined the location channel remotely"
-        )
-        static let nearby = String(
-            localized: "geohash_people.state.nearby",
+            )
+        }
+        static var nearby: String {
+            AppLanguageSettings.localized(
+             "geohash_people.state.nearby",
             comment: "State label for someone physically near the location channel"
-        )
-        static let you = String(
-            localized: "geohash_people.state.you",
+            )
+        }
+        static var you: String {
+            AppLanguageSettings.localized(
+             "geohash_people.state.you",
             comment: "State label marking the current user"
-        )
-        static let cancel = String(
-            localized: "common.cancel",
+            )
+        }
+        static var cancel: String {
+            AppLanguageSettings.localized(
+             "common.cancel",
             comment: "Cancel action"
-        )
+            )
+        }
     }
 
     var body: some View {
@@ -241,8 +311,8 @@ struct MeshChatSidebarView: View {
             }
         } message: {
             Text(
-                String(
-                    localized: "friends.remove.confirm_message",
+                AppLanguageSettings.localized(
+                     "friends.remove.confirm_message",
                     defaultValue: "This only removes the friend relationship. Chat history, local nickname, block status, and verification are kept.",
                     comment: "Explanation shown before removing a friend"
                 )
@@ -275,8 +345,8 @@ struct MeshChatSidebarView: View {
             }
         } message: {
             Text(
-                String(
-                    localized: "recent_chat.delete.confirm_message",
+                AppLanguageSettings.localized(
+                     "recent_chat.delete.confirm_message",
                     defaultValue: "This deletes the local chat history and removes this person from Recent. Their local nickname, block status, and verification are kept. New messages can make the chat appear again.",
                     comment: "Explanation shown before deleting a Recent chat"
                 )
@@ -320,8 +390,8 @@ private extension MeshChatSidebarView {
 
     var friendRemovalConfirmationTitle: String {
         guard let target = pendingFriendRemoval else { return "" }
-        let format = String(
-            localized: "friends.remove.confirm_title",
+        let format = AppLanguageSettings.localized(
+             "friends.remove.confirm_title",
             defaultValue: "Remove %@ from Friends?",
             comment: "Title confirming removal of a named friend"
         )
@@ -334,8 +404,8 @@ private extension MeshChatSidebarView {
 
     var recentChatDeletionConfirmationTitle: String {
         guard let target = pendingRecentChatDeletion else { return "" }
-        let format = String(
-            localized: "recent_chat.delete.confirm_title",
+        let format = AppLanguageSettings.localized(
+             "recent_chat.delete.confirm_title",
             defaultValue: "Delete Chat with %@?",
             comment: "Title confirming deletion of a named Recent chat"
         )
@@ -752,7 +822,7 @@ private extension MeshChatSidebarView {
         }
         .buttonStyle(.plain)
         .accessibilityLabel(groupAccessibilityLabel(group, hasUnread: hasUnread))
-        .accessibilityHint(String(localized: "groups.accessibility.open_group_hint"))
+        .accessibilityHint(AppLanguageSettings.localized("groups.accessibility.open_group_hint"))
         .accessibilityAddTraits(isSelected ? .isSelected : [])
     }
 
@@ -1485,8 +1555,8 @@ private extension MeshChatSidebarView {
 
     func groupMemberCount(_ count: Int) -> String {
         String(
-            format: String(
-                localized: "groups.member_count %@",
+            format: AppLanguageSettings.localized(
+                 "groups.member_count %@",
                 comment: "Member count shown next to a group name"
             ),
             locale: .current,

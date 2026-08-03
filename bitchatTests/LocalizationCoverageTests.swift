@@ -1,9 +1,11 @@
 import Testing
 import Foundation
+@testable import bitchat
 
 /// Guards against locale gaps in the string catalogs: every translatable key
 /// must have a localization for every supported locale, so no user ever sees
 /// an English fallback (see PR #1391 review).
+@Suite(.serialized)
 struct LocalizationCoverageTests {
     private static let repoRoot = URL(fileURLWithPath: #filePath)
         .deletingLastPathComponent()  // bitchatTests
@@ -52,6 +54,117 @@ struct LocalizationCoverageTests {
             let missing = expected.subtracting(locales).sorted()
             #expect(missing.isEmpty, "\(key) is missing locales: \(missing.joined(separator: ", "))")
         }
+    }
+
+    @Test func everyPlainLocalizedStringHasACatalogEntry() throws {
+        let catalog = try Self.loadCatalog("bitchat/Localizable.xcstrings")
+        let sourceRoot = Self.repoRoot.appendingPathComponent("bitchat")
+        let enumerator = try #require(
+            FileManager.default.enumerator(
+                at: sourceRoot,
+                includingPropertiesForKeys: nil
+            )
+        )
+        let expression = try NSRegularExpression(
+            pattern: #"AppLanguageSettings\.localized\(\s*"([^"]+)""#
+        )
+        var referencedKeys: Set<String> = []
+
+        for case let fileURL as URL in enumerator
+        where fileURL.pathExtension == "swift" {
+            let source = try String(contentsOf: fileURL, encoding: .utf8)
+            let range = NSRange(source.startIndex..., in: source)
+            for match in expression.matches(in: source, range: range) {
+                guard let keyRange = Range(match.range(at: 1), in: source) else {
+                    continue
+                }
+                referencedKeys.insert(String(source[keyRange]))
+            }
+        }
+
+        let missing = referencedKeys.subtracting(catalog.coverage.keys).sorted()
+        #expect(
+            missing.isEmpty,
+            "Plain localized strings missing from the catalog: \(missing.joined(separator: ", "))"
+        )
+    }
+
+    @Test func appLanguageOverrideResolvesImmediately() {
+        let defaults = UserDefaults.standard
+        let domainName = Bundle.main.bundleIdentifier ?? "chat.meshchat.tests"
+        let previousOverride = defaults.object(
+            forKey: AppLanguageSettings.overrideKey
+        )
+        let previousLanguages = defaults.persistentDomain(
+            forName: domainName
+        )?["AppleLanguages"]
+        defer {
+            if let previousOverride {
+                defaults.set(
+                    previousOverride,
+                    forKey: AppLanguageSettings.overrideKey
+                )
+            } else {
+                defaults.removeObject(forKey: AppLanguageSettings.overrideKey)
+            }
+            if let previousLanguages {
+                defaults.set(previousLanguages, forKey: "AppleLanguages")
+            } else {
+                defaults.removeObject(forKey: "AppleLanguages")
+            }
+        }
+
+        AppLanguageSettings.setOverride("zh-Hans")
+
+        #expect(
+            AppLanguageSettings.localized("app_info.tab.settings") == "设置"
+        )
+        #expect(
+            AppLanguageSettings.localized("board.empty_title") == "暂无公告"
+        )
+    }
+
+    @Test func systemDefaultRemovesLegacyLanguageOverride() throws {
+        let suiteName = "chat.meshchat.tests.language.\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        defaults.set("de", forKey: AppLanguageSettings.overrideKey)
+        defaults.set(["de"], forKey: "AppleLanguages")
+
+        AppLanguageSettings.setOverride(nil, defaults: defaults)
+
+        let storedDomain = defaults.persistentDomain(forName: suiteName) ?? [:]
+        #expect(storedDomain[AppLanguageSettings.overrideKey] == nil)
+        #expect(storedDomain["AppleLanguages"] == nil)
+    }
+
+    @Test func newLanguageOverridesDoNotChangeAppleLanguages() throws {
+        let suiteName = "chat.meshchat.tests.language.\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        AppLanguageSettings.setOverride("de", defaults: defaults)
+
+        let storedDomain = defaults.persistentDomain(forName: suiteName) ?? [:]
+        #expect(storedDomain[AppLanguageSettings.overrideKey] as? String == "de")
+        #expect(storedDomain["AppleLanguages"] == nil)
+    }
+
+    @Test func regionalSystemLanguageSelectsShippedBaseLanguage() {
+        let supported = ["de", "en", "zh-Hans"]
+        #expect(
+            AppLanguageSettings.preferredSupportedLanguage(
+                for: ["en-US", "de-DE"],
+                supportedLanguages: supported
+            ) == "en"
+        )
+        #expect(
+            AppLanguageSettings.preferredSupportedLanguage(
+                for: ["de-DE", "en-US"],
+                supportedLanguages: supported
+            ) == "de"
+        )
     }
 
     @Test func shareExtensionCatalogCoversAllLocalesForEveryKey() throws {

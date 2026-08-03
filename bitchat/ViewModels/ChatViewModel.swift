@@ -1613,8 +1613,8 @@ final class ChatViewModel: ObservableObject, BitchatDelegate, SynchronousMessage
         NotificationCenter.default.post(name: Notification.Name("peerStatusUpdated"), object: nil)
         addCommandOutput(
             String(
-                format: String(
-                    localized: blocked ? "system.mesh.blocked" : "system.mesh.unblocked",
+                format: AppLanguageSettings.localized(
+                     blocked ? "system.mesh.blocked" : "system.mesh.unblocked",
                     comment: "System message shown when a bridge participant is blocked or unblocked"
                 ),
                 locale: .current,
@@ -1649,8 +1649,8 @@ final class ChatViewModel: ObservableObject, BitchatDelegate, SynchronousMessage
         guard unifiedPeerService.setBlocked(peerID, blocked: blocked) != nil else {
             addCommandOutput(
                 String(
-                    format: String(
-                        localized: blocked ? "system.mesh.block_failed" : "system.mesh.unblock_failed",
+                    format: AppLanguageSettings.localized(
+                         blocked ? "system.mesh.block_failed" : "system.mesh.unblock_failed",
                         comment: "System message shown when a mesh peer cannot be blocked or unblocked"
                     ),
                     locale: .current,
@@ -1661,8 +1661,8 @@ final class ChatViewModel: ObservableObject, BitchatDelegate, SynchronousMessage
         }
         addCommandOutput(
             String(
-                format: String(
-                    localized: blocked ? "system.mesh.blocked" : "system.mesh.unblocked",
+                format: AppLanguageSettings.localized(
+                     blocked ? "system.mesh.blocked" : "system.mesh.unblocked",
                     comment: "System message shown when a mesh peer is blocked or unblocked"
                 ),
                 locale: .current,

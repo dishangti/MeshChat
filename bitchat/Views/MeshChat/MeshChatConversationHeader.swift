@@ -39,8 +39,8 @@ struct MeshChatConversationHeader: View {
             }
             .buttonStyle(.plain)
             .accessibilityLabel(
-                String(
-                    localized: "content.accessibility.home",
+                AppLanguageSettings.localized(
+                     "content.accessibility.home",
                     defaultValue: "Home",
                     comment: "Accessibility label for returning from a conversation to the MeshChat home screen"
                 )
@@ -109,8 +109,8 @@ struct MeshChatConversationHeader: View {
                 .buttonStyle(.plain)
                 .accessibilityLabel(
                     privateHeader.isFavorite
-                        ? String(localized: "content.accessibility.remove_favorite", comment: "Accessibility label to remove a favorite")
-                        : String(localized: "content.accessibility.add_favorite", comment: "Accessibility label to add a favorite")
+                        ? AppLanguageSettings.localized("content.accessibility.remove_favorite", comment: "Accessibility label to remove a favorite")
+                        : AppLanguageSettings.localized("content.accessibility.add_favorite", comment: "Accessibility label to add a favorite")
                 )
             }
 
@@ -123,8 +123,8 @@ struct MeshChatConversationHeader: View {
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel(
-                    String(
-                        localized: "content.accessibility.location_channels",
+                    AppLanguageSettings.localized(
+                         "content.accessibility.location_channels",
                         comment: "Accessibility label for the location channels button"
                     )
                 )
@@ -138,8 +138,8 @@ struct MeshChatConversationHeader: View {
             }
             .buttonStyle(.plain)
             .accessibilityLabel(
-                String(
-                    localized: "content.accessibility.notices",
+                AppLanguageSettings.localized(
+                     "content.accessibility.notices",
                     defaultValue: "Notices",
                     comment: "Accessibility label for the notices button"
                 )
@@ -191,8 +191,8 @@ struct MeshChatConversationHeader: View {
                             )
                         } label: {
                             Label(
-                                String(
-                                    localized: "content.accessibility.remove_favorite",
+                                AppLanguageSettings.localized(
+                                     "content.accessibility.remove_favorite",
                                     defaultValue: "Remove Friend",
                                     comment: "Conversation menu action that removes a friend"
                                 ),
@@ -208,8 +208,8 @@ struct MeshChatConversationHeader: View {
                     pendingHistoryDeletion = currentConversationID
                 } label: {
                     Label(
-                        String(
-                            localized: "content.clear.confirm_action",
+                        AppLanguageSettings.localized(
+                             "content.clear.confirm_action",
                             defaultValue: "Delete Chat History",
                             comment: "Conversation menu action that deletes the current chat history"
                         ),
@@ -230,8 +230,8 @@ struct MeshChatConversationHeader: View {
             }
             .menuStyle(.borderlessButton)
             .accessibilityLabel(
-                String(
-                    localized: "content.actions.title",
+                AppLanguageSettings.localized(
+                     "content.actions.title",
                     defaultValue: "Actions",
                     comment: "Accessibility label for the conversation actions menu"
                 )
@@ -252,8 +252,8 @@ struct MeshChatConversationHeader: View {
             carriedMailCount = count
         }
         .confirmationDialog(
-            String(
-                localized: "content.clear.confirm_title",
+            AppLanguageSettings.localized(
+                 "content.clear.confirm_title",
                 defaultValue: "Delete Chat History?",
                 comment: "Title confirming deletion of the current chat history"
             ),
@@ -262,8 +262,8 @@ struct MeshChatConversationHeader: View {
         ) {
             if let target = pendingHistoryDeletion {
                 Button(
-                    String(
-                        localized: "content.clear.confirm_action",
+                    AppLanguageSettings.localized(
+                         "content.clear.confirm_action",
                         defaultValue: "Delete Chat History",
                         comment: "Destructive action that deletes the current chat history"
                     ),
@@ -278,8 +278,8 @@ struct MeshChatConversationHeader: View {
             }
         } message: {
             Text(
-                String(
-                    localized: "content.clear.confirm_message",
+                AppLanguageSettings.localized(
+                     "content.clear.confirm_message",
                     defaultValue: "This deletes the chat history stored on this device. Other participants keep their copies.",
                     comment: "Explanation shown before deleting the current chat history"
                 )
@@ -292,8 +292,8 @@ struct MeshChatConversationHeader: View {
         ) {
             if let target = pendingFriendRemoval {
                 Button(
-                    String(
-                        localized: "content.accessibility.remove_favorite",
+                    AppLanguageSettings.localized(
+                         "content.accessibility.remove_favorite",
                         defaultValue: "Remove Friend",
                         comment: "Destructive action that removes a friend"
                     ),
@@ -308,8 +308,8 @@ struct MeshChatConversationHeader: View {
             }
         } message: {
             Text(
-                String(
-                    localized: "friends.remove.confirm_message",
+                AppLanguageSettings.localized(
+                     "friends.remove.confirm_message",
                     defaultValue: "This only removes the friend relationship. Chat history, local nickname, block status, and verification are kept.",
                     comment: "Explanation shown before removing a friend"
                 )
@@ -355,8 +355,8 @@ private extension MeshChatConversationHeader {
 
     var friendRemovalConfirmationTitle: String {
         guard let target = pendingFriendRemoval else { return "" }
-        let format = String(
-            localized: "friends.remove.confirm_title",
+        let format = AppLanguageSettings.localized(
+             "friends.remove.confirm_title",
             defaultValue: "Remove %@ from Friends?",
             comment: "Title confirming removal of a named friend"
         )
@@ -390,8 +390,8 @@ private extension MeshChatConversationHeader {
         if let privateHeader { return privateHeader.displayName }
         switch locationChannelsModel.selectedChannel {
         case .mesh:
-            return String(
-                localized: "location_channels.mesh_label",
+            return AppLanguageSettings.localized(
+                 "location_channels.mesh_label",
                 defaultValue: "#mesh",
                 comment: "Name of the local mesh channel"
             )
@@ -403,30 +403,30 @@ private extension MeshChatConversationHeader {
     var conversationSubtitle: String {
         if let privateHeader {
             if privateHeader.isGroupConversation {
-                return String(
-                    localized: "content.accessibility.group_chat",
+                return AppLanguageSettings.localized(
+                     "content.accessibility.group_chat",
                     comment: "Accessibility label for the group chat indicator"
                 )
             }
             switch privateHeader.availability {
             case .bluetoothConnected:
-                return String(
-                    localized: "content.accessibility.connected_mesh",
+                return AppLanguageSettings.localized(
+                     "content.accessibility.connected_mesh",
                     comment: "Accessibility label for mesh-connected peer indicator"
                 )
             case .meshReachable:
-                return String(
-                    localized: "content.accessibility.reachable_mesh",
+                return AppLanguageSettings.localized(
+                     "content.accessibility.reachable_mesh",
                     comment: "Accessibility label for mesh-reachable peer indicator"
                 )
             case .nostrAvailable:
-                return String(
-                    localized: "content.accessibility.available_nostr",
+                return AppLanguageSettings.localized(
+                     "content.accessibility.available_nostr",
                     comment: "Accessibility label for Nostr-available peer indicator"
                 )
             case .offline:
-                return String(
-                    localized: "mesh_peers.state.offline",
+                return AppLanguageSettings.localized(
+                     "mesh_peers.state.offline",
                     comment: "State label for a peer that is not currently reachable"
                 )
             }
@@ -439,8 +439,8 @@ private extension MeshChatConversationHeader {
         case .location:
             count = peerListModel.visibleGeohashPeerCount
         }
-        let format = String(
-            localized: "content.accessibility.people_count",
+        let format = AppLanguageSettings.localized(
+             "content.accessibility.people_count",
             comment: "Accessibility label announcing number of people in header"
         )
         return String(format: format, locale: .current, count)

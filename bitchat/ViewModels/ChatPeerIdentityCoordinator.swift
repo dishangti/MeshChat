@@ -356,8 +356,8 @@ final class ChatPeerIdentityCoordinator {
         if context.unifiedIsBlocked(peerID) {
             context.addSystemMessage(
                 String(
-                    format: String(
-                        localized: "system.chat.blocked",
+                    format: AppLanguageSettings.localized(
+                         "system.chat.blocked",
                         comment: "System message when starting chat fails because peer is blocked"
                     ),
                     locale: .current,

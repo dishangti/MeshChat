@@ -15,8 +15,8 @@ struct MeshChatHomeView: View {
     let onOpenVerification: () -> Void
 
     private var peopleCountText: String {
-        let format = String(
-            localized: "content.accessibility.people_count",
+        let format = AppLanguageSettings.localized(
+             "content.accessibility.people_count",
             comment: "Number of reachable people shown on the MeshChat home screen"
         )
         let count = peerListModel.reachableMeshPeerCount + bridgeService.bridgedPeerCount
@@ -43,7 +43,7 @@ struct MeshChatHomeView: View {
 
                 VStack(spacing: 10) {
                     homeAction(
-                        title: String(localized: "location_channels.mesh_label", defaultValue: "#mesh"),
+                        title: AppLanguageSettings.localized("location_channels.mesh_label", defaultValue: "#mesh"),
                         subtitle: peopleCountText,
                         icon: "antenna.radiowaves.left.and.right",
                         action: onOpenMesh
@@ -52,8 +52,8 @@ struct MeshChatHomeView: View {
                     HStack(spacing: 10) {
                         compactAction(title: "#location", icon: "number", action: onOpenLocations)
                         compactAction(
-                            title: String(
-                                localized: "verification.qr.title",
+                            title: AppLanguageSettings.localized(
+                                 "verification.qr.title",
                                 defaultValue: "QR Code",
                                 comment: "Action that opens the global identity QR screen"
                             ),

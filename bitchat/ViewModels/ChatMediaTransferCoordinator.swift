@@ -373,8 +373,8 @@ extension ChatViewModel: ChatMediaTransferContext {
     /// a wedged /clear looked like success. Tell the affected chat that its
     /// bubbles and payloads were intentionally kept.
     func notifyPrivateMediaDeletionRefused(peerID: PeerID?) {
-        let copy = String(
-            localized: "content.system.media_delete_refused",
+        let copy = AppLanguageSettings.localized(
+             "content.system.media_delete_refused",
             comment: "System message when an explicit media delete or /clear was refused and bubbles/files were kept"
         )
         if let peerID = peerID ?? selectedPrivateChatPeer {
@@ -610,7 +610,7 @@ final class ChatMediaTransferCoordinator {
                           self.isRegisteredTransfer(transferId, messageID: messageID) else {
                         return
                     }
-                    self.handleMediaSendFailure(messageID: messageID, reason: String(localized: "content.delivery.reason.voice_too_large", comment: "Failure reason shown when a voice note exceeds the size limit"))
+                    self.handleMediaSendFailure(messageID: messageID, reason: AppLanguageSettings.localized("content.delivery.reason.voice_too_large", comment: "Failure reason shown when a voice note exceeds the size limit"))
                 }
             } catch {
                 SecureLogger.error("Voice note send failed: \(error)", category: .session)
@@ -620,7 +620,7 @@ final class ChatMediaTransferCoordinator {
                           self.isRegisteredTransfer(transferId, messageID: messageID) else {
                         return
                     }
-                    self.handleMediaSendFailure(messageID: messageID, reason: String(localized: "content.delivery.reason.voice_send_failed", comment: "Failure reason shown when a voice note could not be sent"))
+                    self.handleMediaSendFailure(messageID: messageID, reason: AppLanguageSettings.localized("content.delivery.reason.voice_send_failed", comment: "Failure reason shown when a voice note could not be sent"))
                 }
             }
         }
@@ -869,8 +869,8 @@ final class ChatMediaTransferCoordinator {
                 guard resolvedPolicy != .awaitingCapabilityProof else {
                     self.handleMediaSendFailure(
                         messageID: messageID,
-                        reason: String(
-                            localized: "content.delivery.reason.private_media_capability_unresolved",
+                        reason: AppLanguageSettings.localized(
+                             "content.delivery.reason.private_media_capability_unresolved",
                             defaultValue: "Could not confirm encrypted media support",
                             comment: "Failure reason when private-media capability negotiation did not resolve"
                         )
@@ -902,8 +902,8 @@ final class ChatMediaTransferCoordinator {
                 guard approved else {
                     self.handleMediaSendFailure(
                         messageID: messageID,
-                        reason: String(
-                            localized: "content.delivery.reason.legacy_media_declined",
+                        reason: AppLanguageSettings.localized(
+                             "content.delivery.reason.legacy_media_declined",
                             defaultValue: "Not sent without end-to-end encryption",
                             comment: "Failure reason after declining the warning for a legacy clear private-media send"
                         )
@@ -921,8 +921,8 @@ final class ChatMediaTransferCoordinator {
         case .blockedDowngrade:
             handleMediaSendFailure(
                 messageID: messageID,
-                reason: String(
-                    localized: "content.delivery.reason.private_media_downgrade_blocked",
+                reason: AppLanguageSettings.localized(
+                     "content.delivery.reason.private_media_downgrade_blocked",
                     defaultValue: "Encrypted media required; ask this contact to upgrade",
                     comment: "Failure reason when a peer that previously supported encrypted media appears to downgrade"
                 )
@@ -1777,26 +1777,24 @@ private extension ChatMediaTransferCoordinator {
     }
 
     var privateMediaNotDeliveredReason: String {
-        String(
-            localized: "content.delivery.reason.not_delivered",
+        AppLanguageSettings.localized(
+             "content.delivery.reason.not_delivered",
             defaultValue: "Not delivered",
             comment: "Failure reason shown when a private media transfer could not finish"
         )
     }
 
     var privateMediaCapabilityUnresolvedReason: String {
-        String(
-            localized:
-                "content.delivery.reason.private_media_capability_unresolved",
+        AppLanguageSettings.localized(
+            "content.delivery.reason.private_media_capability_unresolved",
             defaultValue: "Could not confirm encrypted media support",
             comment: "Failure reason when private-media capability negotiation did not resolve"
         )
     }
 
     var privateMediaDeliveryUnconfirmedReason: String {
-        String(
-            localized:
-                "content.delivery.reason.private_media_delivery_unconfirmed",
+        AppLanguageSettings.localized(
+            "content.delivery.reason.private_media_delivery_unconfirmed",
             defaultValue: "Delivery could not be confirmed",
             comment: "Failure reason when private media left this device but no delivery receipt arrived"
         )

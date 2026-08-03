@@ -294,8 +294,8 @@ final class ChatPublicConversationCoordinator: PublicMessagePipelineDelegate {
 
         addSystemMessage(
             String(
-                format: String(
-                    localized: "system.geohash.blocked",
+                format: AppLanguageSettings.localized(
+                     "system.geohash.blocked",
                     comment: "System message shown when a user is blocked in geohash chats"
                 ),
                 locale: .current,
@@ -308,8 +308,8 @@ final class ChatPublicConversationCoordinator: PublicMessagePipelineDelegate {
         context.setNostrBlocked(pubkeyHexLowercased, isBlocked: false)
         addSystemMessage(
             String(
-                format: String(
-                    localized: "system.geohash.unblocked",
+                format: AppLanguageSettings.localized(
+                     "system.geohash.unblocked",
                     comment: "System message shown when a user is unblocked in geohash chats"
                 ),
                 locale: .current,

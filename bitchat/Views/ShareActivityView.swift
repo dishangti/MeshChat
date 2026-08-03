@@ -26,11 +26,11 @@ struct ShareActivityView: View {
                 Spacer()
                 ShareLink(item: text) {
                     Label(
-                        String(localized: "channel.share.action", defaultValue: "Share Channel", comment: "Button that opens the system share sheet for a location channel invite"),
+                        AppLanguageSettings.localized("channel.share.action", defaultValue: "Share Channel", comment: "Button that opens the system share sheet for a location channel invite"),
                         systemImage: "square.and.arrow.up"
                     )
                 }
-                Button(String(localized: "common.done", defaultValue: "Done", comment: "Dismisses a sheet")) {
+                Button(AppLanguageSettings.localized("common.done", defaultValue: "Done", comment: "Dismisses a sheet")) {
                     dismiss()
                 }
                 .keyboardShortcut(.cancelAction)

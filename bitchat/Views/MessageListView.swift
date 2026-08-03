@@ -232,7 +232,7 @@ struct MessageListView: View {
                 onSelectedChannelChange(newChannel, proxy: proxy)
             }
             .confirmationDialog(
-                selectedMessageSender.map { "@\($0)" } ?? String(localized: "content.actions.title", comment: "Fallback title for the message action sheet"),
+                selectedMessageSender.map { "@\($0)" } ?? AppLanguageSettings.localized("content.actions.title", comment: "Fallback title for the message action sheet"),
                 isPresented: $showMessageActions,
                 titleVisibility: .visible
             ) {
@@ -333,9 +333,9 @@ private extension MessageListView {
     /// place: opens the notices sheet on the geo tab.
     var notesHereStrip: some View {
         let text: String = nearbyNotes.noteCount == 1
-            ? String(localized: "content.empty.notes_one", comment: "Hint when exactly one note was left at this place")
+            ? AppLanguageSettings.localized("content.empty.notes_one", comment: "Hint when exactly one note was left at this place")
             : String(
-                format: String(localized: "content.empty.notes_many", comment: "Hint counting notes left at this place"),
+                format: AppLanguageSettings.localized("content.empty.notes_many", comment: "Hint counting notes left at this place"),
                 locale: .current,
                 nearbyNotes.noteCount
             )
@@ -403,12 +403,12 @@ private extension MessageListView {
             case .location(let channel):
                 emptyStateLine(
                     String(
-                        format: String(localized: "content.empty.location_intro", comment: "First line of an empty geohash timeline naming the channel"),
+                        format: AppLanguageSettings.localized("content.empty.location_intro", comment: "First line of an empty geohash timeline naming the channel"),
                         locale: .current,
                         channel.geohash
                     )
                 )
-                emptyStateLine(String(localized: "content.empty.switch_hint", comment: "Empty timeline hint pointing at the channel switcher and the help screen"))
+                emptyStateLine(AppLanguageSettings.localized("content.empty.switch_hint", comment: "Empty timeline hint pointing at the channel switcher and the help screen"))
             }
         }
         .padding(.horizontal, 12)
@@ -488,7 +488,7 @@ private extension MessageListView {
                 if unseenCount > 0 {
                     Text(
                         String(
-                            format: String(localized: "content.jump.new_count", comment: "Count of messages that arrived while scrolled up, shown in the jump-to-latest pill"),
+                            format: AppLanguageSettings.localized("content.jump.new_count", comment: "Count of messages that arrived while scrolled up, shown in the jump-to-latest pill"),
                             locale: .current,
                             unseenCount
                         )
@@ -509,10 +509,10 @@ private extension MessageListView {
     }
 
     var jumpToLatestAccessibilityLabel: String {
-        let base = String(localized: "content.accessibility.jump_to_latest", comment: "Accessibility label for the jump to latest messages button")
+        let base = AppLanguageSettings.localized("content.accessibility.jump_to_latest", comment: "Accessibility label for the jump to latest messages button")
         guard unseenCount > 0 else { return base }
         let count = String(
-            format: String(localized: "content.jump.new_count", comment: "Count of messages that arrived while scrolled up, shown in the jump-to-latest pill"),
+            format: AppLanguageSettings.localized("content.jump.new_count", comment: "Count of messages that arrived while scrolled up, shown in the jump-to-latest pill"),
             locale: .current,
             unseenCount
         )

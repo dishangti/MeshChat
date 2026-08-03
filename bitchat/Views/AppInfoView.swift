@@ -9,11 +9,13 @@ enum AppInfoPane: String {
 }
 
 private enum BlockedPeopleStrings {
-    static let title = String(
-        localized: "app_info.settings.blocked.title",
+    static var title: String {
+        AppLanguageSettings.localized(
+         "app_info.settings.blocked.title",
         defaultValue: "Blocked People",
         comment: "Title of the settings destination listing people blocked by the user"
-    )
+        )
+    }
 }
 
 /// The sheet behind the MeshChat logo: a segmented Help/Info/Settings surface.
@@ -70,9 +72,6 @@ struct AppInfoView: View {
     @State private var showIdentityResetConfirmation = false
     @State private var showDataEraseConfirmation = false
     @AppStorage(AppLanguageSettings.overrideKey) private var languageOverride = ""
-    /// The override changed this session; localization resolves at process
-    /// start, so surface the restart hint.
-    @State private var showLanguageRestartNote = false
 
     private var selectedTheme: AppTheme {
         AppTheme.resolve(appThemeRawValue)
@@ -108,28 +107,27 @@ struct AppInfoView: View {
         /// New keys carry their English copy inline (defaultValue) until the
         /// i18n pass lands them in the catalog; moved keys keep their homes.
         enum Settings {
-            static let tabPickerLabel = String(localized: "app_info.tab.picker_label", defaultValue: "View", comment: "Accessibility label for the segmented control switching between the Help, Info, and Settings panes")
-            static let tabSettings = String(localized: "app_info.tab.settings", defaultValue: "Settings", comment: "Segmented control label for the settings pane of the app info sheet")
-            static let tabInfo = String(localized: "app_info.tab.info", defaultValue: "Info", comment: "Segmented control label for the info pane of the app info sheet")
-            static let tabHelp = String(localized: "meshchat.help.title", defaultValue: "Help", comment: "Segmented control label for the standalone MeshChat help page")
+            static var tabPickerLabel: String { AppLanguageSettings.localized("app_info.tab.picker_label", defaultValue: "View", comment: "Accessibility label for the segmented control switching between the Help, Info, and Settings panes") }
+            static var tabSettings: String { AppLanguageSettings.localized("app_info.tab.settings", defaultValue: "Settings", comment: "Segmented control label for the settings pane of the app info sheet") }
+            static var tabInfo: String { AppLanguageSettings.localized("app_info.tab.info", defaultValue: "Info", comment: "Segmented control label for the info pane of the app info sheet") }
+            static var tabHelp: String { AppLanguageSettings.localized("meshchat.help.title", defaultValue: "Help", comment: "Segmented control label for the standalone MeshChat help page") }
 
-            static let connectivityTitle = String(localized: "app_info.settings.connectivity.title", defaultValue: "Connectivity", comment: "Section header for the connectivity toggles: mesh bridge, internet gateway, and Tor routing")
+            static var connectivityTitle: String { AppLanguageSettings.localized("app_info.settings.connectivity.title", defaultValue: "Connectivity", comment: "Section header for the connectivity toggles: mesh bridge, internet gateway, and Tor routing") }
 
-            static let languageTitle = String(localized: "app_info.settings.language.title", defaultValue: "Language", comment: "Section header for the app language picker in settings")
-            static let languagePickerLabel = String(localized: "app_info.settings.language.picker_label", defaultValue: "App Language", comment: "Label of the app language picker row in settings")
-            static let languageSystem = String(localized: "app_info.settings.language.system", defaultValue: "System Default", comment: "Menu option that clears the in-app language override so the app follows the device language")
-            static let languageRestartNote = String(localized: "app_info.settings.language.restart_note", defaultValue: "Restart MeshChat to apply the new language.", comment: "Caption shown after the user picks a different app language; the change takes effect on next launch")
+            static var languageTitle: String { AppLanguageSettings.localized("app_info.settings.language.title", defaultValue: "Language", comment: "Section header for the app language picker in settings") }
+            static var languagePickerLabel: String { AppLanguageSettings.localized("app_info.settings.language.picker_label", defaultValue: "App Language", comment: "Label of the app language picker row in settings") }
+            static var languageSystem: String { AppLanguageSettings.localized("app_info.settings.language.system", defaultValue: "System Default", comment: "Menu option that clears the in-app language override so the app follows the device language") }
 
-            static let bridgeTitle = String(localized: "app_info.settings.bridge.title", defaultValue: "Mesh Bridge", comment: "Title of the mesh bridge toggle in settings")
-            static let bridgeSubtitle = String(localized: "app_info.settings.bridge.subtitle", defaultValue: "Joins nearby mesh islands over the internet: what you say in the mesh channel also reaches people in your area beyond radio range, and their messages appear here marked with the network glyph. While you have internet, your device also carries bridge and location-channel traffic for phones around you that have none.", comment: "Subtitle explaining what the mesh bridge toggle does")
+            static var bridgeTitle: String { AppLanguageSettings.localized("app_info.settings.bridge.title", defaultValue: "Mesh Bridge", comment: "Title of the mesh bridge toggle in settings") }
+            static var bridgeSubtitle: String { AppLanguageSettings.localized("app_info.settings.bridge.subtitle", defaultValue: "Joins nearby mesh islands over the internet: what you say in the mesh channel also reaches people in your area beyond radio range, and their messages appear here marked with the network glyph. While you have internet, your device also carries bridge and location-channel traffic for phones around you that have none.", comment: "Subtitle explaining what the mesh bridge toggle does") }
             static func bridgeCell(_ cell: String) -> String {
                 String(
-                    format: String(localized: "app_info.settings.bridge.cell", defaultValue: "Rendezvous cell: %@", comment: "Caption under the mesh bridge toggle showing the geohash cell the bridge is meeting on"),
+                    format: AppLanguageSettings.localized("app_info.settings.bridge.cell", defaultValue: "Rendezvous cell: %@", comment: "Caption under the mesh bridge toggle showing the geohash cell the bridge is meeting on"),
                     locale: .current,
                     cell
                 )
             }
-            static let bridgeNoCell = String(localized: "app_info.settings.bridge.no_cell", defaultValue: "No rendezvous cell yet — needs location access or a nearby bridge peer.", comment: "Caption under the mesh bridge toggle when the bridge is on but has no geohash cell to meet on")
+            static var bridgeNoCell: String { AppLanguageSettings.localized("app_info.settings.bridge.no_cell", defaultValue: "No rendezvous cell yet — needs location access or a nearby bridge peer.", comment: "Caption under the mesh bridge toggle when the bridge is on but has no geohash cell to meet on") }
 
             // Moved from LocationChannelsSheet; keys unchanged. (The former
             // internet-gateway toggle is gone: the bridge switch drives all
@@ -139,25 +137,25 @@ struct AppInfoView: View {
             // setting as location-channels-only. It covers private messages and
             // relay-directory refreshes too, and said nothing about the cost of
             // switching it off.
-            static let torSubtitle = String(localized: "app_info.settings.tor.subtitle", defaultValue: "Sends internet traffic through Tor, so relay operators see Tor's address instead of yours. Covers location channels and private messages delivered over the internet. Recommended: on.", comment: "Subtitle for the Tor routing toggle in settings, explaining what it covers")
-            static let torOffWarning = String(localized: "app_info.settings.tor.off_warning", defaultValue: "Tor is off: every relay you connect to can see your IP address, including relays carrying your private messages.", comment: "Warning shown under the Tor toggle while Tor is switched off, stating that relay operators can see the device IP address")
+            static var torSubtitle: String { AppLanguageSettings.localized("app_info.settings.tor.subtitle", defaultValue: "Sends internet traffic through Tor, so relay operators see Tor's address instead of yours. Covers location channels and private messages delivered over the internet. Recommended: on.", comment: "Subtitle for the Tor routing toggle in settings, explaining what it covers") }
+            static var torOffWarning: String { AppLanguageSettings.localized("app_info.settings.tor.off_warning", defaultValue: "Tor is off: every relay you connect to can see your IP address, including relays carrying your private messages.", comment: "Warning shown under the Tor toggle while Tor is switched off, stating that relay operators can see the device IP address") }
 
-            static let relaysTitle = String(localized: "app_info.settings.relays.title", defaultValue: "Private Message Relays", comment: "Title of the relay list editor in settings")
-            static let relaysSubtitle = String(localized: "app_info.settings.relays.subtitle", defaultValue: "When the mesh can't reach someone, private messages travel through these relays. The built-in ones are well-known addresses that a network filter can block, so you can add your own — including .onion addresses.", comment: "Subtitle explaining what the relay list is for and why someone would add a relay")
-            static let relayBuiltIn = String(localized: "app_info.settings.relays.built_in", defaultValue: "Built-in", comment: "Label marking a relay as one of the built-in relays, which cannot be removed")
-            static let relayPlaceholder = String(localized: "app_info.settings.relays.placeholder", defaultValue: "wss://relay.example.com", comment: "Placeholder text in the field for adding a relay address")
-            static let relayAdd = String(localized: "app_info.settings.relays.add", defaultValue: "Add", comment: "Button that adds the typed relay address to the list")
-            static let relayRemove = String(localized: "app_info.settings.relays.remove", defaultValue: "Remove Relay", comment: "Accessibility label for the button that removes an added relay")
+            static var relaysTitle: String { AppLanguageSettings.localized("app_info.settings.relays.title", defaultValue: "Private Message Relays", comment: "Title of the relay list editor in settings") }
+            static var relaysSubtitle: String { AppLanguageSettings.localized("app_info.settings.relays.subtitle", defaultValue: "When the mesh can't reach someone, private messages travel through these relays. The built-in ones are well-known addresses that a network filter can block, so you can add your own — including .onion addresses.", comment: "Subtitle explaining what the relay list is for and why someone would add a relay") }
+            static var relayBuiltIn: String { AppLanguageSettings.localized("app_info.settings.relays.built_in", defaultValue: "Built-in", comment: "Label marking a relay as one of the built-in relays, which cannot be removed") }
+            static var relayPlaceholder: String { AppLanguageSettings.localized("app_info.settings.relays.placeholder", defaultValue: "wss://relay.example.com", comment: "Placeholder text in the field for adding a relay address") }
+            static var relayAdd: String { AppLanguageSettings.localized("app_info.settings.relays.add", defaultValue: "Add", comment: "Button that adds the typed relay address to the list") }
+            static var relayRemove: String { AppLanguageSettings.localized("app_info.settings.relays.remove", defaultValue: "Remove Relay", comment: "Accessibility label for the button that removes an added relay") }
 
             static func relayError(_ failure: NostrRelaySettings.AddFailure) -> String {
                 switch failure {
                 case .malformed:
-                    return String(localized: "app_info.settings.relays.error.malformed", defaultValue: "That doesn't look like a relay address. Try wss://host.", comment: "Error shown when a typed relay address cannot be parsed")
+                    return AppLanguageSettings.localized("app_info.settings.relays.error.malformed", defaultValue: "That doesn't look like a relay address. Try wss://host.", comment: "Error shown when a typed relay address cannot be parsed")
                 case .alreadyPresent:
-                    return String(localized: "app_info.settings.relays.error.duplicate", defaultValue: "That relay is already in the list.", comment: "Error shown when the typed relay address is already in the list")
+                    return AppLanguageSettings.localized("app_info.settings.relays.error.duplicate", defaultValue: "That relay is already in the list.", comment: "Error shown when the typed relay address is already in the list")
                 case .limitReached:
                     return String(
-                        format: String(localized: "app_info.settings.relays.error.limit", defaultValue: "You can add up to %d relays.", comment: "Error shown when the relay list is already at its maximum size; %d is that maximum"),
+                        format: AppLanguageSettings.localized("app_info.settings.relays.error.limit", defaultValue: "You can add up to %d relays.", comment: "Error shown when the relay list is already at its maximum size; %d is that maximum"),
                         locale: .current,
                         NostrRelaySettings.maxCustomRelays
                     )
@@ -166,35 +164,35 @@ struct AppInfoView: View {
             static let toggleOn: LocalizedStringKey = "common.toggle.on"
             static let toggleOff: LocalizedStringKey = "common.toggle.off"
 
-            static let privacyTitle = String(localized: "app_info.settings.privacy.title", defaultValue: "Privacy", comment: "Section header for privacy settings such as hiding notification previews")
-            static let hidePreviewsTitle = String(localized: "app_info.settings.hide_previews.title", defaultValue: "Hide Message Previews", comment: "Title of the setting that keeps message text, sender names, and geohashes out of lock-screen notifications")
-            static let hidePreviewsSubtitle = String(localized: "app_info.settings.hide_previews.subtitle", defaultValue: "Notifications say that something arrived without showing the message, who sent it, or which location channel it came from. Anyone holding your locked phone learns nothing from the lock screen. On by default.", comment: "Subtitle explaining what hiding notification message previews does")
+            static var privacyTitle: String { AppLanguageSettings.localized("app_info.settings.privacy.title", defaultValue: "Privacy", comment: "Section header for privacy settings such as hiding notification previews") }
+            static var hidePreviewsTitle: String { AppLanguageSettings.localized("app_info.settings.hide_previews.title", defaultValue: "Hide Message Previews", comment: "Title of the setting that keeps message text, sender names, and geohashes out of lock-screen notifications") }
+            static var hidePreviewsSubtitle: String { AppLanguageSettings.localized("app_info.settings.hide_previews.subtitle", defaultValue: "Notifications say that something arrived without showing the message, who sent it, or which location channel it came from. Anyone holding your locked phone learns nothing from the lock screen. On by default.", comment: "Subtitle explaining what hiding notification message previews does") }
 
-            static let notificationsTitle = String(localized: "app_info.settings.notifications.title", defaultValue: "Notifications", comment: "Section header for notification delivery preferences")
-            static let notificationsDeniedTitle = String(localized: "app_info.settings.notifications.denied.title", defaultValue: "Notifications Are Off in System Settings", comment: "Title of the warning shown when system notification permission has been denied")
-            static let notificationsDeniedMessage = String(localized: "app_info.settings.notifications.denied.message", defaultValue: "MeshChat cannot show alerts until notifications are allowed in System Settings. Your choices below will take effect when permission is restored.", comment: "Explanation shown when system notification permission has been denied")
-            static let notificationsDeniedOpenSettings = String(localized: "app_info.settings.notifications.denied.open_settings", defaultValue: "Open System Settings", comment: "Button opening this app's notification permission in system settings")
-            static let pauseAllNotifications = String(localized: "app_info.settings.notifications.pause_all", defaultValue: "Pause All Notifications", comment: "Menu label for temporarily pausing every local notification")
-            static let resumeNotifications = String(localized: "app_info.settings.notifications.resume", defaultValue: "Resume Notifications", comment: "Button that ends a temporary notification pause")
-            static let pausedUntil = String(localized: "app_info.settings.notifications.paused_until", defaultValue: "Paused until %@", comment: "Status text showing when notifications will automatically resume; parameter is a localized date and time")
-            static let pauseOneHour = String(localized: "app_info.settings.notifications.pause.1_hour", defaultValue: "1 hour", comment: "Notification pause duration of one hour")
-            static let pauseEightHours = String(localized: "app_info.settings.notifications.pause.8_hours", defaultValue: "8 hours", comment: "Notification pause duration of eight hours")
-            static let pauseOneDay = String(localized: "app_info.settings.notifications.pause.24_hours", defaultValue: "24 hours", comment: "Notification pause duration of twenty-four hours")
-            static let pauseOneWeek = String(localized: "app_info.settings.notifications.pause.1_week", defaultValue: "1 week", comment: "Notification pause duration of one week")
-            static let directNotificationsTitle = String(localized: "app_info.settings.notifications.direct.title", defaultValue: "Private Messages & Groups", comment: "Notification topic for direct and private group conversations")
-            static let directNotificationsSubtitle = String(localized: "app_info.settings.notifications.direct.subtitle", defaultValue: "Direct and group conversation alerts", comment: "Description of the private-message notification topic")
-            static let meshNotificationsTitle = String(localized: "app_info.settings.notifications.mesh.title", defaultValue: "Mesh Activity", comment: "Notification topic for nearby mesh activity")
-            static let meshNotificationsSubtitle = String(localized: "app_info.settings.notifications.mesh.subtitle", defaultValue: "Nearby peers and mesh events", comment: "Description of the mesh notification topic")
-            static let locationNotificationsTitle = String(localized: "app_info.settings.notifications.location.title", defaultValue: "#location Channels", comment: "Notification topic for location channels")
-            static let locationNotificationsSubtitle = String(localized: "app_info.settings.notifications.location.subtitle", defaultValue: "Messages from joined #location channels", comment: "Description of the location-channel notification topic")
-            static let securityNotificationsTitle = String(localized: "app_info.settings.notifications.security.title", defaultValue: "Security & Verification", comment: "Notification topic for encryption and verification events")
-            static let securityNotificationsSubtitle = String(localized: "app_info.settings.notifications.security.subtitle", defaultValue: "Encryption and verification alerts", comment: "Description of the security notification topic")
+            static var notificationsTitle: String { AppLanguageSettings.localized("app_info.settings.notifications.title", defaultValue: "Notifications", comment: "Section header for notification delivery preferences") }
+            static var notificationsDeniedTitle: String { AppLanguageSettings.localized("app_info.settings.notifications.denied.title", defaultValue: "Notifications Are Off in System Settings", comment: "Title of the warning shown when system notification permission has been denied") }
+            static var notificationsDeniedMessage: String { AppLanguageSettings.localized("app_info.settings.notifications.denied.message", defaultValue: "MeshChat cannot show alerts until notifications are allowed in System Settings. Your choices below will take effect when permission is restored.", comment: "Explanation shown when system notification permission has been denied") }
+            static var notificationsDeniedOpenSettings: String { AppLanguageSettings.localized("app_info.settings.notifications.denied.open_settings", defaultValue: "Open System Settings", comment: "Button opening this app's notification permission in system settings") }
+            static var pauseAllNotifications: String { AppLanguageSettings.localized("app_info.settings.notifications.pause_all", defaultValue: "Pause All Notifications", comment: "Menu label for temporarily pausing every local notification") }
+            static var resumeNotifications: String { AppLanguageSettings.localized("app_info.settings.notifications.resume", defaultValue: "Resume Notifications", comment: "Button that ends a temporary notification pause") }
+            static var pausedUntil: String { AppLanguageSettings.localized("app_info.settings.notifications.paused_until", defaultValue: "Paused until %@", comment: "Status text showing when notifications will automatically resume; parameter is a localized date and time") }
+            static var pauseOneHour: String { AppLanguageSettings.localized("app_info.settings.notifications.pause.1_hour", defaultValue: "1 hour", comment: "Notification pause duration of one hour") }
+            static var pauseEightHours: String { AppLanguageSettings.localized("app_info.settings.notifications.pause.8_hours", defaultValue: "8 hours", comment: "Notification pause duration of eight hours") }
+            static var pauseOneDay: String { AppLanguageSettings.localized("app_info.settings.notifications.pause.24_hours", defaultValue: "24 hours", comment: "Notification pause duration of twenty-four hours") }
+            static var pauseOneWeek: String { AppLanguageSettings.localized("app_info.settings.notifications.pause.1_week", defaultValue: "1 week", comment: "Notification pause duration of one week") }
+            static var directNotificationsTitle: String { AppLanguageSettings.localized("app_info.settings.notifications.direct.title", defaultValue: "Private Messages & Groups", comment: "Notification topic for direct and private group conversations") }
+            static var directNotificationsSubtitle: String { AppLanguageSettings.localized("app_info.settings.notifications.direct.subtitle", defaultValue: "Direct and group conversation alerts", comment: "Description of the private-message notification topic") }
+            static var meshNotificationsTitle: String { AppLanguageSettings.localized("app_info.settings.notifications.mesh.title", defaultValue: "Mesh Activity", comment: "Notification topic for nearby mesh activity") }
+            static var meshNotificationsSubtitle: String { AppLanguageSettings.localized("app_info.settings.notifications.mesh.subtitle", defaultValue: "Nearby peers and mesh events", comment: "Description of the mesh notification topic") }
+            static var locationNotificationsTitle: String { AppLanguageSettings.localized("app_info.settings.notifications.location.title", defaultValue: "#location Channels", comment: "Notification topic for location channels") }
+            static var locationNotificationsSubtitle: String { AppLanguageSettings.localized("app_info.settings.notifications.location.subtitle", defaultValue: "Messages from joined #location channels", comment: "Description of the location-channel notification topic") }
+            static var securityNotificationsTitle: String { AppLanguageSettings.localized("app_info.settings.notifications.security.title", defaultValue: "Security & Verification", comment: "Notification topic for encryption and verification events") }
+            static var securityNotificationsSubtitle: String { AppLanguageSettings.localized("app_info.settings.notifications.security.subtitle", defaultValue: "Encryption and verification alerts", comment: "Description of the security notification topic") }
 
-            static let dangerTitle = String(localized: "app_info.settings.danger.title", defaultValue: "Danger Zone", comment: "Section header for destructive actions in settings")
-            static let identityResetButton = String(localized: "app_info.settings.danger.identity_reset_button", defaultValue: "Reset Identity", comment: "Button that rotates local communications identity keys without deleting retained user data")
-            static let identityResetNote = String(localized: "app_info.settings.danger.identity_reset_note", defaultValue: "Creates new Mesh, signing, and Nostr keys. Chats, media, contacts, nicknames, blocks, and settings stay. Private groups and queued messages are removed because they use the old keys. Other devices will see you as unverified. This cannot be undone.", comment: "Warning for identity reset explaining retained data, identity-bound removals, and what remote peers retain")
-            static let eraseDataButton = String(localized: "app_info.settings.danger.erase_button", defaultValue: "Erase Data", comment: "Button that erases local user data while retaining communications identity keys")
-            static let eraseDataNote = String(localized: "app_info.settings.danger.erase_note", defaultValue: "Deletes chats, media, contacts, nicknames, verification and block records, groups, location history, queued messages, and notification and relay settings. Your identity keys and nickname stay, so your fingerprint does not change. This cannot be undone. Triple-tapping the MeshChat logo also resets identity.", comment: "Warning for local data erasure explaining retained identity keys and the separate emergency wipe")
+            static var dangerTitle: String { AppLanguageSettings.localized("app_info.settings.danger.title", defaultValue: "Danger Zone", comment: "Section header for destructive actions in settings") }
+            static var identityResetButton: String { AppLanguageSettings.localized("app_info.settings.danger.identity_reset_button", defaultValue: "Reset Identity", comment: "Button that rotates local communications identity keys without deleting retained user data") }
+            static var identityResetNote: String { AppLanguageSettings.localized("app_info.settings.danger.identity_reset_note", defaultValue: "Creates new Mesh, signing, and Nostr keys. Chats, media, contacts, nicknames, blocks, and settings stay. Private groups and queued messages are removed because they use the old keys. Other devices will see you as unverified. This cannot be undone.", comment: "Warning for identity reset explaining retained data, identity-bound removals, and what remote peers retain") }
+            static var eraseDataButton: String { AppLanguageSettings.localized("app_info.settings.danger.erase_button", defaultValue: "Erase Data", comment: "Button that erases local user data while retaining communications identity keys") }
+            static var eraseDataNote: String { AppLanguageSettings.localized("app_info.settings.danger.erase_note", defaultValue: "Deletes chats, media, contacts, nicknames, verification and block records, groups, location history, queued messages, and notification and relay settings. Your identity keys and nickname stay, so your fingerprint does not change. This cannot be undone. Triple-tapping the MeshChat logo also resets identity.", comment: "Warning for local data erasure explaining retained identity keys and the separate emergency wipe") }
         }
 
         enum Voice {
@@ -378,12 +376,6 @@ struct AppInfoView: View {
                     }
                     .buttonStyle(.plain)
 
-                    if showLanguageRestartNote {
-                        Text(Strings.Settings.languageRestartNote)
-                            .bitchatFont(size: 11)
-                            .foregroundColor(secondaryTextColor)
-                            .fixedSize(horizontal: false, vertical: true)
-                    }
                 }
             }
 
@@ -832,7 +824,6 @@ struct AppInfoView: View {
         customRelays.removeAll(keepingCapacity: false)
         relayInput = ""
         relayError = nil
-        showLanguageRestartNote = false
 
         NotificationPrivacySettings.reset()
         hideMessagePreviews = true
@@ -887,12 +878,8 @@ struct AppInfoView: View {
     }
 
     private func selectLanguage(_ code: String?) {
-        let previous = languageOverride
         AppLanguageSettings.setOverride(code)
         languageOverride = code ?? ""
-        if languageOverride != previous {
-            showLanguageRestartNote = true
-        }
     }
 
     private func menuItemLabel(_ title: String, isSelected: Bool) -> some View {

@@ -209,8 +209,8 @@ struct ContentPeopleSheetView: View {
                 .environmentObject(verificationModel)
         }
         .confirmationDialog(
-            String(
-                localized: "content.private_media.legacy_warning.title",
+            AppLanguageSettings.localized(
+                 "content.private_media.legacy_warning.title",
                 defaultValue: "Send without end-to-end encryption?",
                 comment: "Title warning before sending private media to an older client in a clear signed envelope"
             ),
@@ -228,8 +228,8 @@ struct ContentPeopleSheetView: View {
             titleVisibility: .visible
         ) {
             Button(
-                String(
-                    localized: "content.private_media.legacy_warning.send",
+                AppLanguageSettings.localized(
+                     "content.private_media.legacy_warning.send",
                     defaultValue: "Send Visible File",
                     comment: "Destructive confirmation action for one legacy clear private-media send"
                 ),
@@ -254,8 +254,8 @@ struct ContentPeopleSheetView: View {
             if let request = legacyConsentRequest {
                 Text(
                     String(
-                        format: String(
-                            localized: "content.private_media.legacy_warning.message",
+                        format: AppLanguageSettings.localized(
+                             "content.private_media.legacy_warning.message",
                             defaultValue: "%@'s client does not advertise encrypted private media. This file will be signed but not end-to-end encrypted, so mesh relays can see it. Send this file anyway?",
                             comment: "Warning explaining the confidentiality loss for one legacy private-media send; parameter is the peer name"
                         ),
@@ -292,7 +292,7 @@ struct ContentPeopleSheetView: View {
             }
         }
         #endif
-        .alert("Recording Error", isPresented: voiceAlertBinding, actions: {
+        .alert("content.alert.recording_error.title", isPresented: voiceAlertBinding, actions: {
             Button("common.ok", role: .cancel) {}
             if voiceRecordingVM.state == .permissionDenied {
                 Button("location_channels.action.open_settings") {
@@ -345,10 +345,10 @@ private struct ContentPeopleListView: View {
                         // .help maps to the accessibility *hint* on iOS, so the
                         // button still needs a spoken name.
                         .accessibilityLabel(
-                            String(localized: "verification.qr.title", comment: "Accessibility label for the global QR screen")
+                            AppLanguageSettings.localized("verification.qr.title", comment: "Accessibility label for the global QR screen")
                         )
                         .help(
-                            String(localized: "verification.scan.prompt_friend", comment: "Help text for the global QR scanner")
+                            AppLanguageSettings.localized("verification.scan.prompt_friend", comment: "Help text for the global QR scanner")
                         )
                     }
                     SheetCloseButton {
@@ -443,7 +443,7 @@ private struct ContentPeopleListView: View {
 
 private extension ContentPeopleListView {
     var peopleSheetTitle: String {
-        String(localized: "content.header.people", comment: "Title for the people list sheet")
+        AppLanguageSettings.localized("content.header.people", comment: "Title for the people list sheet")
     }
 
 }
@@ -493,7 +493,7 @@ private struct ContentPrivateChatSheetView: View {
                     }
                     .buttonStyle(.plain)
                     .accessibilityLabel(
-                        String(localized: "content.accessibility.back_to_main_chat", comment: "Accessibility label for returning to main chat")
+                        AppLanguageSettings.localized("content.accessibility.back_to_main_chat", comment: "Accessibility label for returning to main chat")
                     )
 
                     Spacer(minLength: 0)
@@ -526,8 +526,8 @@ private struct ContentPrivateChatSheetView: View {
                             .buttonStyle(.plain)
                             .accessibilityLabel(
                                 headerState.isFavorite
-                                ? String(localized: "content.accessibility.remove_favorite", comment: "Accessibility label to remove a favorite")
-                                : String(localized: "content.accessibility.add_favorite", comment: "Accessibility label to add a favorite")
+                                ? AppLanguageSettings.localized("content.accessibility.remove_favorite", comment: "Accessibility label to remove a favorite")
+                                : AppLanguageSettings.localized("content.accessibility.add_favorite", comment: "Accessibility label to add a favorite")
                             )
                         }
                     }
@@ -642,7 +642,7 @@ private struct ContentPrivateChatSheetView: View {
     private var privacyCaptionText: String {
         // Group chats are ChaCha20-Poly1305 sealed to the roster's shared key.
         if privateConversationModel.selectedPeerID?.isGroup == true {
-            return String(localized: "content.private.caption_group", comment: "Caption above the group chat composer noting messages are encrypted to group members")
+            return AppLanguageSettings.localized("content.private.caption_group", comment: "Caption above the group chat composer noting messages are encrypted to group members")
         }
         // Geohash DMs use BitChat's private-envelope encryption over Nostr —
         // always end-to-end encrypted,
@@ -656,9 +656,9 @@ private struct ContentPrivateChatSheetView: View {
             }
         }()
         if isGeoDM || noiseSecured {
-            return String(localized: "content.private.caption_encrypted", comment: "Caption above the private chat composer once the session is end-to-end encrypted")
+            return AppLanguageSettings.localized("content.private.caption_encrypted", comment: "Caption above the private chat composer once the session is end-to-end encrypted")
         }
-        return String(localized: "content.private.caption", comment: "Caption above the private chat composer before encryption is established")
+        return AppLanguageSettings.localized("content.private.caption", comment: "Caption above the private chat composer before encryption is established")
     }
 }
 
@@ -702,24 +702,24 @@ private struct ContentPrivateHeaderInfoButton: View {
                     Image(systemName: "person.3.fill")
                         .font(.bitchatSystem(size: 14))
                         .foregroundColor(palette.primary)
-                        .accessibilityLabel(String(localized: "content.accessibility.group_chat", comment: "Accessibility label for the group chat indicator"))
+                        .accessibilityLabel(AppLanguageSettings.localized("content.accessibility.group_chat", comment: "Accessibility label for the group chat indicator"))
                 } else {
                     switch headerState.availability {
                     case .bluetoothConnected:
                         Image(systemName: "dot.radiowaves.left.and.right")
                             .font(.bitchatSystem(size: 14))
                             .foregroundColor(palette.primary)
-                            .accessibilityLabel(String(localized: "content.accessibility.connected_mesh", comment: "Accessibility label for mesh-connected peer indicator"))
+                            .accessibilityLabel(AppLanguageSettings.localized("content.accessibility.connected_mesh", comment: "Accessibility label for mesh-connected peer indicator"))
                     case .meshReachable:
                         Image(systemName: "point.3.filled.connected.trianglepath.dotted")
                             .font(.bitchatSystem(size: 14))
                             .foregroundColor(palette.primary)
-                            .accessibilityLabel(String(localized: "content.accessibility.reachable_mesh", comment: "Accessibility label for mesh-reachable peer indicator"))
+                            .accessibilityLabel(AppLanguageSettings.localized("content.accessibility.reachable_mesh", comment: "Accessibility label for mesh-reachable peer indicator"))
                     case .nostrAvailable:
                         Image(systemName: "globe")
                             .font(.bitchatSystem(size: 14))
                             .foregroundColor(.purple)
-                            .accessibilityLabel(String(localized: "content.accessibility.available_nostr", comment: "Accessibility label for Nostr-available peer indicator"))
+                            .accessibilityLabel(AppLanguageSettings.localized("content.accessibility.available_nostr", comment: "Accessibility label for Nostr-available peer indicator"))
                     case .offline:
                         // Slashed variant of the connected glyph — offline as
                         // the negation of connected, no text label (a leading
@@ -728,7 +728,7 @@ private struct ContentPrivateHeaderInfoButton: View {
                         Image(systemName: "antenna.radiowaves.left.and.right.slash")
                             .font(.bitchatSystem(size: 14))
                             .foregroundColor(palette.secondary)
-                            .accessibilityLabel(String(localized: "mesh_peers.state.offline", comment: "State label for a peer that is not currently reachable"))
+                            .accessibilityLabel(AppLanguageSettings.localized("mesh_peers.state.offline", comment: "State label for a peer that is not currently reachable"))
                     }
                 }
 
@@ -756,7 +756,7 @@ private struct ContentPrivateHeaderInfoButton: View {
         .accessibilityHint(
             headerState.isGroupConversation
             ? ""
-            : String(localized: "content.accessibility.view_fingerprint_hint", comment: "Accessibility hint for viewing encryption fingerprint")
+            : AppLanguageSettings.localized("content.accessibility.view_fingerprint_hint", comment: "Accessibility hint for viewing encryption fingerprint")
         )
         .frame(minHeight: headerHeight)
     }
@@ -766,8 +766,8 @@ func contentPrivateHeaderAccessibilityLabel(
     for headerState: PrivateConversationHeaderState
 ) -> String {
     let base = String(
-        format: String(
-            localized: "content.accessibility.private_chat_header",
+        format: AppLanguageSettings.localized(
+             "content.accessibility.private_chat_header",
             defaultValue: "Private Chat with %@",
             comment: "Accessibility label describing the private chat header"
         ),

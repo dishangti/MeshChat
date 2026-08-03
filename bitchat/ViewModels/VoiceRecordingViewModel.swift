@@ -155,7 +155,12 @@ final class VoiceRecordingViewModel: ObservableObject {
                     }
                 }
                 activeSession = nil
-                state = .error(message: "Could not start recording.")
+                state = .error(
+                    message: AppLanguageSettings.localized(
+                        "content.alert.recording_error.start_failed",
+                        comment: "Error shown when neither live nor fallback voice recording can start"
+                    )
+                )
             }
         }
     }

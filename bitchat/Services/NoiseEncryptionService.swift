@@ -115,30 +115,30 @@ enum EncryptionStatus: Equatable {
     var description: String {
         switch self {
         case .none:
-            return String(localized: "encryption.status.failed", comment: "Status text when encryption failed")
+            return AppLanguageSettings.localized("encryption.status.failed", comment: "Status text when encryption failed")
         case .noHandshake:
-            return String(localized: "encryption.status.not_encrypted", comment: "Status text when no encryption handshake happened")
+            return AppLanguageSettings.localized("encryption.status.not_encrypted", comment: "Status text when no encryption handshake happened")
         case .noiseHandshaking:
-            return String(localized: "encryption.status.establishing", comment: "Status text when encryption is being established")
+            return AppLanguageSettings.localized("encryption.status.establishing", comment: "Status text when encryption is being established")
         case .noiseSecured:
-            return String(localized: "encryption.status.secured", comment: "Status text when encryption is secured but not verified")
+            return AppLanguageSettings.localized("encryption.status.secured", comment: "Status text when encryption is secured but not verified")
         case .noiseVerified:
-            return String(localized: "encryption.status.verified", comment: "Status text when encryption is verified")
+            return AppLanguageSettings.localized("encryption.status.verified", comment: "Status text when encryption is verified")
         }
     }
 
     var accessibilityDescription: String {
         switch self {
         case .none:
-            return String(localized: "encryption.accessibility.failed", comment: "Accessibility text when encryption failed")
+            return AppLanguageSettings.localized("encryption.accessibility.failed", comment: "Accessibility text when encryption failed")
         case .noHandshake:
-            return String(localized: "encryption.accessibility.not_encrypted", comment: "Accessibility text when encryption is not established")
+            return AppLanguageSettings.localized("encryption.accessibility.not_encrypted", comment: "Accessibility text when encryption is not established")
         case .noiseHandshaking:
-            return String(localized: "encryption.accessibility.establishing", comment: "Accessibility text when encryption is being established")
+            return AppLanguageSettings.localized("encryption.accessibility.establishing", comment: "Accessibility text when encryption is being established")
         case .noiseSecured:
-            return String(localized: "encryption.accessibility.secured", comment: "Accessibility text when encryption is secured")
+            return AppLanguageSettings.localized("encryption.accessibility.secured", comment: "Accessibility text when encryption is secured")
         case .noiseVerified:
-            return String(localized: "encryption.accessibility.verified", comment: "Accessibility text when encryption is verified")
+            return AppLanguageSettings.localized("encryption.accessibility.verified", comment: "Accessibility text when encryption is verified")
         }
     }
 }

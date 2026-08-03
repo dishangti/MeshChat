@@ -443,12 +443,12 @@ private extension AppRuntime {
             TorManager.shared.isAutoStartAllowed() {
             chatViewModel.torStatusAnnounced = true
             chatViewModel.addGeohashOnlySystemMessage(
-                String(localized: "system.tor.starting", comment: "System message when Tor is starting")
+                AppLanguageSettings.localized("system.tor.starting", comment: "System message when Tor is starting")
             )
         } else if !TorManager.shared.torEnforced && !chatViewModel.torStatusAnnounced {
             chatViewModel.torStatusAnnounced = true
             chatViewModel.addGeohashOnlySystemMessage(
-                String(localized: "system.tor.dev_bypass", comment: "System message when Tor bypass is enabled in development")
+                AppLanguageSettings.localized("system.tor.dev_bypass", comment: "System message when Tor bypass is enabled in development")
             )
         }
     }

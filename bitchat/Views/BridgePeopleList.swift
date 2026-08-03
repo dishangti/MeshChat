@@ -41,14 +41,14 @@ struct BridgePeopleList: View {
     @ThemedPalette private var palette
 
     private enum Strings {
-        static let sectionTitle = String(localized: "bridge_people.section_title", defaultValue: "Across the Bridge", comment: "Section header in the people sheet for participants reachable via the mesh bridge")
-        static let rowHint = String(localized: "bridge_people.accessibility.row_hint", defaultValue: "In your area, connected through the bridge", comment: "Accessibility hint for a person listed in the bridge section of the people sheet")
-        static let blockedTooltip = String(localized: "geohash_people.tooltip.blocked", comment: "Tooltip shown next to blocked bridge participants")
-        static let blockedState = String(localized: "mesh_peers.state.blocked", comment: "State label for a blocked bridge participant")
+        static var sectionTitle: String { AppLanguageSettings.localized("bridge_people.section_title", defaultValue: "Across the Bridge", comment: "Section header in the people sheet for participants reachable via the mesh bridge") }
+        static var rowHint: String { AppLanguageSettings.localized("bridge_people.accessibility.row_hint", defaultValue: "In your area, connected through the bridge", comment: "Accessibility hint for a person listed in the bridge section of the people sheet") }
+        static var blockedTooltip: String { AppLanguageSettings.localized("geohash_people.tooltip.blocked", comment: "Tooltip shown next to blocked bridge participants") }
+        static var blockedState: String { AppLanguageSettings.localized("mesh_peers.state.blocked", comment: "State label for a blocked bridge participant") }
         static let unblock: LocalizedStringKey = "geohash_people.action.unblock"
         static let block: LocalizedStringKey = "geohash_people.action.block"
-        static let unblockText = String(localized: "geohash_people.action.unblock", comment: "Accessibility action to unblock a bridge participant")
-        static let blockText = String(localized: "geohash_people.action.block", comment: "Accessibility action to block a bridge participant")
+        static var unblockText: String { AppLanguageSettings.localized("geohash_people.action.unblock", comment: "Accessibility action to unblock a bridge participant") }
+        static var blockText: String { AppLanguageSettings.localized("geohash_people.action.block", comment: "Accessibility action to block a bridge participant") }
     }
 
     var body: some View {

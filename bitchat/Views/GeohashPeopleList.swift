@@ -10,16 +10,16 @@ struct GeohashPeopleList: View {
     private enum Strings {
         static let noneNearby: LocalizedStringKey = "geohash_people.none_nearby"
         static let youSuffix: LocalizedStringKey = "geohash_people.you_suffix"
-        static let blockedTooltip = String(localized: "geohash_people.tooltip.blocked", comment: "Tooltip shown next to users blocked in geohash channels")
+        static var blockedTooltip: String { AppLanguageSettings.localized("geohash_people.tooltip.blocked", comment: "Tooltip shown next to users blocked in geohash channels") }
         static let unblock: LocalizedStringKey = "geohash_people.action.unblock"
         static let block: LocalizedStringKey = "geohash_people.action.block"
-        static let unblockText = String(localized: "geohash_people.action.unblock", comment: "Context menu action to unblock a person")
-        static let blockText = String(localized: "geohash_people.action.block", comment: "Context menu action to block a person")
-        static let teleported = String(localized: "geohash_people.state.teleported", comment: "State label for someone who joined the location channel from elsewhere")
-        static let nearby = String(localized: "geohash_people.state.nearby", comment: "State label for someone physically in the location channel's area")
-        static let blockedState = String(localized: "mesh_peers.state.blocked", comment: "State label for a blocked peer")
-        static let youState = String(localized: "geohash_people.state.you", comment: "State label marking your own row in the people list")
-        static let openDMHint = String(localized: "mesh_peers.accessibility.open_dm_hint", comment: "Accessibility hint on a peer row explaining activation opens a private chat")
+        static var unblockText: String { AppLanguageSettings.localized("geohash_people.action.unblock", comment: "Context menu action to unblock a person") }
+        static var blockText: String { AppLanguageSettings.localized("geohash_people.action.block", comment: "Context menu action to block a person") }
+        static var teleported: String { AppLanguageSettings.localized("geohash_people.state.teleported", comment: "State label for someone who joined the location channel from elsewhere") }
+        static var nearby: String { AppLanguageSettings.localized("geohash_people.state.nearby", comment: "State label for someone physically in the location channel's area") }
+        static var blockedState: String { AppLanguageSettings.localized("mesh_peers.state.blocked", comment: "State label for a blocked peer") }
+        static var youState: String { AppLanguageSettings.localized("geohash_people.state.you", comment: "State label marking your own row in the people list") }
+        static var openDMHint: String { AppLanguageSettings.localized("mesh_peers.accessibility.open_dm_hint", comment: "Accessibility hint on a peer row explaining activation opens a private chat") }
     }
 
     var body: some View {

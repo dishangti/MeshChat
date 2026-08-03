@@ -44,7 +44,7 @@ struct LiveVoiceBadge: View {
         )
         .modifier(PulsingOpacityModifier(active: true))
         .accessibilityLabel(
-            String(localized: "media.voice.accessibility.live", comment: "Accessibility label announcing a live incoming voice message")
+            AppLanguageSettings.localized("media.voice.accessibility.live", comment: "Accessibility label announcing a live incoming voice message")
         )
     }
 }

@@ -298,8 +298,8 @@ final class GeohashSubscriptionManager {
         if GatewayService.shared.uplinkViaMesh(event: event, geohash: channel.geohash),
            gatewayNoticeGeohashes.insert(channel.geohash).inserted {
             context.addPublicSystemMessage(
-                String(
-                    localized: "system.gateway.sent_via_mesh",
+                AppLanguageSettings.localized(
+                     "system.gateway.sent_via_mesh",
                     defaultValue: "Sent via mesh gateway",
                     comment: "System message when a geohash message was handed to a mesh internet gateway because no relay is reachable"
                 )

@@ -29,8 +29,8 @@ enum ChannelShare {
     static func payload(forGeohash geohash: String) -> String {
         let gh = geohash.lowercased()
         return String(
-            format: String(
-                localized: "channel.share.payload",
+            format: AppLanguageSettings.localized(
+                 "channel.share.payload",
                 defaultValue: "Join the #%1$@ channel on MeshChat: bitchat://geohash/%1$@ — new to MeshChat? Get it at %2$@ then type #%1$@ under location channels.",
                 comment: "Plain-text share payload for a location channel; %1$@ is the geohash, %2$@ is the App Store URL"
             ),

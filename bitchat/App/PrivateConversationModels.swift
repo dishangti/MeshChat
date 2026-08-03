@@ -269,7 +269,7 @@ final class PrivateConversationModel: ObservableObject {
             if let group = chatViewModel.groupStore.group(for: conversationPeerID) {
                 displayName = "#\(group.name) (\(group.members.count))"
             } else {
-                displayName = String(localized: "common.unknown", comment: "Fallback label for unknown peer")
+                displayName = AppLanguageSettings.localized("common.unknown", comment: "Fallback label for unknown peer")
             }
             return PrivateConversationHeaderState(
                 conversationPeerID: conversationPeerID,
@@ -362,7 +362,7 @@ final class PrivateConversationModel: ObservableObject {
             }
         }
 
-        return String(localized: "common.unknown", comment: "Fallback label for unknown peer")
+        return AppLanguageSettings.localized("common.unknown", comment: "Fallback label for unknown peer")
     }
 
     private func resolveAvailability(for headerPeerID: PeerID, peer: BitchatPeer?) -> PrivateConversationAvailability {

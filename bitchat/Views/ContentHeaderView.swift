@@ -62,7 +62,7 @@ struct ContentHeaderView: View {
                 .accessibilityAddTraits(.isButton)
                 .accessibilityLabel(Text("meshchat.help.title"))
                 .accessibilityHint(
-                    String(localized: "meshchat.help.open_hint", comment: "Accessibility hint on the MeshChat logo explaining that a tap opens Help")
+                    AppLanguageSettings.localized("meshchat.help.open_hint", comment: "Accessibility hint on the MeshChat logo explaining that a tap opens Help")
                 )
                 .accessibilityAction {
                     appChromeModel.presentAppInfo()
@@ -128,13 +128,13 @@ struct ContentHeaderView: View {
                     }
                     .buttonStyle(.plain)
                     .accessibilityLabel(
-                        String(localized: "content.accessibility.gateway_active", defaultValue: "Internet gateway active, sharing your connection with the mesh", comment: "Accessibility label for the internet gateway indicator")
+                        AppLanguageSettings.localized("content.accessibility.gateway_active", defaultValue: "Internet gateway active, sharing your connection with the mesh", comment: "Accessibility label for the internet gateway indicator")
                     )
                     .accessibilityHint(
-                        String(localized: "content.accessibility.gateway_settings_hint", defaultValue: "Opens settings to turn the gateway on or off", comment: "Accessibility hint for the internet gateway indicator explaining a tap opens the settings sheet")
+                        AppLanguageSettings.localized("content.accessibility.gateway_settings_hint", defaultValue: "Opens settings to turn the gateway on or off", comment: "Accessibility hint for the internet gateway indicator explaining a tap opens the settings sheet")
                     )
                     .help(
-                        String(localized: "content.header.gateway_active", defaultValue: "Sharing your internet connection with nearby mesh peers", comment: "Tooltip for the internet gateway indicator")
+                        AppLanguageSettings.localized("content.header.gateway_active", defaultValue: "Sharing your internet connection with nearby mesh peers", comment: "Tooltip for the internet gateway indicator")
                     )
                 }
 
@@ -145,13 +145,13 @@ struct ContentHeaderView: View {
                         .headerTapTarget()
                         .accessibilityLabel(
                             String(
-                                format: String(localized: "content.accessibility.carrying_mail", defaultValue: "Carrying %lld sealed messages for friends", comment: "Accessibility label for the courier mail indicator"),
+                                format: AppLanguageSettings.localized("content.accessibility.carrying_mail", defaultValue: "Carrying %lld sealed messages for friends", comment: "Accessibility label for the courier mail indicator"),
                                 locale: .current,
                                 carriedMailCount
                             )
                         )
                         .help(
-                            String(localized: "content.header.carrying_mail", defaultValue: "Carrying sealed messages for friends to deliver", comment: "Tooltip for the courier mail indicator")
+                            AppLanguageSettings.localized("content.header.carrying_mail", defaultValue: "Carrying sealed messages for friends to deliver", comment: "Tooltip for the courier mail indicator")
                         )
                 }
 
@@ -164,7 +164,7 @@ struct ContentHeaderView: View {
                     }
                     .buttonStyle(.plain)
                     .accessibilityLabel(
-                        String(localized: "content.accessibility.open_unread_private_chat", comment: "Accessibility label for the unread private chat button")
+                        AppLanguageSettings.localized("content.accessibility.open_unread_private_chat", comment: "Accessibility label for the unread private chat button")
                     )
                 }
 
@@ -189,19 +189,19 @@ struct ContentHeaderView: View {
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel(
-                    String(localized: "content.accessibility.notices", defaultValue: "Notices", comment: "Accessibility label for the notices button")
+                    AppLanguageSettings.localized("content.accessibility.notices", defaultValue: "Notices", comment: "Accessibility label for the notices button")
                 )
                 .accessibilityValue(
                     unseenNoticesCount > 0
                         ? String(
-                            format: String(localized: "content.accessibility.notices_new", defaultValue: "%lld new", comment: "Accessibility value for the notices button when unseen pins arrived"),
+                            format: AppLanguageSettings.localized("content.accessibility.notices_new", defaultValue: "%lld new", comment: "Accessibility value for the notices button when unseen pins arrived"),
                             locale: .current,
                             unseenNoticesCount
                         )
                         : ""
                 )
                 .help(
-                    String(localized: "content.header.notices", defaultValue: "Notices: pinned posts for this area and the mesh", comment: "Tooltip for the notices button")
+                    AppLanguageSettings.localized("content.header.notices", defaultValue: "Notices: pinned posts for this area and the mesh", comment: "Tooltip for the notices button")
                 )
 
                 if case .location(let channel) = locationChannelsModel.selectedChannel {
@@ -213,7 +213,7 @@ struct ContentHeaderView: View {
                     .buttonStyle(.plain)
                     .accessibilityLabel(
                         String(
-                            format: String(localized: "content.accessibility.toggle_bookmark", comment: "Accessibility label for toggling a geohash bookmark"),
+                            format: AppLanguageSettings.localized("content.accessibility.toggle_bookmark", comment: "Accessibility label for toggling a geohash bookmark"),
                             locale: .current,
                             channel.geohash
                         )
@@ -226,7 +226,7 @@ struct ContentHeaderView: View {
                     }
                     .buttonStyle(.plain)
                     .accessibilityLabel(
-                        String(localized: "channel.share.action", defaultValue: "Share Channel", comment: "Accessibility label for sharing the active location channel")
+                        AppLanguageSettings.localized("channel.share.action", defaultValue: "Share Channel", comment: "Accessibility label for sharing the active location channel")
                     )
                 }
 
@@ -256,7 +256,7 @@ struct ContentHeaderView: View {
                         .frame(maxHeight: .infinity)
                         .contentShape(Rectangle())
                         .accessibilityLabel(
-                            String(localized: "content.accessibility.location_channels", comment: "Accessibility label for the location channels button")
+                            AppLanguageSettings.localized("content.accessibility.location_channels", comment: "Accessibility label for the location channels button")
                         )
                 }
                 .buttonStyle(.plain)
@@ -283,7 +283,7 @@ struct ContentHeaderView: View {
                 .buttonStyle(.plain)
                 .accessibilityLabel(
                     String(
-                        format: String(localized: "content.accessibility.people_count", comment: "Accessibility label announcing number of people in header"),
+                        format: AppLanguageSettings.localized("content.accessibility.people_count", comment: "Accessibility label announcing number of people in header"),
                         locale: .current,
                         headerOtherPeersCount
                     )
@@ -293,13 +293,13 @@ struct ContentHeaderView: View {
                 .accessibilityValue(
                     showBridgedPeerCount
                     ? String(
-                        format: String(localized: "content.accessibility.bridged_count", defaultValue: "%lld more people across the bridge", comment: "Accessibility value announcing the number of people reachable via the mesh bridge"),
+                        format: AppLanguageSettings.localized("content.accessibility.bridged_count", defaultValue: "%lld more people across the bridge", comment: "Accessibility value announcing the number of people reachable via the mesh bridge"),
                         locale: .current,
                         bridgeService.bridgedPeerCount
                     )
                     : (headerPeersReachable
-                        ? String(localized: "content.accessibility.peers_connected", comment: "Accessibility value when peers are reachable")
-                        : String(localized: "content.accessibility.peers_none", comment: "Accessibility value when no peers are reachable"))
+                        ? AppLanguageSettings.localized("content.accessibility.peers_connected", comment: "Accessibility value when peers are reachable")
+                        : AppLanguageSettings.localized("content.accessibility.peers_none", comment: "Accessibility value when no peers are reachable"))
                 )
             }
             .layoutPriority(3)
@@ -352,11 +352,11 @@ struct ContentHeaderView: View {
             Text("content.alert.screenshot.message")
         }
         .confirmationDialog(
-            String(localized: "channel.share.precision_warning.title", defaultValue: "Share a Precise Location Channel?", comment: "Title of the confirmation before sharing a neighborhood-or-finer geohash invite"),
+            AppLanguageSettings.localized("channel.share.precision_warning.title", defaultValue: "Share a Precise Location Channel?", comment: "Title of the confirmation before sharing a neighborhood-or-finer geohash invite"),
             isPresented: $showSharePrecisionWarning,
             titleVisibility: .visible
         ) {
-            Button(String(localized: "channel.share.precision_warning.confirm", defaultValue: "Share Anyway", comment: "Confirms sharing a fine-precision location channel after the OpSec warning")) {
+            Button(AppLanguageSettings.localized("channel.share.precision_warning.confirm", defaultValue: "Share Anyway", comment: "Confirms sharing a fine-precision location channel after the OpSec warning")) {
                 if let gh = pendingShareGeohash {
                     activeSharePayload = ChannelSharePayload(text: ChannelShare.payload(forGeohash: gh))
                 }
@@ -366,7 +366,7 @@ struct ContentHeaderView: View {
                 pendingShareGeohash = nil
             }
         } message: {
-            Text(String(localized: "channel.share.precision_warning.message", defaultValue: "This channel covers a small area. An invite sent over SMS or iMessage is visible to the carrier and both handsets — it discloses interest in that place, not only that someone uses MeshChat.", comment: "Body of the confirmation before sharing a fine-precision geohash invite"))
+            Text(AppLanguageSettings.localized("channel.share.precision_warning.message", defaultValue: "This channel covers a small area. An invite sent over SMS or iMessage is visible to the carrier and both handsets — it discloses interest in that place, not only that someone uses MeshChat.", comment: "Body of the confirmation before sharing a fine-precision geohash invite"))
         }
         .sheet(item: $activeSharePayload) { payload in
             ShareActivityView(text: payload.text)

@@ -59,7 +59,7 @@ final class BoardAlertsModel: ObservableObject {
     private enum Strings {
         static func urgentSingle(author: String, content: String) -> String {
             String(
-                format: String(localized: "notices.alert.urgent_single", defaultValue: "📌 Urgent notice from @%@: %@", comment: "Local chat line when one urgent notice is pinned nearby"),
+                format: AppLanguageSettings.localized("notices.alert.urgent_single", defaultValue: "📌 Urgent notice from @%@: %@", comment: "Local chat line when one urgent notice is pinned nearby"),
                 locale: .current,
                 author, content
             )
@@ -67,7 +67,7 @@ final class BoardAlertsModel: ObservableObject {
 
         static func urgentCollapsed(_ count: Int) -> String {
             String(
-                format: String(localized: "notices.alert.urgent_collapsed", defaultValue: "📌 %lld new urgent notices — tap the pin to view", comment: "Local chat line when several urgent notices arrive together"),
+                format: AppLanguageSettings.localized("notices.alert.urgent_collapsed", defaultValue: "📌 %lld new urgent notices — tap the pin to view", comment: "Local chat line when several urgent notices arrive together"),
                 locale: .current,
                 count
             )

@@ -54,7 +54,7 @@ struct MediaMessageView: View {
                     .foregroundColor(Color.green.opacity(0.85))
                     .padding(.trailing, 4)
                     .accessibilityLabel(
-                        String(localized: "content.accessibility.verified_sender", defaultValue: "Verified sender", comment: "Accessibility label for the seal next to a verified peer's name on a private message")
+                        AppLanguageSettings.localized("content.accessibility.verified_sender", defaultValue: "Verified sender", comment: "Accessibility label for the seal next to a verified peer's name on a private message")
                     )
             }
             VStack(alignment: .leading, spacing: 2) {
@@ -76,7 +76,7 @@ struct MediaMessageView: View {
                         }
                         .buttonStyle(.plain)
                         .accessibilityHint(
-                            String(localized: "content.accessibility.delivery_detail_hint", comment: "Accessibility hint for the delivery status glyph explaining a tap reveals details")
+                            AppLanguageSettings.localized("content.accessibility.delivery_detail_hint", comment: "Accessibility hint for the delivery status glyph explaining a tap reveals details")
                         )
                     }
                 }

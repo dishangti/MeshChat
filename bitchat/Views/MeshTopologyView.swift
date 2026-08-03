@@ -123,8 +123,8 @@ struct MeshTopologyView: View {
 
     private var summaryText: String {
         String(
-            format: String(
-                localized: "topology.summary",
+            format: AppLanguageSettings.localized(
+                 "topology.summary",
                 comment: "Topology map summary: number of peers and links"
             ),
             locale: .current,

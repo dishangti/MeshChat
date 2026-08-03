@@ -312,8 +312,8 @@ struct MeshChatRootView: View {
             }
             #endif
             .confirmationDialog(
-                String(
-                    localized: "content.private_media.legacy_warning.title",
+                AppLanguageSettings.localized(
+                     "content.private_media.legacy_warning.title",
                     defaultValue: "Send without end-to-end encryption?",
                     comment: "Title warning before sending private media to an older client in a clear signed envelope"
                 ),
@@ -321,8 +321,8 @@ struct MeshChatRootView: View {
                 titleVisibility: .visible
             ) {
                 Button(
-                    String(
-                        localized: "content.private_media.legacy_warning.send",
+                    AppLanguageSettings.localized(
+                         "content.private_media.legacy_warning.send",
                         defaultValue: "Send Visible File",
                         comment: "Destructive confirmation action for one legacy clear private-media send"
                     ),
@@ -336,8 +336,8 @@ struct MeshChatRootView: View {
                 }
             }
             .confirmationDialog(
-                String(
-                    localized: "channel.share.precision_warning.title",
+                AppLanguageSettings.localized(
+                     "channel.share.precision_warning.title",
                     defaultValue: "Share a Precise Location Channel?",
                     comment: "Title of the confirmation before sharing a neighborhood-or-finer geohash invite"
                 ),
@@ -345,8 +345,8 @@ struct MeshChatRootView: View {
                 titleVisibility: .visible
             ) {
                 Button(
-                    String(
-                        localized: "channel.share.precision_warning.confirm",
+                    AppLanguageSettings.localized(
+                         "channel.share.precision_warning.confirm",
                         defaultValue: "Share Anyway",
                         comment: "Confirms sharing a fine-precision location channel after the OpSec warning"
                     ),
@@ -357,14 +357,14 @@ struct MeshChatRootView: View {
                 }
             } message: {
                 Text(
-                    String(
-                        localized: "channel.share.precision_warning.message",
+                    AppLanguageSettings.localized(
+                         "channel.share.precision_warning.message",
                         defaultValue: "This channel covers a small area. An invite sent over SMS or iMessage is visible to the carrier and both handsets — it discloses interest in that place, not only that someone uses MeshChat.",
                         comment: "Body of the confirmation before sharing a fine-precision geohash invite"
                     )
                 )
             }
-            .alert("Recording Error", isPresented: voiceAlertBinding) {
+            .alert("content.alert.recording_error.title", isPresented: voiceAlertBinding) {
                 Button("common.ok", role: .cancel) {}
                 if voiceRecordingVM.state == .permissionDenied {
                     Button("location_channels.action.open_settings") {
@@ -388,8 +388,8 @@ struct MeshChatRootView: View {
                 Text("content.alert.screenshot.message")
             }
             .alert(
-                String(
-                    localized: "share_import.review.title",
+                AppLanguageSettings.localized(
+                     "share_import.review.title",
                     comment: "Title for reviewing content received from the share extension"
                 ),
                 isPresented: Binding(
@@ -410,8 +410,8 @@ struct MeshChatRootView: View {
                     isTextFieldFocused = true
                 }
             } message: { offer in
-                let format = String(
-                    localized: "share_import.review.message",
+                let format = AppLanguageSettings.localized(
+                     "share_import.review.message",
                     comment: "Explains that shared content will replace the named destination's composer and will not be sent automatically"
                 )
                 Text(String(format: format, offer.destination.displayName) + "\n\n" + offer.payload.preview)
@@ -558,8 +558,8 @@ struct MeshChatRootView: View {
 
     private var privateConversationPrivacyText: String {
         if selectedPrivatePeerID?.isGroup == true {
-            return String(
-                localized: "content.private.caption_group",
+            return AppLanguageSettings.localized(
+                 "content.private.caption_group",
                 comment: "Caption above the group chat composer noting messages are encrypted to group members"
             )
         }
@@ -573,13 +573,13 @@ struct MeshChatRootView: View {
             }
         }()
         if selectedPrivatePeerID?.isGeoDM == true || noiseSecured {
-            return String(
-                localized: "content.private.caption_encrypted",
+            return AppLanguageSettings.localized(
+                 "content.private.caption_encrypted",
                 comment: "Caption above the private chat composer once the session is end-to-end encrypted"
             )
         }
-        return String(
-            localized: "content.private.caption",
+        return AppLanguageSettings.localized(
+             "content.private.caption",
             comment: "Caption above the private chat composer before encryption is established"
         )
     }
@@ -823,8 +823,8 @@ struct MeshChatRootView: View {
 
     private func legacyMediaWarning(for request: LegacyPrivateMediaConsentRequest) -> String {
         String(
-            format: String(
-                localized: "content.private_media.legacy_warning.message",
+            format: AppLanguageSettings.localized(
+                 "content.private_media.legacy_warning.message",
                 defaultValue: "%@'s client does not advertise encrypted private media. This file will be signed but not end-to-end encrypted, so mesh relays can see it. Send this file anyway?",
                 comment: "Warning explaining the confidentiality loss for one legacy private-media send; parameter is the peer name"
             ),

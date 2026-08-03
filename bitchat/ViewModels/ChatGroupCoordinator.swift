@@ -162,26 +162,26 @@ final class ChatGroupCoordinator {
     func createGroup(named rawName: String) -> CommandResult {
         let name = rawName.trimmed
         guard !name.isEmpty else {
-            return .error(message: String(localized: "system.group.usage_create", comment: "Usage hint for /group create"))
+            return .error(message: AppLanguageSettings.localized("system.group.usage_create", comment: "Usage hint for /group create"))
         }
         guard name.count <= Self.maxGroupNameLength else {
-            return .error(message: String(localized: "system.group.name_too_long", comment: "Error when a group name exceeds the length cap"))
+            return .error(message: AppLanguageSettings.localized("system.group.name_too_long", comment: "Error when a group name exceeds the length cap"))
         }
 
         let myFingerprint = context.myNoiseFingerprint()
         let mySigningKey = context.mySigningPublicKey()
         guard !myFingerprint.isEmpty, mySigningKey.count == 32 else {
-            return .error(message: String(localized: "system.group.identity_unavailable", comment: "Error when the local identity is not ready for group operations"))
+            return .error(message: AppLanguageSettings.localized("system.group.identity_unavailable", comment: "Error when the local identity is not ready for group operations"))
         }
 
         let creator = GroupMember(fingerprint: myFingerprint, signingKey: mySigningKey, nickname: context.nickname)
         guard let group = context.groupStore.createGroup(named: name, creator: creator) else {
-            return .error(message: String(localized: "system.group.create_failed", comment: "Error when group creation fails"))
+            return .error(message: AppLanguageSettings.localized("system.group.create_failed", comment: "Error when group creation fails"))
         }
 
         context.startPrivateChat(with: group.peerID)
         return .success(message: String(
-            format: String(localized: "system.group.created", comment: "System message after creating a group; placeholder is the group name"),
+            format: AppLanguageSettings.localized("system.group.created", comment: "System message after creating a group; placeholder is the group name"),
             locale: .current,
             name
         ))
@@ -190,45 +190,45 @@ final class ChatGroupCoordinator {
     func inviteMember(nickname rawNickname: String) -> CommandResult {
         let nickname = normalizedNickname(rawNickname)
         guard !nickname.isEmpty else {
-            return .error(message: String(localized: "system.group.usage_invite", comment: "Usage hint for /group invite"))
+            return .error(message: AppLanguageSettings.localized("system.group.usage_invite", comment: "Usage hint for /group invite"))
         }
         guard let group = selectedGroup() else {
-            return .error(message: String(localized: "system.group.not_in_group", comment: "Error when a group command requires an open group chat"))
+            return .error(message: AppLanguageSettings.localized("system.group.not_in_group", comment: "Error when a group command requires an open group chat"))
         }
         guard group.creatorFingerprint == context.myNoiseFingerprint() else {
-            return .error(message: String(localized: "system.group.creator_only", comment: "Error when a non-creator attempts a creator-only group action"))
+            return .error(message: AppLanguageSettings.localized("system.group.creator_only", comment: "Error when a non-creator attempts a creator-only group action"))
         }
         guard let peerID = context.getPeerIDForNickname(nickname) else {
             return .error(message: String(
-                format: String(localized: "system.group.peer_not_found", comment: "Error when the invitee nickname is unknown; placeholder is the nickname"),
+                format: AppLanguageSettings.localized("system.group.peer_not_found", comment: "Error when the invitee nickname is unknown; placeholder is the nickname"),
                 locale: .current,
                 nickname
             ))
         }
         guard context.isPeerConnected(peerID) else {
             return .error(message: String(
-                format: String(localized: "system.group.peer_not_connected", comment: "Error when the invitee is not connected over mesh; placeholder is the nickname"),
+                format: AppLanguageSettings.localized("system.group.peer_not_connected", comment: "Error when the invitee is not connected over mesh; placeholder is the nickname"),
                 locale: .current,
                 nickname
             ))
         }
         guard let identity = context.cryptoIdentity(for: peerID) else {
             return .error(message: String(
-                format: String(localized: "system.group.peer_identity_unknown", comment: "Error when the invitee's verified identity is unavailable; placeholder is the nickname"),
+                format: AppLanguageSettings.localized("system.group.peer_identity_unknown", comment: "Error when the invitee's verified identity is unavailable; placeholder is the nickname"),
                 locale: .current,
                 nickname
             ))
         }
         guard !group.isMember(fingerprint: identity.fingerprint) else {
             return .error(message: String(
-                format: String(localized: "system.group.already_member", comment: "Error when the invitee is already a member; placeholder is the nickname"),
+                format: AppLanguageSettings.localized("system.group.already_member", comment: "Error when the invitee is already a member; placeholder is the nickname"),
                 locale: .current,
                 nickname
             ))
         }
         guard group.members.count < BitchatGroup.maxMembers else {
             return .error(message: String(
-                format: String(localized: "system.group.full", comment: "Error when the group is at the member cap; placeholder is the cap"),
+                format: AppLanguageSettings.localized("system.group.full", comment: "Error when the group is at the member cap; placeholder is the cap"),
                 locale: .current,
                 "\(BitchatGroup.maxMembers)"
             ))
@@ -246,14 +246,14 @@ final class ChatGroupCoordinator {
         let members = group.members + [newMember]
         guard let (updated, key) = context.groupStore.rotateKey(groupID: group.groupID, members: members),
               let payload = signedStatePayload(for: updated, key: key) else {
-            return .error(message: String(localized: "system.group.invite_failed", comment: "Error when building or signing a group invite fails"))
+            return .error(message: AppLanguageSettings.localized("system.group.invite_failed", comment: "Error when building or signing a group invite fails"))
         }
 
         context.sendGroupInvitePayload(payload, to: peerID)
         distributeState(payload, group: updated, excluding: [identity.fingerprint], type: .keyUpdate)
 
         return .success(message: String(
-            format: String(localized: "system.group.invited", comment: "System message after inviting someone; placeholders are the nickname and the group name"),
+            format: AppLanguageSettings.localized("system.group.invited", comment: "System message after inviting someone; placeholders are the nickname and the group name"),
             locale: .current,
             nickname,
             updated.name
@@ -266,36 +266,36 @@ final class ChatGroupCoordinator {
     func removeMember(nickname rawNickname: String) -> CommandResult {
         let nickname = normalizedNickname(rawNickname)
         guard !nickname.isEmpty else {
-            return .error(message: String(localized: "system.group.usage_remove", comment: "Usage hint for /group remove"))
+            return .error(message: AppLanguageSettings.localized("system.group.usage_remove", comment: "Usage hint for /group remove"))
         }
         guard let group = selectedGroup() else {
-            return .error(message: String(localized: "system.group.not_in_group", comment: "Error when a group command requires an open group chat"))
+            return .error(message: AppLanguageSettings.localized("system.group.not_in_group", comment: "Error when a group command requires an open group chat"))
         }
         guard group.creatorFingerprint == context.myNoiseFingerprint() else {
-            return .error(message: String(localized: "system.group.creator_only", comment: "Error when a non-creator attempts a creator-only group action"))
+            return .error(message: AppLanguageSettings.localized("system.group.creator_only", comment: "Error when a non-creator attempts a creator-only group action"))
         }
         guard let member = group.members.first(where: { $0.nickname.caseInsensitiveCompare(nickname) == .orderedSame }) else {
             return .error(message: String(
-                format: String(localized: "system.group.member_not_found", comment: "Error when the member to remove is not in the roster; placeholder is the nickname"),
+                format: AppLanguageSettings.localized("system.group.member_not_found", comment: "Error when the member to remove is not in the roster; placeholder is the nickname"),
                 locale: .current,
                 nickname
             ))
         }
         guard member.fingerprint != group.creatorFingerprint else {
-            return .error(message: String(localized: "system.group.cannot_remove_creator", comment: "Error when the creator tries to remove themselves"))
+            return .error(message: AppLanguageSettings.localized("system.group.cannot_remove_creator", comment: "Error when the creator tries to remove themselves"))
         }
 
         let remaining = group.members.filter { $0.fingerprint != member.fingerprint }
         guard let (rotated, newKey) = context.groupStore.rotateKey(groupID: group.groupID, members: remaining),
               let payload = signedStatePayload(for: rotated, key: newKey) else {
-            return .error(message: String(localized: "system.group.rotate_failed", comment: "Error when rotating the group key fails"))
+            return .error(message: AppLanguageSettings.localized("system.group.rotate_failed", comment: "Error when rotating the group key fails"))
         }
 
         distributeState(payload, group: rotated, excluding: [], type: .keyUpdate)
         notifyRemovedMember(member, rotated: rotated)
 
         return .success(message: String(
-            format: String(localized: "system.group.removed_member", comment: "System message after removing a member and rotating the key; placeholder is the nickname"),
+            format: AppLanguageSettings.localized("system.group.removed_member", comment: "System message after removing a member and rotating the key; placeholder is the nickname"),
             locale: .current,
             member.nickname
         ))
@@ -303,7 +303,7 @@ final class ChatGroupCoordinator {
 
     func leaveGroup() -> CommandResult {
         guard let group = selectedGroup() else {
-            return .error(message: String(localized: "system.group.not_in_group", comment: "Error when a group command requires an open group chat"))
+            return .error(message: AppLanguageSettings.localized("system.group.not_in_group", comment: "Error when a group command requires an open group chat"))
         }
         // Close the chat window first so the confirmation message doesn't
         // resurrect the conversation we're about to remove.
@@ -312,7 +312,7 @@ final class ChatGroupCoordinator {
         context.groupStore.removeGroup(withID: group.groupID)
         context.notifyUIChanged()
         return .success(message: String(
-            format: String(localized: "system.group.left", comment: "System message after leaving a group; placeholder is the group name"),
+            format: AppLanguageSettings.localized("system.group.left", comment: "System message after leaving a group; placeholder is the group name"),
             locale: .current,
             group.name
         ))
@@ -321,14 +321,14 @@ final class ChatGroupCoordinator {
     func listGroups() -> CommandResult {
         let groups = context.groupStore.groups
         guard !groups.isEmpty else {
-            return .success(message: String(localized: "system.group.none", comment: "System message when the user is in no groups"))
+            return .success(message: AppLanguageSettings.localized("system.group.none", comment: "System message when the user is in no groups"))
         }
         let myFingerprint = context.myNoiseFingerprint()
         let lines = groups.map { group -> String in
             let role = group.creatorFingerprint == myFingerprint ? " (creator)" : ""
             return "#\(group.name)\(role) — \(group.members.count)/\(BitchatGroup.maxMembers)"
         }
-        return .success(message: String(localized: "system.group.list_header", comment: "Header line for the /group list output") + "\n" + lines.joined(separator: "\n"))
+        return .success(message: AppLanguageSettings.localized("system.group.list_header", comment: "Header line for the /group list output") + "\n" + lines.joined(separator: "\n"))
     }
 
     // MARK: - Sending
@@ -342,7 +342,7 @@ final class ChatGroupCoordinator {
             // The person is inside the group thread; the error belongs there,
             // not on the active public timeline.
             context.addLocalPrivateSystemMessage(
-                String(localized: "system.group.unknown", comment: "System message when sending into an unknown group"),
+                AppLanguageSettings.localized("system.group.unknown", comment: "System message when sending into an unknown group"),
                 to: groupPeerID
             )
             return
@@ -366,7 +366,7 @@ final class ChatGroupCoordinator {
         } catch {
             SecureLogger.error("Failed to seal group message: \(error)", category: .encryption)
             context.addLocalPrivateSystemMessage(
-                String(localized: "system.group.send_failed", comment: "System message when sealing a group message fails"),
+                AppLanguageSettings.localized("system.group.send_failed", comment: "System message when sealing a group message fails"),
                 to: groupPeerID
             )
             return
@@ -567,7 +567,7 @@ private extension ChatGroupCoordinator {
                 context.removePrivateChat(existing.peerID)
                 context.groupStore.removeGroup(withID: existing.groupID)
                 context.addSystemMessage(String(
-                    format: String(localized: "system.group.removed_from", comment: "System message when removed from a group; placeholder is the group name"),
+                    format: AppLanguageSettings.localized("system.group.removed_from", comment: "System message when removed from a group; placeholder is the group name"),
                     locale: .current,
                     existing.name
                 ))
@@ -594,7 +594,7 @@ private extension ChatGroupCoordinator {
                 ?? context.peerNickname(for: peerID)
                 ?? "?"
             let notice = String(
-                format: String(localized: "system.group.joined", comment: "System message when added to a group; placeholders are the group name and the inviter"),
+                format: AppLanguageSettings.localized("system.group.joined", comment: "System message when added to a group; placeholders are the group name and the inviter"),
                 locale: .current,
                 state.name,
                 inviter

@@ -19,7 +19,7 @@ struct MyQRView: View {
 
     private enum Strings {
         static let title: LocalizedStringKey = "verification.my_qr.title"
-        static let accessibilityLabel = String(localized: "verification.my_qr.accessibility_label", comment: "Accessibility label describing the verification QR code")
+        static var accessibilityLabel: String { AppLanguageSettings.localized("verification.my_qr.accessibility_label", comment: "Accessibility label describing the verification QR code") }
     }
 
     var body: some View {
@@ -123,11 +123,13 @@ struct QRScanView: View {
     private enum Strings {
         static let pastePrompt: LocalizedStringKey = "verification.scan.paste_prompt"
         static let validate: LocalizedStringKey = "verification.scan.validate"
-        static let cameraUnavailable = String(
-            localized: "verification.scan.camera_unavailable",
+        static var cameraUnavailable: String {
+            AppLanguageSettings.localized(
+             "verification.scan.camera_unavailable",
             defaultValue: "Camera unavailable — paste a QR below.",
             comment: "Shown over the scanner preview when no camera is available or permission was denied"
-        )
+            )
+        }
     }
 
     var body: some View {
@@ -564,21 +566,27 @@ struct VerificationSheetView: View {
     }
 
     private enum Strings {
-        static let localNickname = String(
-            localized: "fingerprint.local_alias.label",
+        static var localNickname: String {
+            AppLanguageSettings.localized(
+             "fingerprint.local_alias.label",
             defaultValue: "Local Nickname",
             comment: "Label for a device-local nickname field"
-        )
-        static let localNicknamePlaceholder = String(
-            localized: "fingerprint.local_alias.placeholder",
+            )
+        }
+        static var localNicknamePlaceholder: String {
+            AppLanguageSettings.localized(
+             "fingerprint.local_alias.placeholder",
             defaultValue: "Nickname on this device",
             comment: "Placeholder for a device-local nickname field"
-        )
-        static let localNicknameHint = String(
-            localized: "fingerprint.local_alias.hint",
+            )
+        }
+        static var localNicknameHint: String {
+            AppLanguageSettings.localized(
+             "fingerprint.local_alias.hint",
             defaultValue: "Saved only on this device. This person will not see it.",
             comment: "Privacy explanation under a local nickname field"
-        )
+            )
+        }
         static let invalidNickname: LocalizedStringKey = "fingerprint.local_alias.invalid"
         static let nicknameSaved: LocalizedStringKey = "fingerprint.local_alias.saved"
         static let save: LocalizedStringKey = "save"
@@ -591,8 +599,8 @@ struct VerificationSheetView: View {
 
         static func verifying(_ name: String) -> String {
             String(
-                format: String(
-                    localized: "verification.scan.status.requested",
+                format: AppLanguageSettings.localized(
+                     "verification.scan.status.requested",
                     comment: "Progress text while verifying a friend's encryption identity"
                 ),
                 locale: .current,
@@ -602,8 +610,8 @@ struct VerificationSheetView: View {
 
         static func verified(_ name: String) -> String {
             String(
-                format: String(
-                    localized: "verification.scan.status.verified",
+                format: AppLanguageSettings.localized(
+                     "verification.scan.status.verified",
                     defaultValue: "%@'s encryption identity is verified.",
                     comment: "Success text after a signed encryption verification response"
                 ),
@@ -987,23 +995,23 @@ struct VerificationSheetView: View {
     private func failureMessage(_ failure: FriendVerificationFailure) -> String {
         switch failure {
         case .invalidPayload, .invalidResponse:
-            return String(localized: "verification.scan.status.invalid")
+            return AppLanguageSettings.localized("verification.scan.status.invalid")
         case .expiredPayload:
-            return String(localized: "verification.scan.status.expired")
+            return AppLanguageSettings.localized("verification.scan.status.expired")
         case .invalidLocalPetname:
-            return String(localized: "fingerprint.local_alias.invalid")
+            return AppLanguageSettings.localized("fingerprint.local_alias.invalid")
         case .selfIdentity:
-            return String(localized: "verification.scan.status.self")
+            return AppLanguageSettings.localized("verification.scan.status.self")
         case .blocked:
-            return String(localized: "verification.scan.status.blocked")
+            return AppLanguageSettings.localized("verification.scan.status.blocked")
         case .signingKeyMismatch, .activeSessionMismatch:
-            return String(localized: "verification.scan.status.identity_mismatch")
+            return AppLanguageSettings.localized("verification.scan.status.identity_mismatch")
         case .peerNotFound, .peerUnavailable:
-            return String(localized: "verification.scan.status.no_peer")
+            return AppLanguageSettings.localized("verification.scan.status.no_peer")
         case .persistenceRejected:
-            return String(localized: "verification.scan.status.persistence_failed")
+            return AppLanguageSettings.localized("verification.scan.status.persistence_failed")
         case .timedOut:
-            return String(localized: "verification.scan.status.timed_out")
+            return AppLanguageSettings.localized("verification.scan.status.timed_out")
         }
     }
 

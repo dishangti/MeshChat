@@ -36,13 +36,13 @@ enum CommandInfo: String, Identifiable {
     var placeholder: String? {
         switch self {
         case .block, .hug, .message, .slap, .unblock, .favorite, .unfavorite, .ping, .trace:
-            return "<" + String(localized: "content.input.nickname_placeholder") + ">"
+            return "<" + AppLanguageSettings.localized("content.input.nickname_placeholder") + ">"
         case .group:
-            return "<" + String(localized: "content.input.group_placeholder") + ">"
+            return "<" + AppLanguageSettings.localized("content.input.group_placeholder") + ">"
         case .pay:
-            return "<" + String(localized: "content.input.token_placeholder") + ">"
+            return "<" + AppLanguageSettings.localized("content.input.token_placeholder") + ">"
         case .drop:
-            return "<" + String(localized: "content.input.note_placeholder") + ">"
+            return "<" + AppLanguageSettings.localized("content.input.note_placeholder") + ">"
         case .clear, .help, .who:
             return nil
         }
@@ -50,21 +50,21 @@ enum CommandInfo: String, Identifiable {
 
     var description: String {
         switch self {
-        case .block:        String(localized: "content.commands.block")
-        case .clear:        String(localized: "content.commands.clear")
-        case .group:        String(localized: "content.commands.group")
-        case .help:         String(localized: "content.commands.help")
-        case .hug:          String(localized: "content.commands.hug")
-        case .message:      String(localized: "content.commands.message")
-        case .pay:          String(localized: "content.commands.pay")
-        case .slap:         String(localized: "content.commands.slap")
-        case .unblock:      String(localized: "content.commands.unblock")
-        case .who:          String(localized: "content.commands.who")
-        case .favorite:     String(localized: "content.commands.favorite")
-        case .unfavorite:   String(localized: "content.commands.unfavorite")
-        case .ping:         String(localized: "content.commands.ping")
-        case .trace:        String(localized: "content.commands.trace")
-        case .drop:         String(localized: "content.commands.drop")
+        case .block:        AppLanguageSettings.localized("content.commands.block")
+        case .clear:        AppLanguageSettings.localized("content.commands.clear")
+        case .group:        AppLanguageSettings.localized("content.commands.group")
+        case .help:         AppLanguageSettings.localized("content.commands.help")
+        case .hug:          AppLanguageSettings.localized("content.commands.hug")
+        case .message:      AppLanguageSettings.localized("content.commands.message")
+        case .pay:          AppLanguageSettings.localized("content.commands.pay")
+        case .slap:         AppLanguageSettings.localized("content.commands.slap")
+        case .unblock:      AppLanguageSettings.localized("content.commands.unblock")
+        case .who:          AppLanguageSettings.localized("content.commands.who")
+        case .favorite:     AppLanguageSettings.localized("content.commands.favorite")
+        case .unfavorite:   AppLanguageSettings.localized("content.commands.unfavorite")
+        case .ping:         AppLanguageSettings.localized("content.commands.ping")
+        case .trace:        AppLanguageSettings.localized("content.commands.trace")
+        case .drop:         AppLanguageSettings.localized("content.commands.drop")
         }
     }
 

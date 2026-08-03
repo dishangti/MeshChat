@@ -300,24 +300,24 @@ final class ChatVerificationCoordinator {
 
     private enum NotificationCopy {
         static var successTitle: String {
-            String(localized: "notification.verification.success.title", defaultValue: "Verified", comment: "Notification title after the user successfully verifies another person's encryption identity")
+            AppLanguageSettings.localized("notification.verification.success.title", defaultValue: "Verified", comment: "Notification title after the user successfully verifies another person's encryption identity")
         }
 
         static func successBody(peerName: String) -> String {
             String(
-                format: String(localized: "notification.verification.success.body", defaultValue: "You verified %@", comment: "Notification body after successful encryption verification; %@ is the other person's display name"),
+                format: AppLanguageSettings.localized("notification.verification.success.body", defaultValue: "You verified %@", comment: "Notification body after successful encryption verification; %@ is the other person's display name"),
                 locale: .current,
                 peerName
             )
         }
 
         static var mutualTitle: String {
-            String(localized: "notification.verification.mutual.title", defaultValue: "Mutual verification", comment: "Notification title when two people have verified each other's encryption identities")
+            AppLanguageSettings.localized("notification.verification.mutual.title", defaultValue: "Mutual verification", comment: "Notification title when two people have verified each other's encryption identities")
         }
 
         static func mutualBody(peerName: String) -> String {
             String(
-                format: String(localized: "notification.verification.mutual.body", defaultValue: "You and %@ verified each other", comment: "Notification body when verification is mutual; %@ is the other person's display name"),
+                format: AppLanguageSettings.localized("notification.verification.mutual.body", defaultValue: "You and %@ verified each other", comment: "Notification body when verification is mutual; %@ is the other person's display name"),
                 locale: .current,
                 peerName
             )

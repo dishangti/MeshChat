@@ -1452,8 +1452,8 @@ final class BLEService: NSObject {
         }
         TransferProgressManager.shared.rejectBeforeStart(
             id: transferId,
-            reason: String(
-                localized: "content.delivery.reason.private_media_admission_expired",
+            reason: AppLanguageSettings.localized(
+                 "content.delivery.reason.private_media_admission_expired",
                 defaultValue: "Media transfer timed out before it could start",
                 comment: "Failure reason when private-media admission expires before fragment scheduling"
             )
@@ -1597,8 +1597,8 @@ final class BLEService: NSObject {
             )
             TransferProgressManager.shared.rejectBeforeStart(
                 id: transferId,
-                reason: String(
-                    localized: "content.delivery.reason.private_media_admission_full",
+                reason: AppLanguageSettings.localized(
+                     "content.delivery.reason.private_media_admission_full",
                     defaultValue: "Too many media transfers are waiting; try again shortly",
                     comment: "Failure reason when too many private-media transfers are awaiting admission"
                 )
@@ -1633,8 +1633,8 @@ final class BLEService: NSObject {
                 )
                 TransferProgressManager.shared.rejectBeforeStart(
                     id: transferId,
-                    reason: String(
-                        localized: "content.delivery.reason.private_media_capability_unresolved",
+                    reason: AppLanguageSettings.localized(
+                         "content.delivery.reason.private_media_capability_unresolved",
                         defaultValue: "Could not confirm encrypted media support",
                         comment: "Failure reason when private-media capability negotiation did not resolve"
                     )
@@ -1650,8 +1650,8 @@ final class BLEService: NSObject {
                     )
                     TransferProgressManager.shared.rejectBeforeStart(
                         id: transferId,
-                        reason: String(
-                            localized: "content.delivery.reason.legacy_media_consent_required",
+                        reason: AppLanguageSettings.localized(
+                             "content.delivery.reason.legacy_media_consent_required",
                             defaultValue: "Confirmation required before sending without end-to-end encryption",
                             comment: "Failure reason when a legacy private-media send lacks per-send consent"
                         )
@@ -1678,8 +1678,8 @@ final class BLEService: NSObject {
                 )
                 TransferProgressManager.shared.rejectBeforeStart(
                     id: transferId,
-                    reason: String(
-                        localized: "content.delivery.reason.private_media_downgrade_blocked",
+                    reason: AppLanguageSettings.localized(
+                         "content.delivery.reason.private_media_downgrade_blocked",
                         defaultValue: "Encrypted media required; ask this contact to upgrade",
                         comment: "Failure reason when a peer that previously supported encrypted media appears to downgrade"
                     )
@@ -1697,8 +1697,8 @@ final class BLEService: NSObject {
                 )
                 TransferProgressManager.shared.rejectBeforeStart(
                     id: transferId,
-                    reason: String(
-                        localized: "content.delivery.reason.private_media_capability_unresolved",
+                    reason: AppLanguageSettings.localized(
+                         "content.delivery.reason.private_media_capability_unresolved",
                         defaultValue: "Could not confirm encrypted media support",
                         comment: "Failure reason when private-media capability negotiation did not resolve"
                     )
@@ -1710,7 +1710,7 @@ final class BLEService: NSObject {
                 SecureLogger.error("❌ Failed to encode file packet for private send", category: .session)
                 TransferProgressManager.shared.rejectBeforeStart(
                     id: transferId,
-                    reason: String(localized: "content.delivery.reason.media_encoding_failed", defaultValue: "Failed to prepare media", comment: "Failure reason when private media cannot be encoded")
+                    reason: AppLanguageSettings.localized("content.delivery.reason.media_encoding_failed", defaultValue: "Failed to prepare media", comment: "Failure reason when private media cannot be encoded")
                 )
                 self.privateMediaTransferAdmissions.finish(transferId)
                 return
@@ -1722,8 +1722,8 @@ final class BLEService: NSObject {
                     // bit-8-only replacement session could later flush it.
                     TransferProgressManager.shared.rejectBeforeStart(
                         id: transferId,
-                        reason: String(
-                            localized: "content.delivery.reason.private_media_capability_unresolved",
+                        reason: AppLanguageSettings.localized(
+                             "content.delivery.reason.private_media_capability_unresolved",
                             defaultValue: "Could not confirm encrypted media support",
                             comment: "Failure reason when private-media capability negotiation did not resolve"
                         )
@@ -1782,7 +1782,7 @@ final class BLEService: NSObject {
                 SecureLogger.error("❌ Failed to encrypt private file for \(targetID.id.prefix(8))…: \(error)", category: .security)
                 TransferProgressManager.shared.rejectBeforeStart(
                     id: transferId,
-                    reason: String(localized: "content.delivery.reason.encryption_failed", comment: "Failure reason shown when a message could not be encrypted for the peer")
+                    reason: AppLanguageSettings.localized("content.delivery.reason.encryption_failed", comment: "Failure reason shown when a message could not be encrypted for the peer")
                 )
                 self.privateMediaTransferAdmissions.finish(transferId)
             }
@@ -1806,7 +1806,7 @@ final class BLEService: NSObject {
             SecureLogger.error("❌ Failed to encode legacy private file transfer", category: .session)
             TransferProgressManager.shared.rejectBeforeStart(
                 id: transferId,
-                reason: String(localized: "content.delivery.reason.media_encoding_failed", defaultValue: "Failed to prepare media", comment: "Failure reason when private media cannot be encoded")
+                reason: AppLanguageSettings.localized("content.delivery.reason.media_encoding_failed", defaultValue: "Failed to prepare media", comment: "Failure reason when private media cannot be encoded")
             )
             privateMediaTransferAdmissions.finish(transferId)
             return
@@ -1826,7 +1826,7 @@ final class BLEService: NSObject {
             SecureLogger.error("❌ Failed to sign legacy private file transfer", category: .security)
             TransferProgressManager.shared.rejectBeforeStart(
                 id: transferId,
-                reason: String(localized: "content.delivery.reason.media_signing_failed", defaultValue: "Failed to authenticate media", comment: "Failure reason when a legacy private-media packet cannot be signed")
+                reason: AppLanguageSettings.localized("content.delivery.reason.media_signing_failed", defaultValue: "Failed to authenticate media", comment: "Failure reason when a legacy private-media packet cannot be signed")
             )
             privateMediaTransferAdmissions.finish(transferId)
             return
@@ -2037,8 +2037,8 @@ final class BLEService: NSObject {
                 )
                 TransferProgressManager.shared.rejectBeforeStart(
                     id: transferId,
-                    reason: String(
-                        localized: "content.delivery.reason.private_media_too_many_fragments",
+                    reason: AppLanguageSettings.localized(
+                         "content.delivery.reason.private_media_too_many_fragments",
                         defaultValue: "File is too large for this contact's client (more than 256 mesh fragments)",
                         comment: "Failure reason when private media exceeds the Android-compatible fragment limit"
                     )
@@ -5691,7 +5691,7 @@ extension BLEService {
 
                 // Notify delegate of failure
                 notifyUI { [weak self] in
-                    self?.deliverTransportEvent(.messageDeliveryStatusUpdated(messageID: message.messageID, status: .failed(reason: String(localized: "content.delivery.reason.encryption_failed", comment: "Failure reason shown when a message could not be encrypted for the peer"))))
+                    self?.deliverTransportEvent(.messageDeliveryStatusUpdated(messageID: message.messageID, status: .failed(reason: AppLanguageSettings.localized("content.delivery.reason.encryption_failed", comment: "Failure reason shown when a message could not be encrypted for the peer"))))
                 }
             }
         }
@@ -7257,8 +7257,8 @@ extension BLEService {
                     if let transferId = pending.transferId {
                         TransferProgressManager.shared.rejectBeforeStart(
                             id: transferId,
-                            reason: String(
-                                localized: "content.delivery.reason.private_media_capability_unresolved",
+                            reason: AppLanguageSettings.localized(
+                                 "content.delivery.reason.private_media_capability_unresolved",
                                 defaultValue: "Could not confirm encrypted media support",
                                 comment: "Failure reason when queued private media cannot be authenticated after handshake"
                             )
@@ -7295,8 +7295,8 @@ extension BLEService {
                 if let transferId = pending.transferId {
                     TransferProgressManager.shared.rejectBeforeStart(
                         id: transferId,
-                        reason: String(
-                            localized: "content.delivery.reason.encryption_failed",
+                        reason: AppLanguageSettings.localized(
+                             "content.delivery.reason.encryption_failed",
                             defaultValue: "Failed to encrypt media",
                             comment: "Failure reason shown when queued private media cannot be encrypted after handshake"
                         )

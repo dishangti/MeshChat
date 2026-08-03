@@ -21,7 +21,7 @@ extension ChatViewModel {
                 self.torStatusAnnounced = true
                 // Post only in geohash channels (queue if not active)
                 self.addGeohashOnlySystemMessage(
-                    String(localized: "system.tor.starting", comment: "System message when Tor is starting")
+                    AppLanguageSettings.localized("system.tor.starting", comment: "System message when Tor is starting")
                 )
             }
         }
@@ -32,7 +32,7 @@ extension ChatViewModel {
             self.torRestartPending = true
             // Post only in geohash channels (queue if not active)
             self.addGeohashOnlySystemMessage(
-                String(localized: "system.tor.restarting", comment: "System message when Tor is restarting")
+                AppLanguageSettings.localized("system.tor.restarting", comment: "System message when Tor is restarting")
             )
         }
     }
@@ -44,13 +44,13 @@ extension ChatViewModel {
             if self.torRestartPending {
                 // Post only in geohash channels (queue if not active)
                 self.addGeohashOnlySystemMessage(
-                    String(localized: "system.tor.restarted", comment: "System message when Tor has restarted")
+                    AppLanguageSettings.localized("system.tor.restarted", comment: "System message when Tor has restarted")
                 )
                 self.torRestartPending = false
             } else if TorManager.shared.torEnforced && !self.torInitialReadyAnnounced {
                 // Initial start completed
                 self.addGeohashOnlySystemMessage(
-                    String(localized: "system.tor.started", comment: "System message when Tor has started")
+                    AppLanguageSettings.localized("system.tor.started", comment: "System message when Tor has started")
                 )
                 self.torInitialReadyAnnounced = true
             }
@@ -71,8 +71,8 @@ extension ChatViewModel {
             guard !self.torStallAnnounced else { return }
             self.torStallAnnounced = true
             self.addGeohashOnlySystemMessage(
-                String(
-                    localized: "system.tor.blocked",
+                AppLanguageSettings.localized(
+                     "system.tor.blocked",
                     defaultValue: "Tor could not connect — this network may be blocking it. Mesh messaging still works; location channels and internet delivery are paused until Tor gets through.",
                     comment: "System message shown when Tor bootstrap runs out its deadline without connecting, which is what a network that blocks Tor looks like"
                 )

@@ -232,28 +232,28 @@ struct NoticesView: View {
     }
 
     enum Strings {
-        static let title = String(localized: "notices.title", defaultValue: "Notices", comment: "Title prefix of the unified notices sheet")
-        static let geoTab = String(localized: "notices.tab.geo", defaultValue: "Geo", comment: "Segmented control label for geohash-scoped notices")
-        static let meshTab = String(localized: "notices.tab.mesh", defaultValue: "Mesh", comment: "Segmented control label for mesh-local notices")
-        static let scopePicker = String(localized: "notices.accessibility.scope", defaultValue: "Notices scope", comment: "Accessibility label for the geo/mesh scope toggle")
+        static var title: String { AppLanguageSettings.localized("notices.title", defaultValue: "Notices", comment: "Title prefix of the unified notices sheet") }
+        static var geoTab: String { AppLanguageSettings.localized("notices.tab.geo", defaultValue: "Geo", comment: "Segmented control label for geohash-scoped notices") }
+        static var meshTab: String { AppLanguageSettings.localized("notices.tab.mesh", defaultValue: "Mesh", comment: "Segmented control label for mesh-local notices") }
+        static var scopePicker: String { AppLanguageSettings.localized("notices.accessibility.scope", defaultValue: "Notices scope", comment: "Accessibility label for the geo/mesh scope toggle") }
         // The pre-merge location-notes explainer, reused so its existing
         // translations carry over.
-        static let geoDescription = String(localized: "location_notes.description", comment: "Explainer for the geo tab of the notices sheet")
-        static let meshDescription = String(localized: "notices.description.mesh", defaultValue: "Pin short notices for people around you. They hop phone to phone, even offline, and disappear on their own after a few days.", comment: "Explainer for the mesh tab of the notices sheet")
-        static let emptyTitle = String(localized: "board.empty_title", defaultValue: "No Notices Yet", comment: "Title shown when the board has no posts")
-        static let emptySubtitle = String(localized: "board.empty_subtitle", defaultValue: "Pin the first notice for people around here.", comment: "Subtitle shown when the board has no posts")
-        static let urgentBadge = String(localized: "board.urgent_badge", defaultValue: "Urgent", comment: "Badge shown on urgent board posts")
-        static let urgentToggle = String(localized: "board.compose.urgent", defaultValue: "Urgent", comment: "Label for the urgent toggle in the board composer")
-        static let placeholder = String(localized: "board.compose.placeholder", defaultValue: "Post a notice…", comment: "Placeholder for the board composer text field")
-        static let send = String(localized: "board.accessibility.post", defaultValue: "Post notice", comment: "Accessibility label for the board post button")
-        static let deleteAction = String(localized: "board.action.delete", defaultValue: "Delete", comment: "Delete action for own board posts")
-        static let expiryLabel = String(localized: "board.compose.expiry", defaultValue: "Expires in", comment: "Label for the board post expiry picker")
-        static let permanentOption = String(localized: "notices.expiry.permanent", defaultValue: "Permanent", comment: "Accessibility label for the ∞ (never expires) option in the geo notes expiry picker")
-        static let closeHint = String(localized: "notices.accessibility.close", defaultValue: "Close notices", comment: "Accessibility label for the notices close button")
-        static let meshSource = String(localized: "notices.source.mesh", defaultValue: "Mesh", comment: "Source badge for notices carried by the mesh")
-        static let nostrSource = String(localized: "notices.source.nostr", defaultValue: "Net", comment: "Source badge for notices seen on internet relays")
-        static let locationUnavailable = String(localized: "content.notes.location_unavailable", comment: "Shown when the device location is unavailable for geo notices")
-        static let enableLocation = String(localized: "content.location.enable", comment: "Button enabling location for geo notices")
+        static var geoDescription: String { AppLanguageSettings.localized("location_notes.description", comment: "Explainer for the geo tab of the notices sheet") }
+        static var meshDescription: String { AppLanguageSettings.localized("notices.description.mesh", defaultValue: "Pin short notices for people around you. They hop phone to phone, even offline, and disappear on their own after a few days.", comment: "Explainer for the mesh tab of the notices sheet") }
+        static var emptyTitle: String { AppLanguageSettings.localized("board.empty_title", defaultValue: "No Notices Yet", comment: "Title shown when the board has no posts") }
+        static var emptySubtitle: String { AppLanguageSettings.localized("board.empty_subtitle", defaultValue: "Pin the first notice for people around here.", comment: "Subtitle shown when the board has no posts") }
+        static var urgentBadge: String { AppLanguageSettings.localized("board.urgent_badge", defaultValue: "Urgent", comment: "Badge shown on urgent board posts") }
+        static var urgentToggle: String { AppLanguageSettings.localized("board.compose.urgent", defaultValue: "Urgent", comment: "Label for the urgent toggle in the board composer") }
+        static var placeholder: String { AppLanguageSettings.localized("board.compose.placeholder", defaultValue: "Post a notice…", comment: "Placeholder for the board composer text field") }
+        static var send: String { AppLanguageSettings.localized("board.accessibility.post", defaultValue: "Post notice", comment: "Accessibility label for the board post button") }
+        static var deleteAction: String { AppLanguageSettings.localized("board.action.delete", defaultValue: "Delete", comment: "Delete action for own board posts") }
+        static var expiryLabel: String { AppLanguageSettings.localized("board.compose.expiry", defaultValue: "Expires in", comment: "Label for the board post expiry picker") }
+        static var permanentOption: String { AppLanguageSettings.localized("notices.expiry.permanent", defaultValue: "Permanent", comment: "Accessibility label for the ∞ (never expires) option in the geo notes expiry picker") }
+        static var closeHint: String { AppLanguageSettings.localized("notices.accessibility.close", defaultValue: "Close notices", comment: "Accessibility label for the notices close button") }
+        static var meshSource: String { AppLanguageSettings.localized("notices.source.mesh", defaultValue: "Mesh", comment: "Source badge for notices carried by the mesh") }
+        static var nostrSource: String { AppLanguageSettings.localized("notices.source.nostr", defaultValue: "Net", comment: "Source badge for notices seen on internet relays") }
+        static var locationUnavailable: String { AppLanguageSettings.localized("content.notes.location_unavailable", comment: "Shown when the device location is unavailable for geo notices") }
+        static var enableLocation: String { AppLanguageSettings.localized("content.location.enable", comment: "Button enabling location for geo notices") }
         static let locationNotesTitle: LocalizedStringKey = "app_info.location.notes.title"
         static let locationNotesDescription: LocalizedStringKey = "app_info.location.notes.description"
         static let loadingNotes: LocalizedStringKey = "location_notes.loading_notes"
@@ -265,7 +265,7 @@ struct NoticesView: View {
 
         static func expiryDaysOption(_ days: Int) -> String {
             String(
-                format: String(localized: "board.compose.expiry_days", defaultValue: "%lldd", comment: "Expiry picker option, number of days abbreviated"),
+                format: AppLanguageSettings.localized("board.compose.expiry_days", defaultValue: "%lldd", comment: "Expiry picker option, number of days abbreviated"),
                 locale: .current,
                 days
             )
@@ -275,7 +275,7 @@ struct NoticesView: View {
             let formatter = RelativeDateTimeFormatter()
             formatter.unitsStyle = .abbreviated
             return String(
-                format: String(localized: "notices.fades", defaultValue: "Fades %@", comment: "Shown on notices with an expiry; placeholder is a localized relative time like 'in 23h'"),
+                format: AppLanguageSettings.localized("notices.fades", defaultValue: "Fades %@", comment: "Shown on notices with an expiry; placeholder is a localized relative time like 'in 23h'"),
                 locale: .current,
                 formatter.localizedString(for: expiresAt, relativeTo: Date())
             )
@@ -283,7 +283,7 @@ struct NoticesView: View {
 
         static func rowAccessibilityLabel(author: String, content: String, urgent: Bool) -> String {
             let base = String(
-                format: String(localized: "board.accessibility.post_row", defaultValue: "Notice from %@: %@", comment: "Accessibility label for a board post row"),
+                format: AppLanguageSettings.localized("board.accessibility.post_row", defaultValue: "Notice from %@: %@", comment: "Accessibility label for a board post row"),
                 locale: .current,
                 author, content
             )

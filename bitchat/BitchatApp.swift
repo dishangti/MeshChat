@@ -16,6 +16,7 @@ struct BitchatApp: App {
 
     @StateObject private var runtime: AppRuntime
     @AppStorage(AppTheme.storageKey) private var appThemeRawValue = AppTheme.defaultTheme.rawValue
+    @AppStorage(AppLanguageSettings.overrideKey) private var appLanguageOverride = ""
     #if os(iOS)
     @Environment(\.scenePhase) var scenePhase
     @UIApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
@@ -24,6 +25,7 @@ struct BitchatApp: App {
     #endif
 
     init() {
+        AppLanguageSettings.migrateLegacyAppleLanguagesOverride()
         AppTheme.migratePersistedSelection()
         _runtime = StateObject(wrappedValue: AppRuntime())
         UNUserNotificationCenter.current().delegate = NotificationDelegate.shared
@@ -33,6 +35,7 @@ struct BitchatApp: App {
         WindowGroup {
             MeshChatRootView()
                 .environment(\.appTheme, AppTheme.resolve(appThemeRawValue))
+                .environment(\.locale, AppLanguageSettings.locale(for: appLanguageOverride))
                 .environmentObject(runtime.publicChatModel)
                 .environmentObject(runtime.privateInboxModel)
                 .environmentObject(runtime.privateConversationModel)

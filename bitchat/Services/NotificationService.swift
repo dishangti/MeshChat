@@ -125,19 +125,19 @@ final class NotificationService {
     /// or disclosing which geohash it came from.
     private enum Redacted {
         static var directMessageTitle: String {
-            String(localized: "notification.redacted.dm.title", defaultValue: "🔒 New DM", comment: "Lock-screen notification title for a received direct message when message previews are hidden; deliberately names neither the sender nor the content")
+            AppLanguageSettings.localized("notification.redacted.dm.title", defaultValue: "🔒 New DM", comment: "Lock-screen notification title for a received direct message when message previews are hidden; deliberately names neither the sender nor the content")
         }
         static var mentionTitle: String {
-            String(localized: "notification.redacted.mention.title", defaultValue: "🫵 You Were Mentioned", comment: "Lock-screen notification title telling someone they were mentioned when message previews are hidden; deliberately omits who mentioned them")
+            AppLanguageSettings.localized("notification.redacted.mention.title", defaultValue: "🫵 You Were Mentioned", comment: "Lock-screen notification title telling someone they were mentioned when message previews are hidden; deliberately omits who mentioned them")
         }
         static var geohashActivityTitle: String {
-            String(localized: "notification.redacted.geohash.title", defaultValue: "📍 New Activity Nearby", comment: "Lock-screen notification title for activity in a location channel when message previews are hidden; deliberately omits the geohash")
+            AppLanguageSettings.localized("notification.redacted.geohash.title", defaultValue: "📍 New Activity Nearby", comment: "Lock-screen notification title for activity in a location channel when message previews are hidden; deliberately omits the geohash")
         }
         static var body: String {
-            String(localized: "notification.redacted.body", defaultValue: "Open MeshChat to read", comment: "Lock-screen notification body shown in place of the message text when message previews are hidden")
+            AppLanguageSettings.localized("notification.redacted.body", defaultValue: "Open MeshChat to read", comment: "Lock-screen notification body shown in place of the message text when message previews are hidden")
         }
         static var securityTitle: String {
-            String(localized: "notification.redacted.security.title", defaultValue: "Verify Encryption", comment: "Privacy-preserving title for a verification notification when previews are hidden")
+            AppLanguageSettings.localized("notification.redacted.security.title", defaultValue: "Verify Encryption", comment: "Privacy-preserving title for a verification notification when previews are hidden")
         }
     }
 
@@ -145,7 +145,7 @@ final class NotificationService {
     private enum Visible {
         static func directMessageTitle(sender: String) -> String {
             String(
-                format: String(localized: "notification.dm.title", defaultValue: "🔒 DM from %@", comment: "Notification title for a visible direct-message preview; %@ is the sender name"),
+                format: AppLanguageSettings.localized("notification.dm.title", defaultValue: "🔒 DM from %@", comment: "Notification title for a visible direct-message preview; %@ is the sender name"),
                 locale: .current,
                 sender
             )
@@ -153,21 +153,21 @@ final class NotificationService {
 
         static func mentionTitle(sender: String) -> String {
             String(
-                format: String(localized: "notification.mention.title", defaultValue: "🫵 You were mentioned by %@", comment: "Notification title for a visible mention preview; %@ is the sender name"),
+                format: AppLanguageSettings.localized("notification.mention.title", defaultValue: "🫵 You were mentioned by %@", comment: "Notification title for a visible mention preview; %@ is the sender name"),
                 locale: .current,
                 sender
             )
         }
 
         static var nearbyTitle: String {
-            String(localized: "notification.nearby.title", defaultValue: "👥 MeshChat users nearby!", comment: "Time-sensitive notification title announcing nearby MeshChat users")
+            AppLanguageSettings.localized("notification.nearby.title", defaultValue: "👥 MeshChat users nearby!", comment: "Time-sensitive notification title announcing nearby MeshChat users")
         }
 
         static func nearbyBody(peerCount: Int) -> String {
             if peerCount == 1 {
-                return String(localized: "notification.nearby.body.one", defaultValue: "1 person around", comment: "Notification body when exactly one MeshChat user is nearby")
+                return AppLanguageSettings.localized("notification.nearby.body.one", defaultValue: "1 person around", comment: "Notification body when exactly one MeshChat user is nearby")
             }
-            let format = String(localized: "notification.nearby.body.other", defaultValue: "%lld people around", comment: "Notification body when multiple MeshChat users are nearby; %lld is the number of people")
+            let format = AppLanguageSettings.localized("notification.nearby.body.other", defaultValue: "%lld people around", comment: "Notification body when multiple MeshChat users are nearby; %lld is the number of people")
             return String(format: format, locale: .current, Int64(peerCount))
         }
     }
@@ -278,7 +278,7 @@ final class NotificationService {
     private func registerCategories() {
         let wave = UNNotificationAction(
             identifier: Self.waveActionID,
-            title: String(localized: "notification.action.wave", comment: "Title of the notification action button that sends a friendly wave back to a nearby person"),
+            title: AppLanguageSettings.localized("notification.action.wave", comment: "Title of the notification action button that sends a friendly wave back to a nearby person"),
             options: []
         )
         let nearby = UNNotificationCategory(

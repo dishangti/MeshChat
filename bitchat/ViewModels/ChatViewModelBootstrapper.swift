@@ -156,7 +156,7 @@ private extension ChatViewModelBootstrapper {
                     category: .session
                 )
                 viewModel.conversations.setDeliveryStatus(
-                    .failed(reason: String(localized: "content.delivery.reason.not_delivered", comment: "Failure reason shown when the router gave up delivering a message")),
+                    .failed(reason: AppLanguageSettings.localized("content.delivery.reason.not_delivered", comment: "Failure reason shown when the router gave up delivering a message")),
                     forMessageID: messageID
                 )
             }
@@ -305,7 +305,7 @@ private extension ChatViewModelBootstrapper {
                     let divider = BitchatMessage(
                         id: BitchatMessage.archivedEchoIDPrefix + "divider",
                         sender: "system",
-                        content: String(localized: "content.echoes.divider", comment: "System line shown above dimmed archived messages replayed on the mesh timeline at launch"),
+                        content: AppLanguageSettings.localized("content.echoes.divider", comment: "System line shown above dimmed archived messages replayed on the mesh timeline at launch"),
                         timestamp: firstTimestamp.addingTimeInterval(-1),
                         isRelay: false
                     )

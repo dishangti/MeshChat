@@ -28,27 +28,33 @@ struct FingerprintView: View {
         static let verifiedBadge: LocalizedStringKey = "fingerprint.badge.verified"
         static let notVerifiedBadge: LocalizedStringKey = "fingerprint.badge.not_verified"
         static let verifiedMessage: LocalizedStringKey = "fingerprint.message.verified"
-        static let localAlias = String(
-            localized: "fingerprint.local_alias.label",
+        static var localAlias: String {
+            AppLanguageSettings.localized(
+             "fingerprint.local_alias.label",
             defaultValue: "Local Nickname",
             comment: "Label for a device-local nickname field"
-        )
-        static let localAliasPlaceholder = String(
-            localized: "fingerprint.local_alias.placeholder",
+            )
+        }
+        static var localAliasPlaceholder: String {
+            AppLanguageSettings.localized(
+             "fingerprint.local_alias.placeholder",
             defaultValue: "Nickname on this device",
             comment: "Placeholder for a device-local nickname field"
-        )
-        static let localAliasHint = String(
-            localized: "fingerprint.local_alias.hint",
+            )
+        }
+        static var localAliasHint: String {
+            AppLanguageSettings.localized(
+             "fingerprint.local_alias.hint",
             defaultValue: "Saved only on this device. This person will not see it.",
             comment: "Privacy explanation under a local nickname field"
-        )
+            )
+        }
         static let localAliasSaved: LocalizedStringKey = "fingerprint.local_alias.saved"
         static let localAliasInvalid: LocalizedStringKey = "fingerprint.local_alias.invalid"
         static let save: LocalizedStringKey = "save"
         static func verifyHint(_ nickname: String) -> String {
             String(
-                format: String(localized: "fingerprint.message.verify_hint", comment: "Instruction to compare fingerprints with a named peer"),
+                format: AppLanguageSettings.localized("fingerprint.message.verify_hint", comment: "Instruction to compare fingerprints with a named peer"),
                 locale: .current,
                 nickname
             )
@@ -58,7 +64,7 @@ struct FingerprintView: View {
         static let vouchedBadge: LocalizedStringKey = "fingerprint.badge.vouched"
         static func vouchedBy(_ count: Int) -> String {
             String(
-                format: String(localized: "fingerprint.message.vouched_by", comment: "How many people the user verified have vouched for this peer"),
+                format: AppLanguageSettings.localized("fingerprint.message.vouched_by", comment: "How many people the user verified have vouched for this peer"),
                 locale: .current,
                 count
             )
@@ -410,16 +416,20 @@ struct LocalNicknameSheetView: View {
 
     private enum Strings {
         static let title: LocalizedStringKey = "fingerprint.local_alias.label"
-        static let placeholder = String(
-            localized: "fingerprint.local_alias.placeholder",
+        static var placeholder: String {
+            AppLanguageSettings.localized(
+             "fingerprint.local_alias.placeholder",
             defaultValue: "Nickname on this device",
             comment: "Placeholder for a device-local nickname field"
-        )
-        static let hint = String(
-            localized: "fingerprint.local_alias.hint",
+            )
+        }
+        static var hint: String {
+            AppLanguageSettings.localized(
+             "fingerprint.local_alias.hint",
             defaultValue: "Saved only on this device. This person will not see it.",
             comment: "Privacy explanation under a local nickname field"
-        )
+            )
+        }
         static let save: LocalizedStringKey = "save"
         static let saved: LocalizedStringKey = "fingerprint.local_alias.saved"
         static let invalid: LocalizedStringKey = "fingerprint.local_alias.invalid"

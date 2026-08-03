@@ -31,18 +31,18 @@ enum IdentityLockState: Equatable {
     var accessibilityDescription: String {
         switch self {
         case .unverified:
-            return String(
-                localized: "fingerprint.badge.not_verified",
+            return AppLanguageSettings.localized(
+                 "fingerprint.badge.not_verified",
                 comment: "Identity lock state for a person whose identity has not been verified"
             )
         case .verified:
-            return String(
-                localized: "fingerprint.badge.verified",
+            return AppLanguageSettings.localized(
+                 "fingerprint.badge.verified",
                 comment: "Identity lock state for a person whose identity has been verified"
             )
         case .identityMismatch:
-            return String(
-                localized: "identity.status.mismatch",
+            return AppLanguageSettings.localized(
+                 "identity.status.mismatch",
                 defaultValue: "Identity-key conflict recorded",
                 comment: "Permanent identity lock state shown after authenticated conflicting data was rejected for this exact key fingerprint"
             )

@@ -174,13 +174,13 @@ private extension ContentComposerView {
         .buttonStyle(.plain)
         .accessibilityLabel(
             bridgeService.nearbyOnly
-            ? String(localized: "content.accessibility.nearby_only_on", defaultValue: "Nearby only: messages stay within radio range", comment: "Accessibility label for the compose scope toggle when messages stay local")
-            : String(localized: "content.accessibility.nearby_only_off", defaultValue: "Bridged: messages also reach people across the bridge", comment: "Accessibility label for the compose scope toggle when messages cross the mesh bridge")
+            ? AppLanguageSettings.localized("content.accessibility.nearby_only_on", defaultValue: "Nearby only: messages stay within radio range", comment: "Accessibility label for the compose scope toggle when messages stay local")
+            : AppLanguageSettings.localized("content.accessibility.nearby_only_off", defaultValue: "Bridged: messages also reach people across the bridge", comment: "Accessibility label for the compose scope toggle when messages cross the mesh bridge")
         )
         .help(
             bridgeService.nearbyOnly
-            ? String(localized: "content.composer.nearby_only_on", defaultValue: "Nearby only — this message won't cross the bridge", comment: "Tooltip for the compose scope toggle when messages stay local")
-            : String(localized: "content.composer.nearby_only_off", defaultValue: "Bridged — reaches people beyond radio range in this area", comment: "Tooltip for the compose scope toggle when messages cross the mesh bridge")
+            ? AppLanguageSettings.localized("content.composer.nearby_only_on", defaultValue: "Nearby only — this message won't cross the bridge", comment: "Tooltip for the compose scope toggle when messages stay local")
+            : AppLanguageSettings.localized("content.composer.nearby_only_off", defaultValue: "Bridged — reaches people beyond radio range in this area", comment: "Tooltip for the compose scope toggle when messages cross the mesh bridge")
         )
     }
 
@@ -194,17 +194,17 @@ private extension ContentComposerView {
             let isGeoDM = privateConversationModel.selectedPeerID?.isGeoDM == true
             let target = isGeoDM ? header.displayName : "@\(header.displayName)"
             return String(
-                format: String(localized: "content.input.placeholder.private", comment: "Composer placeholder inside a private chat, naming the conversation partner"),
+                format: AppLanguageSettings.localized("content.input.placeholder.private", comment: "Composer placeholder inside a private chat, naming the conversation partner"),
                 locale: .current,
                 target
             )
         }
         switch locationChannelsModel.selectedChannel {
         case .mesh:
-            return String(localized: "content.input.placeholder.mesh", comment: "Composer placeholder for the public mesh channel")
+            return AppLanguageSettings.localized("content.input.placeholder.mesh", comment: "Composer placeholder for the public mesh channel")
         case .location(let channel):
             return String(
-                format: String(localized: "content.input.placeholder.location", comment: "Composer placeholder for a public geohash channel, naming it"),
+                format: AppLanguageSettings.localized("content.input.placeholder.location", comment: "Composer placeholder for a public geohash channel, naming it"),
                 locale: .current,
                 channel.geohash
             )
@@ -238,7 +238,7 @@ private extension ContentComposerView {
             }
             Spacer()
             Button(action: voiceRecordingVM.cancel) {
-                Label("Cancel", systemImage: "xmark.circle")
+                Label("common.cancel", systemImage: "xmark.circle")
                     .labelStyle(.iconOnly)
                     .font(.bitchatSystem(size: 18))
                     .foregroundColor(.red)
@@ -278,10 +278,10 @@ private extension ContentComposerView {
                 showImagePicker = true
             }
             .accessibilityLabel(
-                String(localized: "content.accessibility.attach_photo", comment: "Accessibility label for the photo attachment button")
+                AppLanguageSettings.localized("content.accessibility.attach_photo", comment: "Accessibility label for the photo attachment button")
             )
             .accessibilityHint(
-                String(localized: "content.accessibility.attach_photo_hint", comment: "Accessibility hint explaining the attachment button opens the photo library")
+                AppLanguageSettings.localized("content.accessibility.attach_photo_hint", comment: "Accessibility hint explaining the attachment button opens the photo library")
             )
             .accessibilityAddTraits(.isButton)
             // The long-press → camera path is unreachable for VoiceOver users;
@@ -301,7 +301,7 @@ private extension ContentComposerView {
         }
         .buttonStyle(.plain)
         .accessibilityLabel(
-            String(localized: "content.accessibility.choose_photo", comment: "Accessibility label for the macOS photo picker button")
+            AppLanguageSettings.localized("content.accessibility.choose_photo", comment: "Accessibility label for the macOS photo picker button")
         )
         #endif
     }
@@ -363,21 +363,21 @@ private extension ContentComposerView {
                     )
             )
             .accessibilityLabel(
-                String(localized: "content.accessibility.record_voice_note", comment: "Accessibility label for the voice note button")
+                AppLanguageSettings.localized("content.accessibility.record_voice_note", comment: "Accessibility label for the voice note button")
             )
             .accessibilityValue(
                 voiceRecordingVM.state.isActive
-                ? String(localized: "content.accessibility.recording", comment: "Accessibility value announced while a voice note is recording")
+                ? AppLanguageSettings.localized("content.accessibility.recording", comment: "Accessibility value announced while a voice note is recording")
                 : busyTalker.map {
                     String(
-                        format: String(localized: "content.accessibility.someone_speaking", comment: "Accessibility value on the mic button naming who is talking live in the public channel"),
+                        format: AppLanguageSettings.localized("content.accessibility.someone_speaking", comment: "Accessibility value on the mic button naming who is talking live in the public channel"),
                         locale: .current,
                         $0
                     )
                 } ?? ""
             )
             .accessibilityHint(
-                String(localized: "content.accessibility.record_voice_hint", comment: "Accessibility hint explaining double-tap toggles voice recording")
+                AppLanguageSettings.localized("content.accessibility.record_voice_hint", comment: "Accessibility hint explaining double-tap toggles voice recording")
             )
             .accessibilityAddTraits(.isButton)
             // Press-and-hold drag gestures can't be activated by VoiceOver;
@@ -402,12 +402,12 @@ private extension ContentComposerView {
         .buttonStyle(.plain)
         .disabled(!enabled)
         .accessibilityLabel(
-            String(localized: "content.accessibility.send_message", comment: "Accessibility label for the send message button")
+            AppLanguageSettings.localized("content.accessibility.send_message", comment: "Accessibility label for the send message button")
         )
         .accessibilityHint(
             enabled
-            ? String(localized: "content.accessibility.send_hint_ready", comment: "Hint prompting the user to send the message")
-            : String(localized: "content.accessibility.send_hint_empty", comment: "Hint prompting the user to enter a message")
+            ? AppLanguageSettings.localized("content.accessibility.send_hint_ready", comment: "Hint prompting the user to send the message")
+            : AppLanguageSettings.localized("content.accessibility.send_hint_empty", comment: "Hint prompting the user to enter a message")
         )
     }
 }

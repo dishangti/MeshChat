@@ -29,33 +29,33 @@ struct LocationChannelsSheet: View {
         static let teleport: LocalizedStringKey = "location_channels.action.teleport"
         static let bookmarked: LocalizedStringKey = "location_channels.bookmarked_section_title"
 
-        static let quickJoinTitle = String(localized: "location_channels.quick_join.title", defaultValue: "Quick Join", comment: "Section header in the location channels sheet for the one-tap suggestion of the region channel derived from the device region")
+        static var quickJoinTitle: String { AppLanguageSettings.localized("location_channels.quick_join.title", defaultValue: "Quick Join", comment: "Section header in the location channels sheet for the one-tap suggestion of the region channel derived from the device region") }
         static func quickJoinDescription(_ regionName: String) -> String {
             String(
-                format: String(localized: "location_channels.quick_join.description", defaultValue: "The region channel where people from %@ tend to gather — the wide cell around the main population center, not your location. It's public and well-known, so assume it's watched: Quick Join saves typing a geohash; it doesn't hide you or bypass blocks.", comment: "Caption under the quick join row; %@ is the localized country/region name. States plainly that the cell is the main population center's (not the person's location), that the channel must be assumed watched, and that quick join is discovery, not circumvention"),
+                format: AppLanguageSettings.localized("location_channels.quick_join.description", defaultValue: "The region channel where people from %@ tend to gather — the wide cell around the main population center, not your location. It's public and well-known, so assume it's watched: Quick Join saves typing a geohash; it doesn't hide you or bypass blocks.", comment: "Caption under the quick join row; %@ is the localized country/region name. States plainly that the cell is the main population center's (not the person's location), that the channel must be assumed watched, and that quick join is discovery, not circumvention"),
                 locale: .current,
                 regionName
             )
         }
         static func quickJoinLabel(_ regionName: String) -> String {
             String(
-                format: String(localized: "location_channels.quick_join.join_label", defaultValue: "Join the %@ Region Channel", comment: "Accessibility label for the quick join row; %@ is the localized country/region name"),
+                format: AppLanguageSettings.localized("location_channels.quick_join.join_label", defaultValue: "Join the %@ Region Channel", comment: "Accessibility label for the quick join row; %@ is the localized country/region name"),
                 locale: .current,
                 regionName
             )
         }
 
-        static let invalidGeohash = String(localized: "location_channels.error.invalid_geohash", comment: "Error shown when a custom geohash is invalid")
-        static let switchChannelHint = String(localized: "location_channels.accessibility.switch_hint", comment: "Accessibility hint on a channel row explaining activation switches to it")
-        static let addBookmark = String(localized: "location_channels.accessibility.add_bookmark", comment: "Accessibility action name for bookmarking a channel")
-        static let removeBookmark = String(localized: "location_channels.accessibility.remove_bookmark", comment: "Accessibility action name for removing a channel bookmark")
-        static let shareChannel = String(localized: "channel.share.action", defaultValue: "Share Channel", comment: "Context-menu / accessibility action that shares a location-channel invite")
-        static let sharePrecisionTitle = String(localized: "channel.share.precision_warning.title", defaultValue: "Share a Precise Location Channel?", comment: "Title of the confirmation before sharing a neighborhood-or-finer geohash invite")
-        static let sharePrecisionMessage = String(localized: "channel.share.precision_warning.message", defaultValue: "This channel covers a small area. An invite sent over SMS or iMessage is visible to the carrier and both handsets — it discloses interest in that place, not only that someone uses MeshChat.", comment: "Body of the confirmation before sharing a fine-precision geohash invite")
-        static let shareAnyway = String(localized: "channel.share.precision_warning.confirm", defaultValue: "Share Anyway", comment: "Confirms sharing a fine-precision location channel after the OpSec warning")
+        static var invalidGeohash: String { AppLanguageSettings.localized("location_channels.error.invalid_geohash", comment: "Error shown when a custom geohash is invalid") }
+        static var switchChannelHint: String { AppLanguageSettings.localized("location_channels.accessibility.switch_hint", comment: "Accessibility hint on a channel row explaining activation switches to it") }
+        static var addBookmark: String { AppLanguageSettings.localized("location_channels.accessibility.add_bookmark", comment: "Accessibility action name for bookmarking a channel") }
+        static var removeBookmark: String { AppLanguageSettings.localized("location_channels.accessibility.remove_bookmark", comment: "Accessibility action name for removing a channel bookmark") }
+        static var shareChannel: String { AppLanguageSettings.localized("channel.share.action", defaultValue: "Share Channel", comment: "Context-menu / accessibility action that shares a location-channel invite") }
+        static var sharePrecisionTitle: String { AppLanguageSettings.localized("channel.share.precision_warning.title", defaultValue: "Share a Precise Location Channel?", comment: "Title of the confirmation before sharing a neighborhood-or-finer geohash invite") }
+        static var sharePrecisionMessage: String { AppLanguageSettings.localized("channel.share.precision_warning.message", defaultValue: "This channel covers a small area. An invite sent over SMS or iMessage is visible to the carrier and both handsets — it discloses interest in that place, not only that someone uses MeshChat.", comment: "Body of the confirmation before sharing a fine-precision geohash invite") }
+        static var shareAnyway: String { AppLanguageSettings.localized("channel.share.precision_warning.confirm", defaultValue: "Share Anyway", comment: "Confirms sharing a fine-precision location channel after the OpSec warning") }
 
         static func meshTitle(_ count: Int) -> String {
-            let label = String(localized: "location_channels.mesh_label", comment: "Label for the mesh channel row")
+            let label = AppLanguageSettings.localized("location_channels.mesh_label", comment: "Label for the mesh channel row")
             return rowTitle(label: label, count: count)
         }
 
@@ -65,7 +65,7 @@ struct LocationChannelsSheet: View {
             let isHighPrecision = (level == .neighborhood || level == .block || level == .building)
             if isHighPrecision && count == 0 {
                 return String(
-                    format: String(localized: "location_channels.row_title_unknown", defaultValue: "%@ [? people]"),
+                    format: AppLanguageSettings.localized("location_channels.row_title_unknown", defaultValue: "%@ [? people]"),
                     locale: .current,
                     level.displayName
                 )
@@ -80,7 +80,7 @@ struct LocationChannelsSheet: View {
             let isHighPrecision = (len >= 6)
             if isHighPrecision && count == 0 {
                 return String(
-                    format: String(localized: "location_channels.row_title_unknown", defaultValue: "%@ [? people]"),
+                    format: AppLanguageSettings.localized("location_channels.row_title_unknown", defaultValue: "%@ [? people]"),
                     locale: .current,
                     "#\(geohash)"
                 )
@@ -90,7 +90,7 @@ struct LocationChannelsSheet: View {
 
         static func subtitlePrefix(geohash: String, coverage: String) -> String {
             String(
-                format: String(localized: "location_channels.subtitle_prefix", comment: "Subtitle prefix showing geohash and coverage"),
+                format: AppLanguageSettings.localized("location_channels.subtitle_prefix", comment: "Subtitle prefix showing geohash and coverage"),
                 locale: .current,
                 geohash, coverage
             )
@@ -99,7 +99,7 @@ struct LocationChannelsSheet: View {
         static func subtitle(prefix: String, name: String?) -> String {
             guard let name, !name.isEmpty else { return prefix }
             return String(
-                format: String(localized: "location_channels.subtitle_with_name", comment: "Subtitle combining prefix and resolved location name"),
+                format: AppLanguageSettings.localized("location_channels.subtitle_with_name", comment: "Subtitle combining prefix and resolved location name"),
                 locale: .current,
                 prefix, name
             )
@@ -107,7 +107,7 @@ struct LocationChannelsSheet: View {
 
         private static func rowTitle(label: String, count: Int) -> String {
             String(
-                format: String(localized: "location_channels.row_title", comment: "List row title with participant count"),
+                format: AppLanguageSettings.localized("location_channels.row_title", comment: "List row title with participant count"),
                 locale: .current,
                 label, count
             )

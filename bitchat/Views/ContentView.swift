@@ -416,7 +416,7 @@ struct ContentView: View {
                 ImagePreviewView(url: url)
             }
         }
-        .alert("Recording Error", isPresented: rootVoiceAlertBinding, actions: {
+        .alert("content.alert.recording_error.title", isPresented: rootVoiceAlertBinding, actions: {
             Button("common.ok", role: .cancel) {}
             if voiceRecordingVM.state == .permissionDenied {
                 Button("location_channels.action.open_settings") {
@@ -435,7 +435,7 @@ struct ContentView: View {
             Text(appChromeModel.bluetoothAlertMessage)
         }
         .alert(
-            String(localized: "share_import.review.title", comment: "Title for reviewing content received from the share extension"),
+            AppLanguageSettings.localized("share_import.review.title", comment: "Title for reviewing content received from the share extension"),
             isPresented: Binding(
                 get: { sharedContentImportModel.offer != nil },
                 set: { _ in }
@@ -456,8 +456,8 @@ struct ContentView: View {
                 isTextFieldFocused = true
             }
         } message: { offer in
-            let format = String(
-                localized: "share_import.review.message",
+            let format = AppLanguageSettings.localized(
+                 "share_import.review.message",
                 comment: "Explains that shared content will replace the named destination's composer and will not be sent automatically"
             )
             Text(String(format: format, offer.destination.displayName) + "\n\n" + offer.payload.preview)

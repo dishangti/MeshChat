@@ -12,17 +12,17 @@ enum ChatBluetoothAlertPolicy {
         case .poweredOff:
             ChatBluetoothAlertUpdate(
                 isPresented: true,
-                message: String(localized: "content.alert.bluetooth_required.off", comment: "Message shown when Bluetooth is turned off")
+                message: AppLanguageSettings.localized("content.alert.bluetooth_required.off", comment: "Message shown when Bluetooth is turned off")
             )
         case .unauthorized:
             ChatBluetoothAlertUpdate(
                 isPresented: true,
-                message: String(localized: "content.alert.bluetooth_required.permission", comment: "Message shown when Bluetooth permission is missing")
+                message: AppLanguageSettings.localized("content.alert.bluetooth_required.permission", comment: "Message shown when Bluetooth permission is missing")
             )
         case .unsupported:
             ChatBluetoothAlertUpdate(
                 isPresented: true,
-                message: String(localized: "content.alert.bluetooth_required.unsupported", comment: "Message shown when the device lacks Bluetooth support")
+                message: AppLanguageSettings.localized("content.alert.bluetooth_required.unsupported", comment: "Message shown when the device lacks Bluetooth support")
             )
         case .poweredOn:
             ChatBluetoothAlertUpdate(isPresented: false, message: "")

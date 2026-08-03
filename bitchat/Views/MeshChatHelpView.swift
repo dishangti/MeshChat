@@ -137,18 +137,18 @@ struct MeshChatHelpView: View {
     /// answer a usage question. Identity lock colors remain beside the
     /// verification instructions above so their security context is explicit.
     private let symbolItems = [
-        SymbolItem(id: "mesh-connected", icon: "antenna.radiowaves.left.and.right", color: nil, text: String(localized: "app_info.legend.mesh_connected")),
-        SymbolItem(id: "mesh-relayed", icon: "point.3.filled.connected.trianglepath.dotted", color: nil, text: String(localized: "app_info.legend.mesh_relayed")),
-        SymbolItem(id: "nostr", icon: "globe", color: nil, text: String(localized: "app_info.legend.nostr")),
-        SymbolItem(id: "bridged", icon: "network", color: .cyan, text: String(localized: "app_info.legend.bridged")),
-        SymbolItem(id: "offline", icon: "person", color: nil, text: String(localized: "app_info.legend.offline")),
-        SymbolItem(id: "location-nearby", icon: "mappin.and.ellipse", color: nil, text: String(localized: "app_info.legend.location_nearby")),
-        SymbolItem(id: "teleported", icon: "face.dashed", color: nil, text: String(localized: "app_info.legend.teleported")),
-        SymbolItem(id: "encryption-failed", icon: "exclamationmark.triangle", color: .orange, text: String(localized: "app_info.legend.encryption_failed")),
-        SymbolItem(id: "private-message", icon: "lock.fill", color: .orange, text: String(localized: "app_info.legend.private_message")),
-        SymbolItem(id: "favorite", icon: "star.fill", color: nil, text: String(localized: "app_info.legend.favorite")),
-        SymbolItem(id: "unread", icon: "envelope.fill", color: nil, text: String(localized: "app_info.legend.unread")),
-        SymbolItem(id: "blocked", icon: "nosign", color: nil, text: String(localized: "app_info.legend.blocked"))
+        SymbolItem(id: "mesh-connected", icon: "antenna.radiowaves.left.and.right", color: nil, text: AppLanguageSettings.localized("app_info.legend.mesh_connected")),
+        SymbolItem(id: "mesh-relayed", icon: "point.3.filled.connected.trianglepath.dotted", color: nil, text: AppLanguageSettings.localized("app_info.legend.mesh_relayed")),
+        SymbolItem(id: "nostr", icon: "globe", color: nil, text: AppLanguageSettings.localized("app_info.legend.nostr")),
+        SymbolItem(id: "bridged", icon: "network", color: .cyan, text: AppLanguageSettings.localized("app_info.legend.bridged")),
+        SymbolItem(id: "offline", icon: "person", color: nil, text: AppLanguageSettings.localized("app_info.legend.offline")),
+        SymbolItem(id: "location-nearby", icon: "mappin.and.ellipse", color: nil, text: AppLanguageSettings.localized("app_info.legend.location_nearby")),
+        SymbolItem(id: "teleported", icon: "face.dashed", color: nil, text: AppLanguageSettings.localized("app_info.legend.teleported")),
+        SymbolItem(id: "encryption-failed", icon: "exclamationmark.triangle", color: .orange, text: AppLanguageSettings.localized("app_info.legend.encryption_failed")),
+        SymbolItem(id: "private-message", icon: "lock.fill", color: .orange, text: AppLanguageSettings.localized("app_info.legend.private_message")),
+        SymbolItem(id: "favorite", icon: "star.fill", color: nil, text: AppLanguageSettings.localized("app_info.legend.favorite")),
+        SymbolItem(id: "unread", icon: "envelope.fill", color: nil, text: AppLanguageSettings.localized("app_info.legend.unread")),
+        SymbolItem(id: "blocked", icon: "nosign", color: nil, text: AppLanguageSettings.localized("app_info.legend.blocked"))
     ]
 
     private var primary: Color { palette.primary }

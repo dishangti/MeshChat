@@ -36,14 +36,14 @@ struct MeshEmptyStateView: View {
     private let refreshTimer = Timer.publish(every: 60, on: .main, in: .common).autoconnect()
 
     private enum Strings {
-        static let meshIntro = String(localized: "content.empty.mesh_intro", comment: "First line of the empty mesh timeline explaining what the mesh channel is")
-        static let switchHint = String(localized: "content.empty.switch_hint", comment: "Empty timeline hint pointing at the channel switcher and the help screen")
-        static let sightingsOne = String(localized: "content.empty.sightings_one", comment: "Empty mesh timeline stat when exactly one device came within range today")
-        static let checkNotes = String(localized: "content.empty.check_notes", comment: "Empty mesh timeline action that starts looking for notes left at this place; before tapping, no lookup runs")
+        static var meshIntro: String { AppLanguageSettings.localized("content.empty.mesh_intro", comment: "First line of the empty mesh timeline explaining what the mesh channel is") }
+        static var switchHint: String { AppLanguageSettings.localized("content.empty.switch_hint", comment: "Empty timeline hint pointing at the channel switcher and the help screen") }
+        static var sightingsOne: String { AppLanguageSettings.localized("content.empty.sightings_one", comment: "Empty mesh timeline stat when exactly one device came within range today") }
+        static var checkNotes: String { AppLanguageSettings.localized("content.empty.check_notes", comment: "Empty mesh timeline action that starts looking for notes left at this place; before tapping, no lookup runs") }
 
         static func sightingsMany(_ count: Int) -> String {
             String(
-                format: String(localized: "content.empty.sightings_many", comment: "Empty mesh timeline stat counting devices that came within range today"),
+                format: AppLanguageSettings.localized("content.empty.sightings_many", comment: "Empty mesh timeline stat counting devices that came within range today"),
                 locale: .current,
                 count
             )
@@ -51,7 +51,7 @@ struct MeshEmptyStateView: View {
 
         static func activityOne(_ geohash: String) -> String {
             String(
-                format: String(localized: "content.empty.activity_one", comment: "Empty mesh timeline hint when one person is chatting in a nearby geohash channel; placeholder is the geohash"),
+                format: AppLanguageSettings.localized("content.empty.activity_one", comment: "Empty mesh timeline hint when one person is chatting in a nearby geohash channel; placeholder is the geohash"),
                 locale: .current,
                 geohash
             )
@@ -59,7 +59,7 @@ struct MeshEmptyStateView: View {
 
         static func activityMany(_ geohash: String) -> String {
             String(
-                format: String(localized: "content.empty.activity_many", comment: "Empty mesh timeline hint when several people are chatting in a nearby geohash channel; placeholder is the geohash"),
+                format: AppLanguageSettings.localized("content.empty.activity_many", comment: "Empty mesh timeline hint when several people are chatting in a nearby geohash channel; placeholder is the geohash"),
                 locale: .current,
                 geohash
             )

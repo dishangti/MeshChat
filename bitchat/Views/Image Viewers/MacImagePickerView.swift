@@ -15,9 +15,9 @@ struct MacImagePickerView: View {
 
     private enum Strings {
         static let title: LocalizedStringKey = "mac.image_picker.title"
-        static let select = String(localized: "mac.image_picker.select", comment: "Button that opens the macOS open-panel to pick an image")
-        static let panelMessage = String(localized: "mac.image_picker.panel_message", comment: "Message shown in the macOS NSOpenPanel when picking an image")
-        static let cancel = String(localized: "mac.image_picker.cancel", comment: "Cancel button for the macOS image picker sheet")
+        static var select: String { AppLanguageSettings.localized("mac.image_picker.select", comment: "Button that opens the macOS open-panel to pick an image") }
+        static var panelMessage: String { AppLanguageSettings.localized("mac.image_picker.panel_message", comment: "Message shown in the macOS NSOpenPanel when picking an image") }
+        static var cancel: String { AppLanguageSettings.localized("mac.image_picker.cancel", comment: "Cancel button for the macOS image picker sheet") }
     }
 
     var body: some View {

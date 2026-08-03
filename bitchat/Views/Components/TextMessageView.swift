@@ -55,7 +55,7 @@ struct TextMessageView: View {
                         .foregroundColor(Color.green.opacity(0.85))
                         .padding(.trailing, 4)
                         .accessibilityLabel(
-                            String(localized: "content.accessibility.verified_sender", defaultValue: "Verified sender", comment: "Accessibility label for the seal next to a verified peer's name on a private message")
+                            AppLanguageSettings.localized("content.accessibility.verified_sender", defaultValue: "Verified sender", comment: "Accessibility label for the seal next to a verified peer's name on a private message")
                         )
                 }
                 if message.isBridged {
@@ -64,7 +64,7 @@ struct TextMessageView: View {
                         .foregroundColor(Color.cyan.opacity(0.75))
                         .padding(.trailing, 4)
                         .accessibilityLabel(
-                            String(localized: "content.accessibility.bridged_message", defaultValue: "Arrived across a mesh bridge", comment: "Accessibility label for the glyph marking a message that arrived across a mesh bridge")
+                            AppLanguageSettings.localized("content.accessibility.bridged_message", defaultValue: "Arrived across a mesh bridge", comment: "Accessibility label for the glyph marking a message that arrived across a mesh bridge")
                         )
                 }
                 Text(conversationUIModel.formatMessage(message, colorScheme: colorScheme, theme: theme))
@@ -86,7 +86,7 @@ struct TextMessageView: View {
                     }
                     .buttonStyle(.plain)
                     .accessibilityHint(
-                        String(localized: "content.accessibility.delivery_detail_hint", comment: "Accessibility hint for the delivery status glyph explaining a tap reveals details")
+                        AppLanguageSettings.localized("content.accessibility.delivery_detail_hint", comment: "Accessibility hint for the delivery status glyph explaining a tap reveals details")
                     )
                 }
             }

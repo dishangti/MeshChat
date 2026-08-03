@@ -75,8 +75,16 @@ protocol ChatTransportEventContext: AnyObject {
     func deliveryStatus(for messageID: String) -> DeliveryStatus?
 
     // MARK: Verification payloads
-    func handleVerifyChallengePayload(from peerID: PeerID, payload: Data)
-    func handleVerifyResponsePayload(from peerID: PeerID, payload: Data)
+    func handleVerifyChallengePayload(
+        from peerID: PeerID,
+        payload: Data,
+        sessionGeneration: UUID?
+    )
+    func handleVerifyResponsePayload(
+        from peerID: PeerID,
+        payload: Data,
+        sessionGeneration: UUID?
+    )
 
     // MARK: Live voice (push-to-talk)
     func handleVoiceFramePayload(from peerID: PeerID, payload: Data, timestamp: Date)
@@ -144,12 +152,28 @@ extension ChatViewModel: ChatTransportEventContext {
         deliveryCoordinator.deliveryStatus(for: messageID)
     }
 
-    func handleVerifyChallengePayload(from peerID: PeerID, payload: Data) {
-        verificationCoordinator.handleVerifyChallengePayload(from: peerID, payload: payload)
+    func handleVerifyChallengePayload(
+        from peerID: PeerID,
+        payload: Data,
+        sessionGeneration: UUID?
+    ) {
+        verificationCoordinator.handleVerifyChallengePayload(
+            from: peerID,
+            payload: payload,
+            sessionGeneration: sessionGeneration
+        )
     }
 
-    func handleVerifyResponsePayload(from peerID: PeerID, payload: Data) {
-        verificationCoordinator.handleVerifyResponsePayload(from: peerID, payload: payload)
+    func handleVerifyResponsePayload(
+        from peerID: PeerID,
+        payload: Data,
+        sessionGeneration: UUID?
+    ) {
+        verificationCoordinator.handleVerifyResponsePayload(
+            from: peerID,
+            payload: payload,
+            sessionGeneration: sessionGeneration
+        )
     }
 
     // `handleVoiceFramePayload(from:payload:timestamp:)` lives in
@@ -232,7 +256,8 @@ final class ChatTransportEventCoordinator {
         from peerID: PeerID,
         type: NoisePayloadType,
         payload: Data,
-        timestamp: Date
+        timestamp: Date,
+        sessionGeneration: UUID? = nil
     ) {
         runOnMain { [self] context in
             handleNoisePayload(
@@ -240,6 +265,7 @@ final class ChatTransportEventCoordinator {
                 type: type,
                 payload: payload,
                 timestamp: timestamp,
+                sessionGeneration: sessionGeneration,
                 in: context
             )
         }
@@ -250,13 +276,15 @@ final class ChatTransportEventCoordinator {
         from peerID: PeerID,
         type: NoisePayloadType,
         payload: Data,
-        timestamp: Date
+        timestamp: Date,
+        sessionGeneration: UUID? = nil
     ) {
         handleNoisePayload(
             from: peerID,
             type: type,
             payload: payload,
             timestamp: timestamp,
+            sessionGeneration: sessionGeneration,
             in: context
         )
     }
@@ -432,6 +460,7 @@ private extension ChatTransportEventCoordinator {
         type: NoisePayloadType,
         payload: Data,
         timestamp: Date,
+        sessionGeneration: UUID?,
         in context: any ChatTransportEventContext
     ) {
         guard !shouldDropNoisePayload(type, fromBlockedPeer: peerID, in: context) else {
@@ -496,10 +525,18 @@ private extension ChatTransportEventCoordinator {
             }
 
         case .verifyChallenge:
-            context.handleVerifyChallengePayload(from: peerID, payload: payload)
+            context.handleVerifyChallengePayload(
+                from: peerID,
+                payload: payload,
+                sessionGeneration: sessionGeneration
+            )
 
         case .verifyResponse:
-            context.handleVerifyResponsePayload(from: peerID, payload: payload)
+            context.handleVerifyResponsePayload(
+                from: peerID,
+                payload: payload,
+                sessionGeneration: sessionGeneration
+            )
 
         case .groupInvite:
             context.handleGroupInvitePayload(from: peerID, payload: payload)

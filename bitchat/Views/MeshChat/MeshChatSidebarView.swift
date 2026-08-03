@@ -927,6 +927,10 @@ private extension MeshChatSidebarView {
                     if hasUnread {
                         unreadBadge
                     }
+                    Image(systemName: peer.identityLockState.icon)
+                        .font(.bitchatSystem(size: 11))
+                        .foregroundColor(peer.identityLockState.color)
+                        .accessibilityHidden(true)
                     if peer.isBlocked {
                         Image(systemName: "nosign")
                             .font(.bitchatSystem(size: 11))
@@ -1121,20 +1125,10 @@ private extension MeshChatSidebarView {
                 unreadBadge
             }
 
-            if !peer.isConnected && peer.showsVerifiedBadgeWhenOffline {
-                // Verification is persisted independently of the current
-                // transport session, so it remains the primary trust signal
-                // while a peer is relayed, Nostr-only, or offline.
-                Image(systemName: "checkmark.seal.fill")
-                    .font(.bitchatSystem(size: 11))
-                    .foregroundColor(.green)
-                    .accessibilityHidden(true)
-            } else if let encryptionIcon = peer.encryptionStatus.icon {
-                Image(systemName: encryptionIcon)
-                    .font(.bitchatSystem(size: 11))
-                    .foregroundColor(encryptionColor(for: peer.encryptionStatus))
-                    .accessibilityHidden(true)
-            }
+            Image(systemName: peer.identityLockState.icon)
+                .font(.bitchatSystem(size: 11))
+                .foregroundColor(peer.identityLockState.color)
+                .accessibilityHidden(true)
 
             if peer.showsVouchedBadge {
                 Image(systemName: "checkmark.seal")
@@ -1200,15 +1194,6 @@ private extension MeshChatSidebarView {
         if peer.isReachable { return palette.accentBlue }
         if peer.isMutualFavorite { return .purple }
         return palette.secondary
-    }
-
-    func encryptionColor(for status: EncryptionStatus) -> Color {
-        switch status {
-        case .noiseVerified:
-            return .green
-        case .none, .noiseHandshaking, .noiseSecured, .noHandshake:
-            return .red
-        }
     }
 
     func selectionBackground(isSelected: Bool) -> some View {
@@ -1525,11 +1510,7 @@ private extension MeshChatSidebarView {
 
     func peerAccessibilityLabel(_ peer: MeshPeerRow, hasUnread: Bool) -> String {
         var parts = [peer.displayName, availabilityText(for: peer)]
-        if !peer.isConnected && peer.showsVerifiedBadgeWhenOffline {
-            parts.append(EncryptionStatus.noiseVerified.accessibilityDescription)
-        } else {
-            parts.append(peer.encryptionStatus.accessibilityDescription)
-        }
+        parts.append(peer.identityLockState.accessibilityDescription)
         if peer.showsVouchedBadge { parts.append(Strings.vouched) }
         if peer.isFavorite { parts.append(Strings.favorite) }
         if hasUnread { parts.append(Strings.unread) }
@@ -1542,6 +1523,7 @@ private extension MeshChatSidebarView {
         hasUnread: Bool
     ) -> String {
         var parts = [peer.displayName, Strings.offline, Strings.recent]
+        parts.append(peer.identityLockState.accessibilityDescription)
         if hasUnread { parts.append(Strings.unread) }
         if peer.isBlocked { parts.append(Strings.blocked) }
         return parts.joined(separator: ", ")

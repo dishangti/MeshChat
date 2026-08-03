@@ -448,7 +448,9 @@ private extension ChatMessageFormatter {
               let fingerprint = viewModel.getFingerprint(for: peerID) else {
             return false
         }
-        return viewModel.peerIdentityStore.isVerified(fingerprint)
+        return viewModel.peerIdentityStore.identityLockState(
+            fingerprint: fingerprint
+        ) == .verified
     }
 
     func appendVerifiedSeal(

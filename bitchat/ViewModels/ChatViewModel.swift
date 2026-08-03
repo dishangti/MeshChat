@@ -1241,7 +1241,7 @@ final class ChatViewModel: ObservableObject, BitchatDelegate, SynchronousMessage
             identityManager: identityManager,
             transport: meshService,
             conversations: conversations,
-            peerIdentityStore: peerIdentityStore ?? PeerIdentityStore(),
+            peerIdentityStore: peerIdentityStore ?? PeerIdentityStore(keychain: keychain),
             locationPresenceStore: locationPresenceStore ?? LocationPresenceStore(),
             locationManager: locationManager,
             outboxStore: MessageOutboxStore(keychain: keychain),
@@ -1274,7 +1274,7 @@ final class ChatViewModel: ObservableObject, BitchatDelegate, SynchronousMessage
         }
     ) {
         let conversations = conversations ?? ConversationStore()
-        let peerIdentityStore = peerIdentityStore ?? PeerIdentityStore()
+        let peerIdentityStore = peerIdentityStore ?? PeerIdentityStore(keychain: keychain)
         let locationPresenceStore = locationPresenceStore ?? LocationPresenceStore()
         let services = ChatViewModelServiceBundle(
             keychain: keychain,
@@ -2240,12 +2240,19 @@ final class ChatViewModel: ObservableObject, BitchatDelegate, SynchronousMessage
                 messageID: messageID
             )
 
-        case let .noisePayloadReceived(peerID, type, payload, timestamp):
+        case let .noisePayloadReceived(
+            peerID,
+            type,
+            payload,
+            timestamp,
+            sessionGeneration
+        ):
             transportEventCoordinator.didReceiveNoisePayloadSynchronously(
                 from: peerID,
                 type: type,
                 payload: payload,
-                timestamp: timestamp
+                timestamp: timestamp,
+                sessionGeneration: sessionGeneration
             )
 
         case let .groupMessageReceived(payload, timestamp):
@@ -2283,6 +2290,17 @@ final class ChatViewModel: ObservableObject, BitchatDelegate, SynchronousMessage
 
         case .peerSnapshotsUpdated:
             break
+
+        case let .peerIdentityConflictDetected(
+            fingerprint,
+            reason,
+            detectedAt
+        ):
+            peerIdentityStore.recordIdentityConflict(
+                forFingerprint: fingerprint,
+                reason: reason,
+                detectedAt: detectedAt
+            )
 
         case let .messageDeliveryStatusUpdated(messageID, status):
             deliveryCoordinator.didUpdateMessageDeliveryStatus(

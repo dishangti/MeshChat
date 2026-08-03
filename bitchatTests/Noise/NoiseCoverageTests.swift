@@ -94,6 +94,94 @@ struct NoiseCoverageTests {
         }
     }
 
+    @Test("Cipher state retains replay history while the extracted nonce advances")
+    func cipherStateRetainsReplayHistoryAcrossAdvances() throws {
+        let key = SymmetricKey(size: .bits256)
+
+        for shift in [1, 7, 8, 9, 63, 64, 127] {
+            let receiver = NoiseCipherState(key: key, useExtractedNonce: true)
+            let original = try makeExtractedNoncePayload(
+                key: key,
+                nonce: 0,
+                plaintext: Data("original".utf8)
+            )
+            let advanced = try makeExtractedNoncePayload(
+                key: key,
+                nonce: UInt64(shift),
+                plaintext: Data("advanced-\(shift)".utf8)
+            )
+
+            #expect(try receiver.decrypt(ciphertext: original) == Data("original".utf8))
+            #expect(
+                try receiver.decrypt(ciphertext: advanced)
+                    == Data("advanced-\(shift)".utf8)
+            )
+            #expect(throws: NoiseError.replayDetected) {
+                try receiver.decrypt(ciphertext: original)
+            }
+        }
+    }
+
+    @Test("Cipher state rejects a replay of an out-of-order nonce after later advances")
+    func cipherStateRetainsOutOfOrderReplayHistory() throws {
+        let key = SymmetricKey(size: .bits256)
+        let receiver = NoiseCipherState(key: key, useExtractedNonce: true)
+
+        func payload(_ nonce: UInt64) throws -> Data {
+            try makeExtractedNoncePayload(
+                key: key,
+                nonce: nonce,
+                plaintext: Data("nonce-\(nonce)".utf8)
+            )
+        }
+
+        #expect(try receiver.decrypt(ciphertext: payload(20)) == Data("nonce-20".utf8))
+        let outOfOrder = try payload(12)
+        #expect(try receiver.decrypt(ciphertext: outOfOrder) == Data("nonce-12".utf8))
+        #expect(try receiver.decrypt(ciphertext: payload(21)) == Data("nonce-21".utf8))
+        #expect(try receiver.decrypt(ciphertext: payload(29)) == Data("nonce-29".utf8))
+        #expect(throws: NoiseError.replayDetected) {
+            try receiver.decrypt(ciphertext: outOfOrder)
+        }
+    }
+
+    @Test("Cipher state enforces the exact extracted nonce window boundary")
+    func cipherStateEnforcesReplayWindowBoundary() throws {
+        let key = SymmetricKey(size: .bits256)
+        let receiver = NoiseCipherState(key: key, useExtractedNonce: true)
+        let nonceZero = try makeExtractedNoncePayload(
+            key: key,
+            nonce: 0,
+            plaintext: Data("nonce-0".utf8)
+        )
+
+        #expect(try receiver.decrypt(ciphertext: nonceZero) == Data("nonce-0".utf8))
+        #expect(
+            try receiver.decrypt(
+                ciphertext: makeExtractedNoncePayload(
+                    key: key,
+                    nonce: 1_023,
+                    plaintext: Data("nonce-1023".utf8)
+                )
+            ) == Data("nonce-1023".utf8)
+        )
+        #expect(throws: NoiseError.replayDetected) {
+            try receiver.decrypt(ciphertext: nonceZero)
+        }
+        #expect(
+            try receiver.decrypt(
+                ciphertext: makeExtractedNoncePayload(
+                    key: key,
+                    nonce: 1_024,
+                    plaintext: Data("nonce-1024".utf8)
+                )
+            ) == Data("nonce-1024".utf8)
+        )
+        #expect(throws: NoiseError.replayDetected) {
+            try receiver.decrypt(ciphertext: nonceZero)
+        }
+    }
+
     @Test("Cipher state handles large nonce jumps and associated-data mismatches")
     func cipherStateHandlesLargeJumpsAndAADMismatch() throws {
         let key = SymmetricKey(size: .bits256)

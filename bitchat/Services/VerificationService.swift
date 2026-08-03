@@ -40,7 +40,6 @@ final class VerificationService {
         private static let signatureByteCount = 64
         private static let nonceByteCount = 16
         private static let maximumCanonicalFieldByteCount = 255
-        fileprivate static let maximumFutureClockSkew: TimeInterval = 60
 
         /// Canonical bytes used for signature (deterministic ordering)
         func canonicalBytes() -> Data {
@@ -270,8 +269,11 @@ final class VerificationService {
         let now = Date().timeIntervalSince1970
         let age = now - Double(qr.ts)
         let boundedMaxAge = min(maxAge, TransportConfig.verificationQRMaxAgeSeconds)
-        let futureClockSkew = min(boundedMaxAge, VerificationQR.maximumFutureClockSkew)
-        guard age.isFinite, age <= boundedMaxAge, age >= -futureClockSkew else { return nil }
+        // Bitchat v1 signs the timestamp but does not transmit a clock-offset
+        // negotiation. Accept symmetric skew within the same bounded QR
+        // lifetime so two honest devices remain interoperable without
+        // restoring the original implementation's unbounded future dates.
+        guard age.isFinite, abs(age) <= boundedMaxAge else { return nil }
         // Verify signature using embedded ed25519 signKey
         guard let sig = Data(hexString: qr.sigHex), let signKey = Data(hexString: qr.signKeyHex) else { return nil }
         guard let transport = transport else { return nil }

@@ -798,9 +798,13 @@ struct VerificationSheetView: View {
     private func failureContent(_ failure: FriendVerificationFailure) -> some View {
         VStack(spacing: 18) {
             statusContent(
-                icon: "exclamationmark.triangle.fill",
+                icon: isIdentityMismatch(failure)
+                    ? "lock.fill"
+                    : "exclamationmark.triangle.fill",
                 title: failureMessage(failure),
-                color: .orange,
+                color: isIdentityMismatch(failure)
+                    ? IdentityLockState.identityMismatch.color
+                    : .orange,
                 showsProgress: false
             )
             Button(Strings.tryAgain) { resetAndScan() }
@@ -930,6 +934,17 @@ struct VerificationSheetView: View {
             return String(localized: "verification.scan.status.persistence_failed")
         case .timedOut:
             return String(localized: "verification.scan.status.timed_out")
+        }
+    }
+
+    private func isIdentityMismatch(
+        _ failure: FriendVerificationFailure
+    ) -> Bool {
+        switch failure {
+        case .signingKeyMismatch, .activeSessionMismatch:
+            return true
+        default:
+            return false
         }
     }
 }

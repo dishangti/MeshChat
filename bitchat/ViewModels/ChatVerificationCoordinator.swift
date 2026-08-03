@@ -52,9 +52,12 @@ protocol ChatVerificationContext: AnyObject {
     func setStoredVerified(_ fingerprint: String, verified: Bool)
     func isVerifiedFingerprint(_ fingerprint: String) -> Bool
     func isBlockedFingerprint(_ fingerprint: String) -> Bool
-    /// The strongest persisted Ed25519 key binding known for this Noise
-    /// fingerprint. A scanned QR may not replace it.
-    func pinnedSigningPublicKey(for fingerprint: String) -> Data?
+    /// Ed25519 key previously bound to this full fingerprint inside Noise.
+    func authenticatedSigningPublicKey(for fingerprint: String) -> Data?
+    func recordIdentityConflict(
+        forFingerprint fingerprint: String,
+        reason: PeerIdentityConflictReason
+    )
     func saveIdentityState()
     /// After a fingerprint becomes verified, run a transitive-vouch pass over
     /// currently connected peers (so verifying a peer you're already connected
@@ -95,6 +98,11 @@ protocol ChatVerificationContext: AnyObject {
     )
     /// Resolves the peer's Noise static key from the active Noise session, if any.
     func noiseSessionPublicKeyData(for peerID: PeerID) -> Data?
+    /// Atomically identifies the active verification transport generation and
+    /// its complete remote Noise static key.
+    func verificationSessionBinding(
+        for peerID: PeerID
+    ) -> MeshVerificationSessionBinding?
     /// Our own Noise static public key.
     func noiseStaticPublicKeyData() -> Data
     func hasEstablishedNoiseSession(with peerID: PeerID) -> Bool
@@ -104,8 +112,18 @@ protocol ChatVerificationContext: AnyObject {
     /// session and still pending an ack. Both ephemeral and stable aliases
     /// are supplied because either can own the outbox entry.
     func retrySecurePrivateMessagesAfterAuthentication(for peerIDAliases: [PeerID])
-    func sendVerifyChallenge(to peerID: PeerID, noiseKeyHex: String, nonceA: Data)
-    func sendVerifyResponse(to peerID: PeerID, noiseKeyHex: String, nonceA: Data)
+    func sendVerifyChallenge(
+        to peerID: PeerID,
+        noiseKeyHex: String,
+        nonceA: Data,
+        sessionGeneration: UUID
+    )
+    func sendVerifyResponse(
+        to peerID: PeerID,
+        noiseKeyHex: String,
+        nonceA: Data,
+        sessionGeneration: UUID
+    )
 
     // MARK: Notifications (shared with `ChatNostrContext`)
     /// Posts a generic local user notification.
@@ -140,9 +158,18 @@ extension ChatViewModel: ChatVerificationContext {
         identityManager.isBlocked(fingerprint: fingerprint)
     }
 
-    func pinnedSigningPublicKey(for fingerprint: String) -> Data? {
+    func authenticatedSigningPublicKey(for fingerprint: String) -> Data? {
         identityManager.authenticatedSigningPublicKey(forFingerprint: fingerprint)
-            ?? identityManager.signingPublicKey(forFingerprint: fingerprint)
+    }
+
+    func recordIdentityConflict(
+        forFingerprint fingerprint: String,
+        reason: PeerIdentityConflictReason
+    ) {
+        peerIdentityStore.recordIdentityConflict(
+            forFingerprint: fingerprint,
+            reason: reason
+        )
     }
 
     func vouchToConnectedVerifiedPeers() {
@@ -185,6 +212,12 @@ extension ChatViewModel: ChatVerificationContext {
         meshService.noiseStaticPublicKeyData()
     }
 
+    func verificationSessionBinding(
+        for peerID: PeerID
+    ) -> MeshVerificationSessionBinding? {
+        verifyTransport?.verificationSessionBinding(for: peerID)
+    }
+
     func privateMediaPeerDidAuthenticate(_ peerID: PeerID) {
         mediaTransferCoordinator.peerDidAuthenticate(peerID.toShort())
     }
@@ -196,12 +229,32 @@ extension ChatViewModel: ChatVerificationContext {
     /// QR verification rides the mesh's Noise sessions only.
     private var verifyTransport: MeshVerifying? { meshService as? MeshVerifying }
 
-    func sendVerifyChallenge(to peerID: PeerID, noiseKeyHex: String, nonceA: Data) {
-        verifyTransport?.sendVerifyChallenge(to: peerID, noiseKeyHex: noiseKeyHex, nonceA: nonceA)
+    func sendVerifyChallenge(
+        to peerID: PeerID,
+        noiseKeyHex: String,
+        nonceA: Data,
+        sessionGeneration: UUID
+    ) {
+        verifyTransport?.sendVerifyChallenge(
+            to: peerID,
+            noiseKeyHex: noiseKeyHex,
+            nonceA: nonceA,
+            sessionGeneration: sessionGeneration
+        )
     }
 
-    func sendVerifyResponse(to peerID: PeerID, noiseKeyHex: String, nonceA: Data) {
-        verifyTransport?.sendVerifyResponse(to: peerID, noiseKeyHex: noiseKeyHex, nonceA: nonceA)
+    func sendVerifyResponse(
+        to peerID: PeerID,
+        noiseKeyHex: String,
+        nonceA: Data,
+        sessionGeneration: UUID
+    ) {
+        verifyTransport?.sendVerifyResponse(
+            to: peerID,
+            noiseKeyHex: noiseKeyHex,
+            nonceA: nonceA,
+            sessionGeneration: sessionGeneration
+        )
     }
 
     func postLocalNotification(title: String, body: String, identifier: String) {
@@ -226,6 +279,7 @@ final class ChatVerificationCoordinator {
         let nonceA: Data
         let deadline: Date
         var sent: Bool
+        var sessionGeneration: UUID?
         var completions: [(FriendVerificationCompletion) -> Void]
 
         var noiseKeyHex: String { noisePublicKey.hexEncodedString() }
@@ -371,30 +425,23 @@ final class ChatVerificationCoordinator {
                     self.context.retrySecurePrivateMessagesAfterAuthentication(for: peerIDAliases)
 
                     if var pending = self.pendingQRVerifications[peerID], pending.sent == false {
-                        guard let activeNoiseKey = self.context.noiseSessionPublicKeyData(for: peerID),
-                              activeNoiseKey == pending.noisePublicKey else {
+                        guard let binding = self.context.verificationSessionBinding(
+                            for: peerID
+                        ), binding.remoteStaticPublicKey == pending.noisePublicKey else {
                             self.completePendingVerification(
                                 for: peerID,
                                 with: .failed(peerID: peerID, reason: .activeSessionMismatch)
                             )
                             return
                         }
-                        let activeFingerprint = activeNoiseKey.sha256Fingerprint()
-                        if let pinnedSigningKey = self.context.pinnedSigningPublicKey(
-                            for: activeFingerprint
-                        ), pinnedSigningKey != pending.signingPublicKey {
-                            self.completePendingVerification(
-                                for: peerID,
-                                with: .failed(peerID: peerID, reason: .signingKeyMismatch)
-                            )
-                            return
-                        }
                         self.context.sendVerifyChallenge(
                             to: peerID,
                             noiseKeyHex: pending.noiseKeyHex,
-                            nonceA: pending.nonceA
+                            nonceA: pending.nonceA,
+                            sessionGeneration: binding.sessionGeneration
                         )
                         pending.sent = true
+                        pending.sessionGeneration = binding.sessionGeneration
                         self.pendingQRVerifications[peerID] = pending
                         SecureLogger.debug("📤 Sent deferred verify challenge to \(peerID) after handshake", category: .security)
                     }
@@ -438,11 +485,6 @@ final class ChatVerificationCoordinator {
         guard !context.isBlockedFingerprint(fingerprint) else {
             return .failed(.blocked)
         }
-        if let pinnedSigningKey = context.pinnedSigningPublicKey(for: fingerprint),
-           pinnedSigningKey != signingPublicKey {
-            return .failed(.signingKeyMismatch)
-        }
-
         guard let peer = context.unifiedPeers.first(where: {
             $0.noisePublicKey == noisePublicKey
         }) else {
@@ -456,7 +498,12 @@ final class ChatVerificationCoordinator {
         if var pending = pendingQRVerifications[peerID] {
             guard pending.noisePublicKey == noisePublicKey,
                   pending.signingPublicKey == signingPublicKey else {
-                return .failed(.signingKeyMismatch)
+                let noiseKeyChanged = pending.noisePublicKey != noisePublicKey
+                return .failed(
+                    noiseKeyChanged
+                        ? .activeSessionMismatch
+                        : .signingKeyMismatch
+                )
             }
             pending.completions.append(completion)
             pendingQRVerifications[peerID] = pending
@@ -466,10 +513,10 @@ final class ChatVerificationCoordinator {
             )
         }
 
-        if context.hasEstablishedNoiseSession(with: peerID) {
-            guard context.noiseSessionPublicKeyData(for: peerID) == noisePublicKey else {
-                return .failed(.activeSessionMismatch)
-            }
+        let activeBinding = context.verificationSessionBinding(for: peerID)
+        if let activeBinding,
+           activeBinding.remoteStaticPublicKey != noisePublicKey {
+            return .failed(.activeSessionMismatch)
         }
 
         var nonce = Data(count: 16)
@@ -487,18 +534,21 @@ final class ChatVerificationCoordinator {
             nonceA: nonce,
             deadline: now().addingTimeInterval(verificationTimeout),
             sent: false,
+            sessionGeneration: nil,
             completions: [completion]
         )
         pendingQRVerifications[peerID] = pending
         scheduleTimeout(for: peerID)
 
-        if context.hasEstablishedNoiseSession(with: peerID) {
+        if let activeBinding {
             context.sendVerifyChallenge(
                 to: peerID,
                 noiseKeyHex: pending.noiseKeyHex,
-                nonceA: nonce
+                nonceA: nonce,
+                sessionGeneration: activeBinding.sessionGeneration
             )
             pending.sent = true
+            pending.sessionGeneration = activeBinding.sessionGeneration
             pendingQRVerifications[peerID] = pending
         } else {
             context.triggerHandshake(with: peerID)
@@ -544,7 +594,16 @@ final class ChatVerificationCoordinator {
         lastMutualToastAt.removeAll(keepingCapacity: false)
     }
 
-    func handleVerifyChallengePayload(from peerID: PeerID, payload: Data) {
+    func handleVerifyChallengePayload(
+        from peerID: PeerID,
+        payload: Data,
+        sessionGeneration: UUID?
+    ) {
+        guard let sessionGeneration,
+              context.verificationSessionBinding(for: peerID)?.sessionGeneration
+                == sessionGeneration else {
+            return
+        }
         guard let challenge = verificationService.parseVerifyChallenge(payload) else { return }
 
         let myNoiseHex = context.noiseStaticPublicKeyData()
@@ -572,11 +631,16 @@ final class ChatVerificationCoordinator {
         context.sendVerifyResponse(
             to: peerID,
             noiseKeyHex: challenge.noiseKeyHex,
-            nonceA: challenge.nonceA
+            nonceA: challenge.nonceA,
+            sessionGeneration: sessionGeneration
         )
     }
 
-    func handleVerifyResponsePayload(from peerID: PeerID, payload: Data) {
+    func handleVerifyResponsePayload(
+        from peerID: PeerID,
+        payload: Data,
+        sessionGeneration: UUID?
+    ) {
         guard let pending = pendingQRVerifications[peerID] else { return }
         guard now() <= pending.deadline else {
             completePendingVerification(
@@ -595,13 +659,14 @@ final class ChatVerificationCoordinator {
             return
         }
 
-        // The response must arrive inside the exact authenticated Noise
-        // session named by the QR. A valid QR signing key alone is not enough:
-        // without this check a relayed/stale peer-ID binding could save the
-        // wrong live device as a friend.
-        guard context.hasEstablishedNoiseSession(with: peerID),
-              let activeNoisePublicKey = context.noiseSessionPublicKeyData(for: peerID),
-              activeNoisePublicKey == pending.noisePublicKey else {
+        // The challenge and response must use the same local Noise generation.
+        // This generation is internal metadata; the Bitchat QR and payload
+        // bytes remain unchanged.
+        guard let sessionGeneration,
+              pending.sessionGeneration == sessionGeneration,
+              let binding = context.verificationSessionBinding(for: peerID),
+              binding.sessionGeneration == sessionGeneration,
+              binding.remoteStaticPublicKey == pending.noisePublicKey else {
             completePendingVerification(
                 for: peerID,
                 with: .failed(peerID: peerID, reason: .activeSessionMismatch)
@@ -609,6 +674,7 @@ final class ChatVerificationCoordinator {
             return
         }
 
+        let activeNoisePublicKey = binding.remoteStaticPublicKey
         let fingerprint = activeNoisePublicKey.sha256Fingerprint()
         guard context.getFingerprint(for: peerID).map({
             $0.caseInsensitiveCompare(fingerprint) == .orderedSame
@@ -626,15 +692,6 @@ final class ChatVerificationCoordinator {
             )
             return
         }
-        if let pinnedSigningKey = context.pinnedSigningPublicKey(for: fingerprint),
-           pinnedSigningKey != pending.signingPublicKey {
-            completePendingVerification(
-                for: peerID,
-                with: .failed(peerID: peerID, reason: .signingKeyMismatch)
-            )
-            return
-        }
-
         let isValid = verificationService.verifyResponseSignature(
             noiseKeyHex: response.noiseKeyHex,
             nonceA: response.nonceA,
@@ -645,6 +702,25 @@ final class ChatVerificationCoordinator {
             completePendingVerification(
                 for: peerID,
                 with: .failed(peerID: peerID, reason: .invalidResponse)
+            )
+            return
+        }
+
+        // The QR signature alone proves only its embedded Ed25519 key. Here,
+        // the fresh response also arrived through the exact Noise static-key
+        // session and verifies over our nonce, so a conflicting signing key
+        // is finally attributable to this complete Noise fingerprint.
+        if let pinnedSigningKey = context.authenticatedSigningPublicKey(
+            for: fingerprint
+        ),
+           pinnedSigningKey != pending.signingPublicKey {
+            context.recordIdentityConflict(
+                forFingerprint: fingerprint,
+                reason: .qrIdentityBindingMismatch
+            )
+            completePendingVerification(
+                for: peerID,
+                with: .failed(peerID: peerID, reason: .signingKeyMismatch)
             )
             return
         }

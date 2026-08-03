@@ -15,6 +15,11 @@ struct BLEPublicMessageHandlerTests {
         var peersSnapshotReads = 0
         var verifyPacketSignatureQueries: [PeerID] = []
         var signedNameQueries: [PeerID] = []
+        var authenticatedMalformedData: [(
+            packet: BitchatPacket,
+            peerID: PeerID,
+            reason: PeerIdentityConflictReason
+        )] = []
         var trackedPackets: [BitchatPacket] = []
         var selfBroadcastTakes: [BitchatPacket] = []
         var deliveries: [(peerID: PeerID, nickname: String, content: String, timestamp: Date, messageID: String?)] = []
@@ -44,6 +49,11 @@ struct BLEPublicMessageHandlerTests {
             signedSenderDisplayName: { _, peerID in
                 recorder.signedNameQueries.append(peerID)
                 return recorder.signedName
+            },
+            reportAuthenticatedMalformedData: { packet, peerID, reason in
+                recorder.authenticatedMalformedData.append(
+                    (packet, peerID, reason)
+                )
             },
             trackPacketSeen: { packet in
                 recorder.trackedPackets.append(packet)
@@ -131,6 +141,7 @@ struct BLEPublicMessageHandlerTests {
         // The sender must resolve before the packet is tracked for sync.
         #expect(recorder.trackedPackets.isEmpty)
         #expect(recorder.deliveries.isEmpty)
+        #expect(recorder.authenticatedMalformedData.isEmpty)
     }
 
     @Test
@@ -204,6 +215,7 @@ struct BLEPublicMessageHandlerTests {
         #expect(recorder.signedNameQueries == [remotePeerID])
         #expect(recorder.trackedPackets.isEmpty)
         #expect(recorder.deliveries.isEmpty)
+        #expect(recorder.authenticatedMalformedData.isEmpty)
     }
 
     @Test
@@ -236,6 +248,11 @@ struct BLEPublicMessageHandlerTests {
         // Sync tracking happens before payload decoding, matching the original order.
         #expect(recorder.trackedPackets.count == 1)
         #expect(recorder.deliveries.isEmpty)
+        #expect(recorder.authenticatedMalformedData.count == 1)
+        #expect(
+            recorder.authenticatedMalformedData.first?.reason
+                == .malformedAuthenticatedData
+        )
     }
 
     @Test
@@ -282,6 +299,7 @@ struct BLEPublicMessageHandlerTests {
         #expect(recorder.trackedPackets.isEmpty)
         #expect(recorder.selfBroadcastTakes.isEmpty)
         #expect(recorder.deliveries.isEmpty)
+        #expect(recorder.authenticatedMalformedData.isEmpty)
     }
 
     private func makePeerInfo(

@@ -163,10 +163,10 @@ struct AppInfoView: View {
             static let securityNotificationsSubtitle = String(localized: "app_info.settings.notifications.security.subtitle", defaultValue: "Encryption and verification alerts", comment: "Description of the security notification topic")
 
             static let dangerTitle = String(localized: "app_info.settings.danger.title", defaultValue: "Danger Zone", comment: "Section header for destructive actions in settings")
-            static let panicButton = String(localized: "app_info.settings.danger.panic_button", defaultValue: "Panic Wipe", comment: "Button in the settings danger zone that erases all local data after confirmation")
-            static let panicNote = String(localized: "app_info.settings.danger.panic_note", defaultValue: "Erases all messages, keys, and identity. Triple-tapping the MeshChat logo does the same, instantly.", comment: "Caption under the panic wipe button explaining what it does and the triple-tap shortcut")
-            static let panicConfirmTitle = String(localized: "app_info.settings.danger.panic_confirm_title", defaultValue: "Wipe All Data?", comment: "Title of the confirmation dialog before a panic wipe")
-            static let panicConfirmAction = String(localized: "app_info.settings.danger.panic_confirm_action", defaultValue: "Wipe Everything", comment: "Destructive confirmation button that performs the panic wipe")
+            static let panicButton = String(localized: "app_info.settings.danger.panic_button", defaultValue: "Reset Identity & Wipe Data", comment: "Button in the settings danger zone that creates new local identity keys by performing a complete local wipe")
+            static let panicNote = String(localized: "app_info.settings.danger.panic_note", defaultValue: "Creates new local Noise and signing keys by deleting all MeshChat data on this device, including chats, contacts, nicknames, verification and block records, groups, and media. Other devices keep your old messages and fingerprint; they will see the new identity as unverified. This cannot be undone. Triple-tapping the MeshChat logo performs the same wipe immediately.", comment: "Warning shown below and inside the local identity reset confirmation; explains local deletion and what remote peers retain")
+            static let panicConfirmTitle = String(localized: "app_info.settings.danger.panic_confirm_title", defaultValue: "Reset Identity and Wipe All Data?", comment: "Title of the destructive confirmation before regenerating local identity keys through a complete local wipe")
+            static let panicConfirmAction = String(localized: "app_info.settings.danger.panic_confirm_action", defaultValue: "Reset Identity and Wipe", comment: "Destructive confirmation button that regenerates local identity keys through a complete local wipe")
         }
 
         enum Features {
@@ -228,9 +228,10 @@ struct AppInfoView: View {
                 Item(id: "offline", icon: "person", color: nil, text: String(localized: "app_info.legend.offline")),
                 Item(id: "location-nearby", icon: "mappin.and.ellipse", color: nil, text: String(localized: "app_info.legend.location_nearby")),
                 Item(id: "teleported", icon: "face.dashed", color: nil, text: String(localized: "app_info.legend.teleported")),
-                Item(id: "identity-unverified", icon: "lock.fill", color: .red, text: String(localized: "app_info.legend.encrypted")),
-                Item(id: "encryption-failed", icon: "lock.slash", color: .red, text: String(localized: "app_info.legend.encryption_failed")),
-                Item(id: "identity-verified", icon: "checkmark.seal.fill", color: .green, text: String(localized: "app_info.legend.verified")),
+                Item(id: "identity-unverified", icon: "lock.fill", color: IdentityLockState.unverified.color, text: String(localized: "fingerprint.badge.not_verified")),
+                Item(id: "identity-verified", icon: "lock.fill", color: IdentityLockState.verified.color, text: String(localized: "fingerprint.badge.verified")),
+                Item(id: "identity-mismatch", icon: "lock.fill", color: IdentityLockState.identityMismatch.color, text: String(localized: "identity.status.mismatch")),
+                Item(id: "encryption-failed", icon: "exclamationmark.triangle", color: .orange, text: String(localized: "app_info.legend.encryption_failed")),
                 Item(id: "private-message", icon: "lock.fill", color: .orange, text: String(localized: "app_info.legend.private_message")),
                 Item(id: "favorite", icon: "star.fill", color: nil, text: String(localized: "app_info.legend.favorite")),
                 Item(id: "unread", icon: "envelope.fill", color: nil, text: String(localized: "app_info.legend.unread")),
@@ -611,6 +612,8 @@ struct AppInfoView: View {
                             performPanicWipe()
                         }
                         Button("common.cancel", role: .cancel) {}
+                    } message: {
+                        Text(verbatim: Strings.Settings.panicNote)
                     }
 
                     Text(Strings.Settings.panicNote)
@@ -847,8 +850,11 @@ struct AppInfoView: View {
         notificationPauseTask = nil
     }
 
-    /// Clears sheet-owned copies before the model wipe so a dismiss animation
-    /// cannot leave identity or routing metadata visible for another frame.
+    /// Identity rotation deliberately uses the complete panic transaction.
+    /// State addressed to the old Noise, signing, and Nostr keys cannot be
+    /// retained safely, and remote devices cannot be rewritten from here.
+    /// Clear sheet-owned copies first so a dismiss animation cannot leave old
+    /// identity or routing metadata visible for another frame.
     private func performPanicWipe() {
         cancelNotificationPauseTask()
         showPanicConfirmation = false

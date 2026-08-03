@@ -430,6 +430,14 @@ final class NoiseEncryptionService {
         return sessionManager.getRemoteStaticKey(for: peerID)?.rawRepresentation
     }
 
+    /// Atomically snapshots the identity and local generation of an
+    /// established interactive Noise session.
+    func establishedSessionBinding(
+        for peerID: PeerID
+    ) -> (remoteStaticPublicKey: Data, sessionGeneration: UUID)? {
+        sessionManager.establishedSessionBinding(for: peerID)
+    }
+
     // MARK: - Courier Envelopes (one-way Noise X)
 
     /// Domain separation for courier envelopes so X-pattern transcripts can
@@ -885,6 +893,35 @@ final class NoiseEncryptionService {
         }
         
         return try sessionManager.encrypt(data, for: peerID)
+    }
+
+    /// Encrypts an ordinary Noise application payload only if the caller's
+    /// local generation still names the current established session. The
+    /// generation is transport metadata and is never added to the wire bytes.
+    func encrypt(
+        _ data: Data,
+        for peerID: PeerID,
+        expectedSessionGeneration: UUID
+    ) throws -> Data {
+        guard NoiseSecurityValidator.validateMessageSize(data) else {
+            throw NoiseSecurityError.messageTooLarge
+        }
+
+        guard rateLimiter.allowMessage(from: peerID) else {
+            throw NoiseSecurityError.rateLimitExceeded
+        }
+
+        guard hasEstablishedSession(with: peerID) else {
+            // A generation-bound caller owns an existing session lease. It
+            // must not start or queue work for a replacement generation.
+            throw NoiseEncryptionError.sessionNotEstablished
+        }
+
+        return try sessionManager.encrypt(
+            data,
+            for: peerID,
+            expectedSessionGeneration: expectedSessionGeneration
+        )
     }
 
     /// Encrypts a finalized private-media packet. Ordinary Noise application

@@ -156,14 +156,60 @@ protocol SecureIdentityStateManagerProtocol {
 
     // MARK: Noise-authenticated announcement identity
     func bindAuthenticatedSigningPublicKey(_ signingPublicKey: Data, fingerprint: String)
+    @discardableResult
+    func validateAndBindAuthenticatedSigningPublicKey(
+        _ signingPublicKey: Data,
+        fingerprint: String
+    ) -> AuthenticatedSigningKeyBindingResult
     func authenticatedSigningPublicKey(forFingerprint fingerprint: String) -> Data?
+    /// Returns every full Noise fingerprint that authenticated this Ed25519
+    /// key inside a Noise session. TOFU-only announce pins are excluded.
+    func authenticatedFingerprintsBound(
+        toSigningPublicKey signingPublicKey: Data
+    ) -> Set<String>
 
     // MARK: Private-media downgrade protection
     func markPrivateMediaCapable(fingerprint: String)
     func hasObservedPrivateMediaCapability(fingerprint: String) -> Bool
 }
 
+enum AuthenticatedSigningKeyBindingResult: Equatable {
+    /// No signing key was known for this full Noise fingerprint. The key was
+    /// pinned as the first authenticated signing binding for that identity.
+    case firstBinding
+    /// The generation-bound peer state repeated the key already pinned to the
+    /// full Noise fingerprint.
+    case matchedExisting
+    /// The peer state disagreed with a prior binding and nothing was changed.
+    case mismatch
+    /// The supplied material was structurally invalid and nothing was changed.
+    case invalid
+}
+
 extension SecureIdentityStateManagerProtocol {
+    func authenticatedFingerprintsBound(
+        toSigningPublicKey signingPublicKey: Data
+    ) -> Set<String> {
+        []
+    }
+
+    @discardableResult
+    func validateAndBindAuthenticatedSigningPublicKey(
+        _ signingPublicKey: Data,
+        fingerprint: String
+    ) -> AuthenticatedSigningKeyBindingResult {
+        guard signingPublicKey.count == AuthenticatedPeerStatePacket.signingPublicKeyLength,
+              !fingerprint.isEmpty else {
+            return .invalid
+        }
+        if let existing = self.signingPublicKey(forFingerprint: fingerprint)
+            ?? authenticatedSigningPublicKey(forFingerprint: fingerprint) {
+            return existing == signingPublicKey ? .matchedExisting : .mismatch
+        }
+        bindAuthenticatedSigningPublicKey(signingPublicKey, fingerprint: fingerprint)
+        return .firstBinding
+    }
+
     @discardableResult
     func persistSocialIdentity(_ identity: SocialIdentity) -> Bool {
         guard !identity.fingerprint.isEmpty,
@@ -567,31 +613,95 @@ final class SecureIdentityStateManager: SecureIdentityStateManagerProtocol {
     // MARK: - Noise-authenticated announcement identity
 
     func bindAuthenticatedSigningPublicKey(_ signingPublicKey: Data, fingerprint: String) {
+        _ = validateAndBindAuthenticatedSigningPublicKey(
+            signingPublicKey,
+            fingerprint: fingerprint
+        )
+    }
+
+    @discardableResult
+    func validateAndBindAuthenticatedSigningPublicKey(
+        _ signingPublicKey: Data,
+        fingerprint: String
+    ) -> AuthenticatedSigningKeyBindingResult {
         guard signingPublicKey.count == AuthenticatedPeerStatePacket.signingPublicKeyLength,
-              !fingerprint.isEmpty else { return }
-        let bindAndPersist = {
+              !fingerprint.isEmpty else {
+            return .invalid
+        }
+
+        let validateAndPersist = {
             var bindings = self.cache.authenticatedSigningKeysByFingerprint ?? [:]
-            let bindingChanged = bindings[fingerprint] != signingPublicKey
+
+            // The cryptographic identity's signing key is the original TOFU
+            // pin: applyCryptographicIdentity never replaces it. Prefer it
+            // when repairing data written by older builds whose authenticated
+            // binding map allowed silent rotation.
+            let existing = self.cache.cryptographicIdentities[fingerprint]?.signingPublicKey
+                ?? bindings[fingerprint]
+            if let existing {
+                guard existing == signingPublicKey else {
+                    SecureLogger.warning(
+                        "Refusing to replace the authenticated signing key for \(fingerprint.prefix(8))…",
+                        category: .security
+                    )
+                    return AuthenticatedSigningKeyBindingResult.mismatch
+                }
+
+                var requiresRepair = bindings[fingerprint] != existing
+                bindings[fingerprint] = existing
+                self.cache.authenticatedSigningKeysByFingerprint = bindings
+                if var cryptoIdentity = self.cache.cryptographicIdentities[fingerprint],
+                   cryptoIdentity.signingPublicKey == nil {
+                    cryptoIdentity.signingPublicKey = existing
+                    self.cache.cryptographicIdentities[fingerprint] = cryptoIdentity
+                    requiresRepair = true
+                }
+                if requiresRepair {
+                    self.saveIdentityCache()
+                }
+                return AuthenticatedSigningKeyBindingResult.matchedExisting
+            }
+
             bindings[fingerprint] = signingPublicKey
             self.cache.authenticatedSigningKeysByFingerprint = bindings
             if var cryptoIdentity = self.cache.cryptographicIdentities[fingerprint] {
                 cryptoIdentity.signingPublicKey = signingPublicKey
                 self.cache.cryptographicIdentities[fingerprint] = cryptoIdentity
             }
-            guard bindingChanged else { return }
             self.saveIdentityCache()
+            return AuthenticatedSigningKeyBindingResult.firstBinding
         }
         if DispatchQueue.getSpecific(key: queueSpecificKey) != nil {
-            bindAndPersist()
-        } else {
-            queue.sync(flags: .barrier, execute: bindAndPersist)
+            return validateAndPersist()
         }
+        return queue.sync(flags: .barrier, execute: validateAndPersist)
     }
 
     func authenticatedSigningPublicKey(forFingerprint fingerprint: String) -> Data? {
         guard !fingerprint.isEmpty else { return nil }
         return queue.sync {
             cache.authenticatedSigningKeysByFingerprint?[fingerprint]
+        }
+    }
+
+    func authenticatedFingerprintsBound(
+        toSigningPublicKey signingPublicKey: Data
+    ) -> Set<String> {
+        guard signingPublicKey.count == AuthenticatedPeerStatePacket.signingPublicKeyLength else {
+            return []
+        }
+        return queue.sync {
+            var fingerprints = Set<String>()
+            for (fingerprint, key) in cache.authenticatedSigningKeysByFingerprint ?? [:]
+            where key == signingPublicKey {
+                let normalized = fingerprint.lowercased()
+                guard normalized.count == 64,
+                      Data(hexString: normalized)?.count == 32 else {
+                    continue
+                }
+                fingerprints.insert(normalized)
+            }
+            return fingerprints
         }
     }
     

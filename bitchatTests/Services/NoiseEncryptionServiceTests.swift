@@ -121,6 +121,14 @@ struct NoiseEncryptionServiceTests {
         #expect(alice.getPeerFingerprint(bobPeerID) != nil)
         #expect(bob.getPeerFingerprint(alicePeerID) != nil)
         #expect(recorder.generation(for: alicePeerID) == bob.sessionGeneration(for: alicePeerID))
+        let aliceBinding = try #require(
+            alice.establishedSessionBinding(for: bobPeerID)
+        )
+        #expect(aliceBinding.remoteStaticPublicKey == bob.getStaticPublicKeyData())
+        #expect(
+            aliceBinding.sessionGeneration
+                == alice.sessionGeneration(for: bobPeerID)
+        )
 
         let plaintext = Data("secret payload".utf8)
         let ciphertext = try alice.encrypt(plaintext, for: bobPeerID)
@@ -130,6 +138,7 @@ struct NoiseEncryptionServiceTests {
         alice.clearSession(for: bobPeerID)
         #expect(!alice.hasSession(with: bobPeerID))
         #expect(alice.getPeerFingerprint(bobPeerID) == nil)
+        #expect(alice.establishedSessionBinding(for: bobPeerID) == nil)
 
         bob.clearEphemeralStateForPanic()
         #expect(!bob.hasSession(with: alicePeerID))

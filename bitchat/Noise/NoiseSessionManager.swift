@@ -1181,6 +1181,24 @@ final class NoiseSessionManager {
         }
     }
 
+    /// Returns the remote static key and local generation from one established
+    /// session snapshot. Reading both under the manager lease prevents a
+    /// replacement session from being paired with the previous generation.
+    func establishedSessionBinding(
+        for peerID: PeerID
+    ) -> (remoteStaticPublicKey: Data, sessionGeneration: UUID)? {
+        managerQueue.sync {
+            guard let session = sessions[peerID],
+                  session.isEstablished(),
+                  let remoteStaticPublicKey = session
+                    .getRemoteStaticPublicKey()?.rawRepresentation,
+                  let sessionGeneration = sessionGenerations[peerID] else {
+                return nil
+            }
+            return (remoteStaticPublicKey, sessionGeneration)
+        }
+    }
+
     /// Decrypts while holding the manager's read lease. Session promotion and
     /// removal require its barrier, so the returned generation always names
     /// the exact session object that authenticated these bytes.

@@ -107,12 +107,18 @@ struct LocalizationCoverageTests {
             "app_info.appearance.aurora": "Aurora",
             "app_info.appearance.matrix": "Matrix",
             "app_info.appearance.title": "Appearance",
+            "app_info.settings.danger.panic_button": "Reset Identity & Wipe Data",
+            "app_info.settings.danger.panic_confirm_action": "Reset Identity and Wipe",
+            "app_info.settings.danger.panic_confirm_title": "Reset Identity and Wipe All Data?",
+            "app_info.settings.danger.panic_note": "Creates new local Noise and signing keys by deleting all MeshChat data on this device, including chats, contacts, nicknames, verification and block records, groups, and media. Other devices keep your old messages and fingerprint; they will see the new identity as unverified. This cannot be undone. Triple-tapping the MeshChat logo performs the same wipe immediately.",
             "location_channels.sheet_title": "#location Channel",
             "content.accessibility.add_favorite": "Add Friend",
             "content.accessibility.remove_favorite": "Remove Friend",
             "content.clear.confirm_action": "Delete Chat History",
             "content.clear.confirm_title": "Delete Chat History?",
             "content.clear.confirm_message": "This deletes this chat's history from this device only. Identity settings are preserved.",
+            "fingerprint.badge.not_verified": "Not verified",
+            "fingerprint.badge.verified": "Verified",
             "fingerprint.local_alias.label": "Local Nickname",
             "friends.action.add": "Add Friend",
             "friends.remove.confirm_title": "Remove %@ from Friends?",
@@ -135,11 +141,12 @@ struct LocalizationCoverageTests {
             "meshchat.help.recent.description": "Recent lists offline people you have privately chatted with but have not added as friends, newest conversation first. Tap a person to continue chatting.",
             "meshchat.help.friends.description": "Adding a friend is optional and separate from assigning a local nickname. You can nickname or block any known person; local nicknames stay only on this device.",
             "meshchat.help.qr.description": "Use the global scanner to recognize a MeshChat QR code. Scanning can find a person, but adding them as a friend and verifying their encryption are separate, optional actions.",
-            "meshchat.help.verification.description": "Compare fingerprints or complete the QR challenge over the live encrypted link. A red lock means the identity is not verified; a green seal means it is verified. An orange lock marks a private message; the composer caption shows the current session’s encryption state.",
+            "meshchat.help.verification.description": "Compare fingerprints or complete the Bitchat-compatible QR challenge over the live encrypted link. Gray means unverified; green means verified. Yellow means an attributable conflict was recorded for that exact key fingerprint, not its temporary peer ID. Normal traffic and reverification never clear it; an identity reset creates separate new keys that start gray.",
             "meshchat.help.notifications.description": "In Settings, choose alerts separately for private and group messages, mesh activity, #location channels, and security events. Pause all alerts temporarily or resume them at any time.",
             "meshchat.help.privacy.description": "Private text messages and private groups use end-to-end encryption. Before sending media to a legacy client that does not support encrypted private media, MeshChat warns that the file will not be end-to-end encrypted and asks for confirmation. Public mesh and #location channel messages are visible to participants. Keep Tor enabled to hide your IP address from internet relays.",
             "app_info.legend.encrypted": "Encrypted session; identity not verified",
             "app_info.legend.private_message": "Private message",
+            "identity.status.mismatch": "Identity-key conflict recorded",
             "content.accessibility.bridged_count": "%lld more people across the bridge",
             "content.accessibility.notices_new": "%lld new"
         ]
@@ -160,6 +167,8 @@ struct LocalizationCoverageTests {
             try JSONSerialization.jsonObject(with: data) as? [String: Any]
         )
         let strings = try #require(root["strings"] as? [String: Any])
+        #expect(strings["identity.warning.title"] == nil)
+        #expect(strings["identity.warning.message"] == nil)
         let expectedLocales = try Self.loadCatalog(
             "bitchat/Localizable.xcstrings"
         ).allLocales
@@ -204,6 +213,79 @@ struct LocalizationCoverageTests {
                     placeholderCount == 1,
                     "\(key) must contain exactly one %@ in \(locale)"
                 )
+            }
+        }
+    }
+
+    @Test func identityConflictCopyCoversEveryLocale() throws {
+        let url = Self.repoRoot.appendingPathComponent("bitchat/Localizable.xcstrings")
+        let data = try Data(contentsOf: url)
+        let root = try #require(
+            try JSONSerialization.jsonObject(with: data) as? [String: Any]
+        )
+        let strings = try #require(root["strings"] as? [String: Any])
+        let expectedLocales = try Self.loadCatalog(
+            "bitchat/Localizable.xcstrings"
+        ).allLocales
+        let keys = [
+            "meshchat.help.verification.description",
+            "identity.status.mismatch"
+        ]
+
+        #expect(expectedLocales.count == 30)
+        for key in keys {
+            let entry = try #require(strings[key] as? [String: Any])
+            let localizations = try #require(
+                entry["localizations"] as? [String: Any]
+            )
+            #expect(
+                Set(localizations.keys) == expectedLocales,
+                "\(key) must cover all 30 locales"
+            )
+        }
+    }
+
+    @Test func identityBadgeCopyUsesNaturalCaseWithoutEmbeddedGlyphs() throws {
+        let url = Self.repoRoot.appendingPathComponent("bitchat/Localizable.xcstrings")
+        let data = try Data(contentsOf: url)
+        let root = try #require(
+            try JSONSerialization.jsonObject(with: data) as? [String: Any]
+        )
+        let strings = try #require(root["strings"] as? [String: Any])
+        let expectedLocales = try Self.loadCatalog(
+            "bitchat/Localizable.xcstrings"
+        ).allLocales
+        let casedLocales: Set<String> = [
+            "de", "en", "es", "fil", "fr", "id", "it", "ms", "nl",
+            "pl", "pt", "pt-BR", "ru", "sv", "tr", "uk", "vi"
+        ]
+
+        for key in [
+            "fingerprint.badge.not_verified",
+            "fingerprint.badge.verified"
+        ] {
+            let entry = try #require(strings[key] as? [String: Any])
+            let localizations = try #require(
+                entry["localizations"] as? [String: Any]
+            )
+            #expect(Set(localizations.keys) == expectedLocales)
+
+            for (locale, localization) in localizations {
+                let localization = try #require(
+                    localization as? [String: Any]
+                )
+                let unit = try #require(
+                    localization["stringUnit"] as? [String: Any]
+                )
+                let value = try #require(unit["value"] as? String)
+                #expect(!value.contains("✓"), "\(key) embeds a checkmark in \(locale)")
+                #expect(!value.contains("⚠"), "\(key) embeds a warning icon in \(locale)")
+                if casedLocales.contains(locale) {
+                    #expect(
+                        value != value.uppercased(),
+                        "\(key) uses all caps in \(locale)"
+                    )
+                }
             }
         }
     }

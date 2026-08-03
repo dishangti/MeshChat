@@ -168,7 +168,9 @@ final class ConversationUIModel: ObservableObject {
               !isSentByCurrentUser(message),
               let peerID = message.senderPeerID else { return false }
         guard let fingerprint = chatViewModel.getFingerprint(for: peerID) else { return false }
-        return chatViewModel.peerIdentityStore.isVerified(fingerprint)
+        return chatViewModel.peerIdentityStore.identityLockState(
+            fingerprint: fingerprint
+        ) == .verified
     }
 
     func senderDisplayName(for peerID: PeerID, fallbackMessages: [BitchatMessage]) -> String? {
@@ -270,6 +272,15 @@ final class ConversationUIModel: ObservableObject {
         // Verify/unverify while a DM is open must repaint existing rows —
         // showsVerifiedSeal is computed per render, so forward the store change.
         chatViewModel.peerIdentityStore.$verifiedFingerprints
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] _ in
+                self?.objectWillChange.send()
+            }
+            .store(in: &cancellables)
+
+        // Identity conflicts can invalidate positive sender seals on messages
+        // that are already in the timeline, so repaint those rows immediately.
+        chatViewModel.peerIdentityStore.$identityConflicts
             .receive(on: DispatchQueue.main)
             .sink { [weak self] _ in
                 self?.objectWillChange.send()

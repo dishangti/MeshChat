@@ -550,22 +550,214 @@ final class SecureIdentityStateManagerTests: XCTestCase {
         let rotatedKey = Data(repeating: 0x42, count: 32)
         let manager = SecureIdentityStateManager(keychain)
 
-        manager.bindAuthenticatedSigningPublicKey(firstKey, fingerprint: fingerprint)
+        XCTAssertEqual(
+            manager.validateAndBindAuthenticatedSigningPublicKey(
+                firstKey,
+                fingerprint: fingerprint
+            ),
+            .firstBinding
+        )
         XCTAssertEqual(manager.authenticatedSigningPublicKey(forFingerprint: fingerprint), firstKey)
-        // A later authenticated Noise session may legitimately rotate the
-        // announcement signing key.
-        manager.bindAuthenticatedSigningPublicKey(rotatedKey, fingerprint: fingerprint)
-        XCTAssertEqual(manager.authenticatedSigningPublicKey(forFingerprint: fingerprint), rotatedKey)
+        XCTAssertEqual(
+            manager.validateAndBindAuthenticatedSigningPublicKey(
+                firstKey,
+                fingerprint: fingerprint
+            ),
+            .matchedExisting
+        )
+        XCTAssertEqual(
+            manager.validateAndBindAuthenticatedSigningPublicKey(
+                rotatedKey,
+                fingerprint: fingerprint
+            ),
+            .mismatch
+        )
+        XCTAssertEqual(manager.authenticatedSigningPublicKey(forFingerprint: fingerprint), firstKey)
 
         manager.forceSave()
         let reloaded = SecureIdentityStateManager(keychain)
-        XCTAssertEqual(reloaded.authenticatedSigningPublicKey(forFingerprint: fingerprint), rotatedKey)
+        XCTAssertEqual(reloaded.authenticatedSigningPublicKey(forFingerprint: fingerprint), firstKey)
 
         reloaded.clearAllIdentityData()
         let cleared = await waitUntil {
             reloaded.authenticatedSigningPublicKey(forFingerprint: fingerprint) == nil
         }
         XCTAssertTrue(cleared)
+    }
+
+    func test_authenticatedFingerprintReverseLookupNormalizesAndReturnsEveryBinding() {
+        let manager = SecureIdentityStateManager(MockKeychain())
+        let sharedSigningKey = Data(repeating: 0x81, count: 32)
+        let firstFingerprint = Data(repeating: 0x82, count: 32).sha256Fingerprint()
+        let secondFingerprint = Data(repeating: 0x83, count: 32).sha256Fingerprint()
+        let unrelatedFingerprint = Data(repeating: 0x84, count: 32).sha256Fingerprint()
+
+        manager.bindAuthenticatedSigningPublicKey(
+            sharedSigningKey,
+            fingerprint: firstFingerprint.uppercased()
+        )
+        manager.bindAuthenticatedSigningPublicKey(
+            sharedSigningKey,
+            fingerprint: secondFingerprint
+        )
+        manager.bindAuthenticatedSigningPublicKey(
+            Data(repeating: 0x85, count: 32),
+            fingerprint: unrelatedFingerprint
+        )
+
+        XCTAssertEqual(
+            manager.authenticatedFingerprintsBound(toSigningPublicKey: sharedSigningKey),
+            Set([firstFingerprint, secondFingerprint])
+        )
+    }
+
+    func test_authenticatedFingerprintReverseLookupExcludesTOFUCryptographicPins() {
+        let manager = SecureIdentityStateManager(MockKeychain())
+        let signingKey = Data(repeating: 0x86, count: 32)
+        let authenticatedNoiseKey = Data(repeating: 0x87, count: 32)
+        let tofuNoiseKey = Data(repeating: 0x88, count: 32)
+        let authenticatedFingerprint = authenticatedNoiseKey.sha256Fingerprint()
+        let tofuFingerprint = tofuNoiseKey.sha256Fingerprint()
+
+        manager.upsertCryptographicIdentity(
+            fingerprint: authenticatedFingerprint,
+            noisePublicKey: authenticatedNoiseKey,
+            signingPublicKey: signingKey,
+            claimedNickname: nil
+        )
+        manager.bindAuthenticatedSigningPublicKey(
+            signingKey,
+            fingerprint: authenticatedFingerprint
+        )
+        manager.upsertCryptographicIdentity(
+            fingerprint: tofuFingerprint,
+            noisePublicKey: tofuNoiseKey,
+            signingPublicKey: signingKey,
+            claimedNickname: nil
+        )
+
+        XCTAssertEqual(
+            manager.authenticatedFingerprintsBound(toSigningPublicKey: signingKey),
+            Set([authenticatedFingerprint])
+        )
+    }
+
+    func test_authenticatedFingerprintReverseLookupRejectsMalformedMaterial() {
+        let manager = SecureIdentityStateManager(MockKeychain())
+        let signingKey = Data(repeating: 0x89, count: 32)
+
+        manager.bindAuthenticatedSigningPublicKey(
+            signingKey,
+            fingerprint: "not-a-noise-fingerprint"
+        )
+
+        XCTAssertTrue(
+            manager.authenticatedFingerprintsBound(toSigningPublicKey: signingKey).isEmpty
+        )
+        XCTAssertTrue(
+            manager.authenticatedFingerprintsBound(toSigningPublicKey: Data()).isEmpty
+        )
+        XCTAssertTrue(
+            manager.authenticatedFingerprintsBound(
+                toSigningPublicKey: Data(repeating: 0x89, count: 31)
+            ).isEmpty
+        )
+        XCTAssertTrue(
+            manager.authenticatedFingerprintsBound(
+                toSigningPublicKey: Data(repeating: 0x89, count: 33)
+            ).isEmpty
+        )
+    }
+
+    func test_clearAllIdentityDataRemovesAuthenticatedFingerprintReverseLookup() {
+        let manager = SecureIdentityStateManager(MockKeychain())
+        let signingKey = Data(repeating: 0x8A, count: 32)
+        let fingerprint = Data(repeating: 0x8B, count: 32).sha256Fingerprint()
+
+        manager.bindAuthenticatedSigningPublicKey(
+            signingKey,
+            fingerprint: fingerprint
+        )
+        XCTAssertEqual(
+            manager.authenticatedFingerprintsBound(toSigningPublicKey: signingKey),
+            Set([fingerprint])
+        )
+
+        manager.clearAllIdentityData()
+
+        XCTAssertTrue(
+            manager.authenticatedFingerprintsBound(toSigningPublicKey: signingKey).isEmpty
+        )
+    }
+
+    func test_authenticatedPeerStateMustMatchExistingCryptographicIdentityPin() {
+        let keychain = MockKeychain()
+        let manager = SecureIdentityStateManager(keychain)
+        let noisePublicKey = Data(repeating: 0x43, count: 32)
+        let fingerprint = noisePublicKey.sha256Fingerprint()
+        let pinnedSigningKey = Data(repeating: 0x44, count: 32)
+        let conflictingSigningKey = Data(repeating: 0x45, count: 32)
+
+        manager.upsertCryptographicIdentity(
+            fingerprint: fingerprint,
+            noisePublicKey: noisePublicKey,
+            signingPublicKey: pinnedSigningKey,
+            claimedNickname: nil
+        )
+
+        XCTAssertEqual(
+            manager.validateAndBindAuthenticatedSigningPublicKey(
+                conflictingSigningKey,
+                fingerprint: fingerprint
+            ),
+            .mismatch
+        )
+        XCTAssertNil(
+            manager.authenticatedSigningPublicKey(forFingerprint: fingerprint)
+        )
+        XCTAssertEqual(
+            manager.validateAndBindAuthenticatedSigningPublicKey(
+                pinnedSigningKey,
+                fingerprint: fingerprint
+            ),
+            .matchedExisting
+        )
+        XCTAssertEqual(
+            manager.authenticatedSigningPublicKey(forFingerprint: fingerprint),
+            pinnedSigningKey
+        )
+    }
+
+    func test_matchingLegacyAuthenticatedBindingRepairsMissingCryptoPin() {
+        let keychain = MockKeychain()
+        let manager = SecureIdentityStateManager(keychain)
+        let noisePublicKey = Data(repeating: 0x46, count: 32)
+        let fingerprint = noisePublicKey.sha256Fingerprint()
+        let signingKey = Data(repeating: 0x47, count: 32)
+
+        manager.bindAuthenticatedSigningPublicKey(
+            signingKey,
+            fingerprint: fingerprint
+        )
+        manager.upsertCryptographicIdentity(
+            fingerprint: fingerprint,
+            noisePublicKey: noisePublicKey,
+            signingPublicKey: nil,
+            claimedNickname: nil
+        )
+        XCTAssertNil(manager.signingPublicKey(forFingerprint: fingerprint))
+
+        XCTAssertEqual(
+            manager.validateAndBindAuthenticatedSigningPublicKey(
+                signingKey,
+                fingerprint: fingerprint
+            ),
+            .matchedExisting
+        )
+        XCTAssertEqual(
+            manager.signingPublicKey(forFingerprint: fingerprint),
+            signingKey
+        )
     }
 
     func test_persistVerifiedIdentity_writesCryptoAndSocialStateAcrossReinit() {

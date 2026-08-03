@@ -32,7 +32,11 @@ private final class MockChatVerificationContext: ChatVerificationContext {
     private(set) var storedVerifiedCalls: [(fingerprint: String, verified: Bool)] = []
     private(set) var saveIdentityStateCount = 0
     var blockedFingerprints: Set<String> = []
-    var pinnedSigningKeys: [String: Data] = [:]
+    var authenticatedSigningKeys: [String: Data] = [:]
+    var identityConflictReasons: [String: PeerIdentityConflictReason] = [:]
+    private(set) var recordedIdentityConflicts: [
+        (fingerprint: String, reason: PeerIdentityConflictReason)
+    ] = []
     private(set) var eventOrder: [String] = []
 
     func getFingerprint(for peerID: PeerID) -> String? { fingerprintsByPeerID[peerID] }
@@ -55,8 +59,16 @@ private final class MockChatVerificationContext: ChatVerificationContext {
         blockedFingerprints.contains(fingerprint)
     }
 
-    func pinnedSigningPublicKey(for fingerprint: String) -> Data? {
-        pinnedSigningKeys[fingerprint]
+    func authenticatedSigningPublicKey(for fingerprint: String) -> Data? {
+        authenticatedSigningKeys[fingerprint]
+    }
+
+    func recordIdentityConflict(
+        forFingerprint fingerprint: String,
+        reason: PeerIdentityConflictReason
+    ) {
+        identityConflictReasons[fingerprint] = reason
+        recordedIdentityConflicts.append((fingerprint, reason))
     }
 
     func saveIdentityState() { saveIdentityStateCount += 1 }
@@ -132,12 +144,26 @@ private final class MockChatVerificationContext: ChatVerificationContext {
     var myNoiseStaticKey = Data(repeating: 0x42, count: 32)
     var establishedNoiseSessions: Set<PeerID> = []
     var noiseSessionKeysByPeerID: [PeerID: Data] = [:]
+    var sessionGenerationsByPeerID: [PeerID: UUID] = [:]
+    let defaultSessionGeneration = UUID(
+        uuidString: "11111111-2222-4333-8444-555555555555"
+    )!
     private(set) var installedCallbacks: (onPeerAuthenticated: (PeerID, String) -> Void, onHandshakeRequired: (PeerID) -> Void)?
     private(set) var triggeredHandshakes: [PeerID] = []
     private(set) var privateMediaAuthenticatedPeers: [PeerID] = []
     private(set) var securePrivateMessageRetryAliases: [[PeerID]] = []
-    private(set) var sentChallenges: [(peerID: PeerID, noiseKeyHex: String, nonceA: Data)] = []
-    private(set) var sentResponses: [(peerID: PeerID, noiseKeyHex: String, nonceA: Data)] = []
+    private(set) var sentChallenges: [(
+        peerID: PeerID,
+        noiseKeyHex: String,
+        nonceA: Data,
+        sessionGeneration: UUID
+    )] = []
+    private(set) var sentResponses: [(
+        peerID: PeerID,
+        noiseKeyHex: String,
+        nonceA: Data,
+        sessionGeneration: UUID
+    )] = []
 
     func installNoiseSessionCallbacks(
         onPeerAuthenticated: @escaping (PeerID, String) -> Void,
@@ -147,6 +173,19 @@ private final class MockChatVerificationContext: ChatVerificationContext {
     }
 
     func noiseSessionPublicKeyData(for peerID: PeerID) -> Data? { noiseSessionKeysByPeerID[peerID] }
+    func verificationSessionBinding(
+        for peerID: PeerID
+    ) -> MeshVerificationSessionBinding? {
+        guard establishedNoiseSessions.contains(peerID),
+              let remoteStaticPublicKey = noiseSessionKeysByPeerID[peerID] else {
+            return nil
+        }
+        return MeshVerificationSessionBinding(
+            remoteStaticPublicKey: remoteStaticPublicKey,
+            sessionGeneration: sessionGenerationsByPeerID[peerID]
+                ?? defaultSessionGeneration
+        )
+    }
     func noiseStaticPublicKeyData() -> Data { myNoiseStaticKey }
     func hasEstablishedNoiseSession(with peerID: PeerID) -> Bool {
         establishedNoiseSessions.contains(peerID)
@@ -160,12 +199,22 @@ private final class MockChatVerificationContext: ChatVerificationContext {
         securePrivateMessageRetryAliases.append(peerIDAliases)
     }
 
-    func sendVerifyChallenge(to peerID: PeerID, noiseKeyHex: String, nonceA: Data) {
-        sentChallenges.append((peerID, noiseKeyHex, nonceA))
+    func sendVerifyChallenge(
+        to peerID: PeerID,
+        noiseKeyHex: String,
+        nonceA: Data,
+        sessionGeneration: UUID
+    ) {
+        sentChallenges.append((peerID, noiseKeyHex, nonceA, sessionGeneration))
     }
 
-    func sendVerifyResponse(to peerID: PeerID, noiseKeyHex: String, nonceA: Data) {
-        sentResponses.append((peerID, noiseKeyHex, nonceA))
+    func sendVerifyResponse(
+        to peerID: PeerID,
+        noiseKeyHex: String,
+        nonceA: Data,
+        sessionGeneration: UUID
+    ) {
+        sentResponses.append((peerID, noiseKeyHex, nonceA, sessionGeneration))
     }
 
     // Notifications
@@ -216,6 +265,32 @@ private func makeSignedVerificationFixture(
         service: service,
         qr: qr
     )
+}
+
+/// Builds a QR whose Noise key belongs to one identity while its embedded
+/// signing key and self-signature belong to another. Such a QR is
+/// self-consistent, but scanning it alone cannot establish who owns the
+/// separately declared Noise key.
+private func makeHybridVerificationQR(
+    noisePublicKey: Data,
+    signer: SignedVerificationFixture,
+    nickname: String = "Alice"
+) throws -> VerificationService.VerificationQR {
+    var qr = VerificationService.VerificationQR(
+        v: 1,
+        noiseKeyHex: noisePublicKey.hexEncodedString(),
+        signKeyHex: signer.signingPublicKey.hexEncodedString(),
+        npub: nil,
+        nickname: nickname,
+        ts: Int64(Date().timeIntervalSince1970),
+        nonceB64: Data((0..<16).map(UInt8.init)).base64EncodedString(),
+        sigHex: ""
+    )
+    let signature = try #require(
+        signer.transport.noiseSignData(qr.canonicalBytes())
+    )
+    qr.sigHex = signature.hexEncodedString()
+    return try #require(signer.service.verifyScannedQR(qr.toURLString()))
 }
 
 // MARK: - Coordinator Tests Against Mock Context
@@ -307,14 +382,31 @@ struct ChatVerificationCoordinatorContextTests {
         let myHex = context.myNoiseStaticKey.hexEncodedString()
         let nonce = Data(repeating: 0x07, count: 16)
         let payload = makeVerifyChallengeTLV(noiseKeyHex: myHex, nonceA: nonce)
+        context.establishedNoiseSessions = [peerID]
+        context.noiseSessionKeysByPeerID[peerID] = Data(repeating: 0x31, count: 32)
 
-        coordinator.handleVerifyChallengePayload(from: peerID, payload: payload)
+        coordinator.handleVerifyChallengePayload(
+            from: peerID,
+            payload: payload,
+            sessionGeneration: UUID()
+        )
+        #expect(context.sentResponses.isEmpty)
+
+        coordinator.handleVerifyChallengePayload(
+            from: peerID,
+            payload: payload,
+            sessionGeneration: context.defaultSessionGeneration
+        )
         #expect(context.sentResponses.count == 1)
         #expect(context.sentResponses.first?.noiseKeyHex.lowercased() == myHex)
         #expect(context.sentResponses.first?.nonceA == nonce)
 
         // Same nonce again: deduplicated, no second response.
-        coordinator.handleVerifyChallengePayload(from: peerID, payload: payload)
+        coordinator.handleVerifyChallengePayload(
+            from: peerID,
+            payload: payload,
+            sessionGeneration: context.defaultSessionGeneration
+        )
         #expect(context.sentResponses.count == 1)
 
         // A challenge for someone else's key is ignored.
@@ -323,7 +415,11 @@ struct ChatVerificationCoordinatorContextTests {
             noiseKeyHex: otherHex,
             nonceA: Data(repeating: 0x08, count: 16)
         )
-        coordinator.handleVerifyChallengePayload(from: peerID, payload: otherPayload)
+        coordinator.handleVerifyChallengePayload(
+            from: peerID,
+            payload: otherPayload,
+            sessionGeneration: context.defaultSessionGeneration
+        )
         #expect(context.sentResponses.count == 1)
     }
 
@@ -381,10 +477,13 @@ struct ChatVerificationCoordinatorContextTests {
         let myHex = context.myNoiseStaticKey.hexEncodedString()
         context.fingerprintsByPeerID[peerID] = "fp-mutual"
         context.verifiedFingerprints = ["fp-mutual"]
+        context.establishedNoiseSessions = [peerID]
+        context.noiseSessionKeysByPeerID[peerID] = Data(repeating: 0x32, count: 32)
 
         coordinator.handleVerifyChallengePayload(
             from: peerID,
-            payload: makeVerifyChallengeTLV(noiseKeyHex: myHex, nonceA: Data(repeating: 0x07, count: 16))
+            payload: makeVerifyChallengeTLV(noiseKeyHex: myHex, nonceA: Data(repeating: 0x07, count: 16)),
+            sessionGeneration: context.defaultSessionGeneration
         )
 
         // Already-verified peer challenging us: mutual-verification toast.
@@ -396,7 +495,8 @@ struct ChatVerificationCoordinatorContextTests {
         // A fresh nonce inside the per-fingerprint toast cooldown stays silent.
         coordinator.handleVerifyChallengePayload(
             from: peerID,
-            payload: makeVerifyChallengeTLV(noiseKeyHex: myHex, nonceA: Data(repeating: 0x08, count: 16))
+            payload: makeVerifyChallengeTLV(noiseKeyHex: myHex, nonceA: Data(repeating: 0x08, count: 16)),
+            sessionGeneration: context.defaultSessionGeneration
         )
         #expect(context.postedLocalNotifications.count == 1)
         #expect(context.sentResponses.count == 2)
@@ -434,6 +534,7 @@ struct ChatVerificationCoordinatorContextTests {
         context.noiseSessionKeysByPeerID[peerID] = noiseKey
         context.fingerprintsByPeerID[peerID] = fingerprint
         context.persistedIdentityDisplayName = "Bestie"
+        context.identityConflictReasons[fingerprint] = .malformedAuthenticatedData
 
         var completions: [FriendVerificationCompletion] = []
         let start = coordinator.beginFriendVerification(
@@ -460,7 +561,8 @@ struct ChatVerificationCoordinatorContextTests {
         let response = try #require(NoisePayload.decode(encodedResponse))
         coordinator.handleVerifyResponsePayload(
             from: peerID,
-            payload: response.data
+            payload: response.data,
+            sessionGeneration: challenge.sessionGeneration
         )
 
         #expect(context.persistedIdentityCalls.count == 1)
@@ -476,15 +578,87 @@ struct ChatVerificationCoordinatorContextTests {
         )
         #expect(completions == [expected])
         #expect(duplicateCompletions == [expected])
+        #expect(context.recordedIdentityConflicts.isEmpty)
+        #expect(
+            context.identityConflictReasons[fingerprint]
+                == .malformedAuthenticatedData
+        )
 
         // A replay after completion has no pending proof and cannot persist a
-        // second identity write.
-        coordinator.handleVerifyResponsePayload(from: peerID, payload: response.data)
+        // second identity write or alter the permanent identity latch.
+        coordinator.handleVerifyResponsePayload(
+            from: peerID,
+            payload: response.data,
+            sessionGeneration: challenge.sessionGeneration
+        )
         #expect(context.persistedIdentityCalls.count == 1)
+        #expect(context.recordedIdentityConflicts.isEmpty)
+        #expect(
+            context.identityConflictReasons[fingerprint]
+                == .malformedAuthenticatedData
+        )
     }
 
     @Test @MainActor
-    func beginFriendVerification_rejectsSelfBlockedAndPinnedKeyMismatch() throws {
+    func responseFromReplacedNoiseGeneration_failsWithoutIdentityMutation() throws {
+        let fixture = try makeSignedVerificationFixture(nickname: "Alice")
+        let context = MockChatVerificationContext()
+        let coordinator = ChatVerificationCoordinator(
+            context: context,
+            verificationService: fixture.service
+        )
+        let noiseKey = fixture.noisePublicKey
+        let peerID = PeerID(publicKey: noiseKey)
+        context.unifiedPeers = [
+            BitchatPeer(
+                peerID: peerID,
+                noisePublicKey: noiseKey,
+                nickname: "Alice",
+                isConnected: true
+            )
+        ]
+        context.establishedNoiseSessions = [peerID]
+        context.noiseSessionKeysByPeerID[peerID] = noiseKey
+        let firstGeneration = UUID()
+        context.sessionGenerationsByPeerID[peerID] = firstGeneration
+
+        var completions: [FriendVerificationCompletion] = []
+        let start = coordinator.beginFriendVerification(with: fixture.qr) {
+            completions.append($0)
+        }
+        #expect(start == .started(peerID: peerID, claimedNickname: "Alice"))
+        let challenge = try #require(context.sentChallenges.first)
+        #expect(challenge.sessionGeneration == firstGeneration)
+
+        let encodedResponse = try #require(
+            fixture.service.buildVerifyResponse(
+                noiseKeyHex: noiseKey.hexEncodedString(),
+                nonceA: challenge.nonceA
+            )
+        )
+        let response = try #require(NoisePayload.decode(encodedResponse))
+
+        // The wire response is valid, but the local Noise session was
+        // replaced after the challenge. It cannot complete the old proof.
+        context.sessionGenerationsByPeerID[peerID] = UUID()
+        coordinator.handleVerifyResponsePayload(
+            from: peerID,
+            payload: response.data,
+            sessionGeneration: firstGeneration
+        )
+
+        #expect(
+            completions == [
+                .failed(peerID: peerID, reason: .activeSessionMismatch)
+            ]
+        )
+        #expect(context.persistedIdentityCalls.isEmpty)
+        #expect(context.identityVerifiedCalls.isEmpty)
+        #expect(context.recordedIdentityConflicts.isEmpty)
+    }
+
+    @Test @MainActor
+    func beginFriendVerification_rejectsSelfAndBlockedIdentities() throws {
         let fixture = try makeSignedVerificationFixture()
         let context = MockChatVerificationContext()
         let coordinator = ChatVerificationCoordinator(
@@ -492,7 +666,6 @@ struct ChatVerificationCoordinatorContextTests {
             verificationService: fixture.service
         )
         let noiseKey = fixture.noisePublicKey
-        let signingKey = fixture.signingPublicKey
         let qr = fixture.qr
 
         context.myNoiseStaticKey = noiseKey
@@ -513,19 +686,148 @@ struct ChatVerificationCoordinatorContextTests {
         )
 
         context.blockedFingerprints.removeAll()
-        context.pinnedSigningKeys[noiseKey.sha256Fingerprint()] = Data(
-            repeating: 0x88,
-            count: 32
-        )
-        #expect(
-            coordinator.beginFriendVerification(
-                with: qr,
-                completion: { _ in }
-            ) == .failed(.signingKeyMismatch)
-        )
-        #expect(signingKey != context.pinnedSigningKeys[noiseKey.sha256Fingerprint()])
         #expect(context.triggeredHandshakes.isEmpty)
         #expect(context.persistedIdentityCalls.isEmpty)
+        #expect(context.recordedIdentityConflicts.isEmpty)
+    }
+
+    @Test @MainActor
+    func authenticatedSigningMismatch_latchesOnlyAfterFreshExactSessionProof() throws {
+        let victim = try makeSignedVerificationFixture(nickname: "Alice")
+        let attacker = try makeSignedVerificationFixture(nickname: "Mallory")
+        let qr = try makeHybridVerificationQR(
+            noisePublicKey: victim.noisePublicKey,
+            signer: attacker,
+            nickname: "Alice"
+        )
+        let context = MockChatVerificationContext()
+        let coordinator = ChatVerificationCoordinator(
+            context: context,
+            verificationService: attacker.service
+        )
+        let noiseKey = victim.noisePublicKey
+        let fingerprint = noiseKey.sha256Fingerprint()
+        let peerID = PeerID(publicKey: noiseKey)
+        context.unifiedPeers = [
+            BitchatPeer(
+                peerID: peerID,
+                noisePublicKey: noiseKey,
+                nickname: "Alice",
+                isConnected: true
+            )
+        ]
+        context.establishedNoiseSessions = [peerID]
+        context.noiseSessionKeysByPeerID[peerID] = noiseKey
+        context.fingerprintsByPeerID[peerID] = fingerprint
+        context.authenticatedSigningKeys[fingerprint] = victim.signingPublicKey
+
+        var completions: [FriendVerificationCompletion] = []
+        let start = coordinator.beginFriendVerification(with: qr) {
+            completions.append($0)
+        }
+
+        #expect(start == .started(peerID: peerID, claimedNickname: "Alice"))
+        let challenge = try #require(context.sentChallenges.first)
+        #expect(context.sentChallenges.count == 1)
+        #expect(context.recordedIdentityConflicts.isEmpty)
+
+        // The response is fresh, signed by the QR key, and delivered through
+        // the exact authenticated Noise session named by the hybrid QR. Only
+        // now is the key-binding mismatch attributable to this fingerprint.
+        let encodedResponse = try #require(
+            attacker.service.buildVerifyResponse(
+                noiseKeyHex: noiseKey.hexEncodedString(),
+                nonceA: challenge.nonceA
+            )
+        )
+        let response = try #require(NoisePayload.decode(encodedResponse))
+        coordinator.handleVerifyResponsePayload(
+            from: peerID,
+            payload: response.data,
+            sessionGeneration: challenge.sessionGeneration
+        )
+
+        #expect(
+            completions == [
+                .failed(peerID: peerID, reason: .signingKeyMismatch)
+            ]
+        )
+        #expect(context.recordedIdentityConflicts.count == 1)
+        #expect(context.recordedIdentityConflicts.first?.fingerprint == fingerprint)
+        #expect(
+            context.recordedIdentityConflicts.first?.reason
+                == .qrIdentityBindingMismatch
+        )
+        #expect(
+            context.identityConflictReasons[fingerprint]
+                == .qrIdentityBindingMismatch
+        )
+        #expect(context.persistedIdentityCalls.isEmpty)
+        #expect(context.identityVerifiedCalls.isEmpty)
+    }
+
+    @Test @MainActor
+    func responseInvalidUnderQRSigningKey_doesNotAttributeIdentityConflict() throws {
+        let victim = try makeSignedVerificationFixture(nickname: "Alice")
+        let attacker = try makeSignedVerificationFixture(nickname: "Mallory")
+        let qr = try makeHybridVerificationQR(
+            noisePublicKey: victim.noisePublicKey,
+            signer: attacker,
+            nickname: "Alice"
+        )
+        let context = MockChatVerificationContext()
+        let coordinator = ChatVerificationCoordinator(
+            context: context,
+            verificationService: attacker.service
+        )
+        let noiseKey = victim.noisePublicKey
+        let fingerprint = noiseKey.sha256Fingerprint()
+        let peerID = PeerID(publicKey: noiseKey)
+        context.unifiedPeers = [
+            BitchatPeer(
+                peerID: peerID,
+                noisePublicKey: noiseKey,
+                nickname: "Alice",
+                isConnected: true
+            )
+        ]
+        context.establishedNoiseSessions = [peerID]
+        context.noiseSessionKeysByPeerID[peerID] = noiseKey
+        context.fingerprintsByPeerID[peerID] = fingerprint
+        context.authenticatedSigningKeys[fingerprint] = victim.signingPublicKey
+
+        var completions: [FriendVerificationCompletion] = []
+        let start = coordinator.beginFriendVerification(with: qr) {
+            completions.append($0)
+        }
+        #expect(start == .started(peerID: peerID, claimedNickname: "Alice"))
+        let challenge = try #require(context.sentChallenges.first)
+
+        // The real Noise-key holder answers with its own signing key. That is
+        // invalid under the attacker's QR key, so the QR claim is rejected
+        // without blaming either identity.
+        let encodedResponse = try #require(
+            victim.service.buildVerifyResponse(
+                noiseKeyHex: noiseKey.hexEncodedString(),
+                nonceA: challenge.nonceA
+            )
+        )
+        let response = try #require(NoisePayload.decode(encodedResponse))
+        coordinator.handleVerifyResponsePayload(
+            from: peerID,
+            payload: response.data,
+            sessionGeneration: challenge.sessionGeneration
+        )
+
+        #expect(
+            completions == [
+                .failed(peerID: peerID, reason: .invalidResponse)
+            ]
+        )
+        #expect(context.recordedIdentityConflicts.isEmpty)
+        #expect(context.identityConflictReasons.isEmpty)
+        #expect(context.persistedIdentityCalls.isEmpty)
+        #expect(context.identityVerifiedCalls.isEmpty)
     }
 
     @Test @MainActor
@@ -578,7 +880,11 @@ struct ChatVerificationCoordinatorContextTests {
             )
         )
         let response = try #require(NoisePayload.decode(encodedResponse))
-        coordinator.handleVerifyResponsePayload(from: peerID, payload: response.data)
+        coordinator.handleVerifyResponsePayload(
+            from: peerID,
+            payload: response.data,
+            sessionGeneration: challenge.sessionGeneration
+        )
         #expect(
             mismatchCompletions == [
                 .failed(peerID: peerID, reason: .activeSessionMismatch)
@@ -586,6 +892,7 @@ struct ChatVerificationCoordinatorContextTests {
         )
         #expect(context.persistedIdentityCalls.isEmpty)
         #expect(context.identityVerifiedCalls.isEmpty)
+        #expect(context.recordedIdentityConflicts.isEmpty)
     }
 
     @Test @MainActor
@@ -637,7 +944,11 @@ struct ChatVerificationCoordinatorContextTests {
             )
         )
         let response = try #require(NoisePayload.decode(encodedResponse))
-        coordinator.handleVerifyResponsePayload(from: peerID, payload: response.data)
+        coordinator.handleVerifyResponsePayload(
+            from: peerID,
+            payload: response.data,
+            sessionGeneration: challenge.sessionGeneration
+        )
 
         #expect(context.sentChallenges.count == 1)
         #expect(context.persistedIdentityCalls.isEmpty)
@@ -696,7 +1007,11 @@ struct ChatVerificationCoordinatorContextTests {
             )
         )
         let response = try #require(NoisePayload.decode(encodedResponse))
-        coordinator.handleVerifyResponsePayload(from: peerID, payload: response.data)
+        coordinator.handleVerifyResponsePayload(
+            from: peerID,
+            payload: response.data,
+            sessionGeneration: challenge.sessionGeneration
+        )
 
         #expect(context.sentChallenges.count == 1)
         #expect(context.persistedIdentityCalls.isEmpty)

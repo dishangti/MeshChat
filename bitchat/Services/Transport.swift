@@ -65,10 +65,31 @@ struct MeshTopologySnapshot: Equatable {
     let edges: [MeshTopologyEdge]
 }
 
+/// A cryptographic identity conflict or authenticated semantic rejection.
+/// Generic connectivity failures, relayed claims, invalid signatures,
+/// timestamp failures, and unauthenticated ciphertext remain excluded.
+enum PeerIdentityConflictReason: Equatable, Sendable {
+    case claimedPeerIDMismatch
+    case noiseStaticKeyMismatch
+    case signingKeyMismatch
+    case authenticatedSigningKeyMismatch
+    case qrIdentityBindingMismatch
+    case malformedAuthenticatedData
+    case malformedAuthenticatedPeerState
+}
+
 enum TransportEvent: @unchecked Sendable {
     case messageReceived(BitchatMessage)
     case publicMessageReceived(peerID: PeerID, nickname: String, content: String, timestamp: Date, messageID: String?)
-    case noisePayloadReceived(peerID: PeerID, type: NoisePayloadType, payload: Data, timestamp: Date)
+    case noisePayloadReceived(
+        peerID: PeerID,
+        type: NoisePayloadType,
+        payload: Data,
+        timestamp: Date,
+        /// The exact local Noise session that decrypted the payload. Courier
+        /// envelopes are authenticated outside an interactive session and use nil.
+        sessionGeneration: UUID?
+    )
     /// Encrypted group broadcast (MessageType 0x25). Opaque here — the group
     /// coordinator decrypts and authenticates against the roster.
     case groupMessageReceived(payload: Data, timestamp: Date)
@@ -79,6 +100,11 @@ enum TransportEvent: @unchecked Sendable {
     case peerDisconnected(PeerID)
     case peerListUpdated([PeerID])
     case peerSnapshotsUpdated([TransportPeerSnapshot])
+    case peerIdentityConflictDetected(
+        fingerprint: String,
+        reason: PeerIdentityConflictReason,
+        detectedAt: Date
+    )
     case messageDeliveryStatusUpdated(messageID: String, status: DeliveryStatus)
     case bluetoothStateUpdated(CBManagerState)
 }
@@ -282,7 +308,7 @@ extension BitchatDelegate {
                 timestamp: timestamp,
                 messageID: messageID
             )
-        case let .noisePayloadReceived(peerID, type, payload, timestamp):
+        case let .noisePayloadReceived(peerID, type, payload, timestamp, _):
             didReceiveNoisePayload(from: peerID, type: type, payload: payload, timestamp: timestamp)
         case let .groupMessageReceived(payload, timestamp):
             didReceiveGroupMessage(payload: payload, timestamp: timestamp)
@@ -295,6 +321,9 @@ extension BitchatDelegate {
         case .peerListUpdated(let peers):
             didUpdatePeerList(peers)
         case .peerSnapshotsUpdated:
+            break
+        case .peerIdentityConflictDetected:
+            // Identity conflicts have no legacy BitchatDelegate callback.
             break
         case let .messageDeliveryStatusUpdated(messageID, status):
             didUpdateMessageDeliveryStatus(messageID, status: status)

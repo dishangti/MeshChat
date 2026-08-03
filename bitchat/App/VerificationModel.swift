@@ -5,6 +5,7 @@ import Foundation
 struct FingerprintPresentationState: Equatable {
     let peerNickname: String
     let encryptionStatus: EncryptionStatus
+    let identityLockState: IdentityLockState
     let theirFingerprint: String?
     let myFingerprint: String
     let isVerified: Bool
@@ -18,10 +19,21 @@ struct FingerprintPresentationState: Equatable {
     let voucherNames: [String]
 
     /// Vouched for by ≥1 peer the user verified (and not explicitly verified).
-    var isVouched: Bool { voucherCount > 0 }
+    /// An active identity mismatch always suppresses positive trust signals.
+    var isVouched: Bool {
+        identityLockState != .identityMismatch && voucherCount > 0
+    }
 
     var canToggleVerification: Bool {
-        encryptionStatus == .noiseSecured || encryptionStatus == .noiseVerified
+        identityLockState != .identityMismatch
+            && (encryptionStatus == .noiseSecured
+                || encryptionStatus == .noiseVerified)
+    }
+
+    /// A mismatch remains visible even when no secured session is available,
+    /// while ordinary verification controls still require a live session.
+    var showsVerificationStatus: Bool {
+        identityLockState == .identityMismatch || canToggleVerification
     }
 
     /// Alias field is editable once we know who we're looking at.
@@ -104,20 +116,24 @@ final class VerificationModel: ObservableObject {
         }
 
         let fingerprint = noisePublicKey.sha256Fingerprint()
+        // The QR signature proves possession of its embedded Ed25519 private
+        // key, but not possession of the separately declared Noise private
+        // key. Attribute a cross-identity claim only to fingerprints that
+        // previously authenticated this signing key inside Noise; never mark
+        // the claimed Noise fingerprint merely because its public key was
+        // copied into a QR.
+        for keyHolderFingerprint in chatViewModel.identityManager
+            .authenticatedFingerprintsBound(toSigningPublicKey: signingPublicKey)
+        where keyHolderFingerprint.caseInsensitiveCompare(fingerprint) != .orderedSame {
+            peerIdentityStore.recordIdentityConflict(
+                forFingerprint: keyHolderFingerprint,
+                reason: .qrIdentityBindingMismatch
+            )
+        }
         if chatViewModel.identityManager.isBlocked(fingerprint: fingerprint) {
             friendCandidate = nil
             friendVerificationState = .failed(.blocked)
             return .rejected(.blocked)
-        }
-
-        let pinnedSigningKey = chatViewModel.identityManager
-            .authenticatedSigningPublicKey(forFingerprint: fingerprint)
-            ?? chatViewModel.identityManager.signingPublicKey(forFingerprint: fingerprint)
-        if let pinnedSigningKey,
-           pinnedSigningKey != signingPublicKey {
-            friendCandidate = nil
-            friendVerificationState = .failed(.signingKeyMismatch)
-            return .rejected(.signingKeyMismatch)
         }
 
         let candidate = FriendVerificationCandidate(
@@ -386,11 +402,18 @@ final class VerificationModel: ObservableObject {
         let localPetname = theirFingerprint
             .flatMap { chatViewModel.identityManager.getSocialIdentity(for: $0)?.localPetname }
 
+        let identityLockState = peerIdentityStore.identityLockState(
+            fingerprint: theirFingerprint
+        )
+
         // Vouch state is recomputed on read: only vouchers still in the
         // verified set count, so removing a verification silently retires the
-        // vouches that peer gave.
+        // vouches that peer gave. A recorded authenticated anomaly suppresses
+        // the positive signal without changing the saved verification state.
         let vouchers: [VouchRecord]
-        if !isVerified, let theirFingerprint {
+        if identityLockState != .identityMismatch,
+           !isVerified,
+           let theirFingerprint {
             vouchers = chatViewModel.identityManager.validVouchers(for: theirFingerprint)
         } else {
             vouchers = []
@@ -406,6 +429,7 @@ final class VerificationModel: ObservableObject {
         return FingerprintPresentationState(
             peerNickname: peerNickname,
             encryptionStatus: encryptionStatus,
+            identityLockState: identityLockState,
             theirFingerprint: theirFingerprint,
             myFingerprint: chatViewModel.getMyFingerprint(),
             isVerified: isVerified,
@@ -432,6 +456,13 @@ final class VerificationModel: ObservableObject {
             .store(in: &cancellables)
 
         peerIdentityStore.$verifiedFingerprints
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] _ in
+                self?.objectWillChange.send()
+            }
+            .store(in: &cancellables)
+
+        peerIdentityStore.$identityConflicts
             .receive(on: DispatchQueue.main)
             .sink { [weak self] _ in
                 self?.objectWillChange.send()

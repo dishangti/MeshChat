@@ -2858,14 +2858,74 @@ final class BLEService: NSObject {
         }
     }
 
+    func verificationSessionBinding(
+        for peerID: PeerID
+    ) -> MeshVerificationSessionBinding? {
+        let normalizedPeerID = peerID.toShort()
+        let service = noiseService
+        guard let binding = service.establishedSessionBinding(
+            for: normalizedPeerID
+        ),
+              binding.remoteStaticPublicKey.count == 32,
+              PeerID(publicKey: binding.remoteStaticPublicKey)
+                == normalizedPeerID,
+              noiseService === service else {
+            return nil
+        }
+        return MeshVerificationSessionBinding(
+            remoteStaticPublicKey: binding.remoteStaticPublicKey,
+            sessionGeneration: binding.sessionGeneration
+        )
+    }
+
     func sendVerifyChallenge(to peerID: PeerID, noiseKeyHex: String, nonceA: Data) {
-        let payload = VerificationService.shared.buildVerifyChallenge(noiseKeyHex: noiseKeyHex, nonceA: nonceA)
+        let payload = VerificationService.shared.buildVerifyChallenge(
+            noiseKeyHex: noiseKeyHex,
+            nonceA: nonceA
+        )
         sendNoisePayload(payload, to: peerID)
     }
 
+    func sendVerifyChallenge(
+        to peerID: PeerID,
+        noiseKeyHex: String,
+        nonceA: Data,
+        sessionGeneration: UUID
+    ) {
+        let payload = VerificationService.shared.buildVerifyChallenge(
+            noiseKeyHex: noiseKeyHex,
+            nonceA: nonceA
+        )
+        sendNoisePayload(
+            payload,
+            to: peerID,
+            expectedSessionGeneration: sessionGeneration
+        )
+    }
+
     func sendVerifyResponse(to peerID: PeerID, noiseKeyHex: String, nonceA: Data) {
-        guard let payload = VerificationService.shared.buildVerifyResponse(noiseKeyHex: noiseKeyHex, nonceA: nonceA) else { return }
+        guard let payload = VerificationService.shared.buildVerifyResponse(
+            noiseKeyHex: noiseKeyHex,
+            nonceA: nonceA
+        ) else { return }
         sendNoisePayload(payload, to: peerID)
+    }
+
+    func sendVerifyResponse(
+        to peerID: PeerID,
+        noiseKeyHex: String,
+        nonceA: Data,
+        sessionGeneration: UUID
+    ) {
+        guard let payload = VerificationService.shared.buildVerifyResponse(
+            noiseKeyHex: noiseKeyHex,
+            nonceA: nonceA
+        ) else { return }
+        sendNoisePayload(
+            payload,
+            to: peerID,
+            expectedSessionGeneration: sessionGeneration
+        )
     }
 
     // MARK: Vouching over Noise
@@ -3391,6 +3451,41 @@ extension BLEService {
                 peerID: normalizedPeerID,
                 fingerprint: fingerprint,
                 sessionGeneration: generation
+            )
+        }
+    }
+
+    func _test_applyAuthenticatedPeerState(
+        _ state: AuthenticatedPeerStatePacket,
+        from peerID: PeerID,
+        generation: UUID? = nil
+    ) {
+        guard let payload = state.encode() else { return }
+        _test_applyAuthenticatedPeerStatePayload(
+            payload,
+            from: peerID,
+            generation: generation
+        )
+    }
+
+    func _test_applyAuthenticatedPeerStatePayload(
+        _ payload: Data,
+        from peerID: PeerID,
+        generation: UUID? = nil
+    ) {
+        let normalizedPeerID = peerID.toShort()
+        messageQueue.async { [weak self] in
+            guard let self,
+                  let targetGeneration = generation
+                    ?? self.noiseService.sessionGeneration(
+                        for: normalizedPeerID
+                    ) else {
+                return
+            }
+            self.handleAuthenticatedPeerState(
+                payload,
+                from: normalizedPeerID,
+                sessionGeneration: targetGeneration
             )
         }
     }
@@ -3971,6 +4066,120 @@ extension BLEService {
         return linkAuth.isAuthenticated(link, for: peerID) && linkBindings.boundPeer(for: link) == peerID
     }
 
+    /// Returns the one durable full identity whose pinned signing key verifies
+    /// the complete packet. Signature authentication survives relays; link
+    /// ownership and the packet's claimed short ID do not.
+    private func durableFingerprintAuthenticating(
+        _ packet: BitchatPacket,
+        peerID: PeerID
+    ) -> String? {
+        let normalizedPeerID = peerID.toShort()
+        let matches = Set(
+            identityManager.getCryptoIdentitiesByPeerIDPrefix(
+                normalizedPeerID
+            ).compactMap { identity -> String? in
+                let fingerprint = identity.publicKey.sha256Fingerprint()
+                guard PeerID(publicKey: identity.publicKey)
+                        == normalizedPeerID,
+                      identity.fingerprint.caseInsensitiveCompare(
+                        fingerprint
+                      ) == .orderedSame,
+                      let signingPublicKey = identityManager
+                        .authenticatedSigningPublicKey(
+                            forFingerprint: fingerprint
+                        ) ?? identity.signingPublicKey,
+                      noiseService.verifyPacketSignature(
+                        packet,
+                        publicKey: signingPublicKey
+                      ) else {
+                    return nil
+                }
+                return fingerprint.lowercased()
+            }
+        )
+        guard matches.count == 1 else { return nil }
+        return matches.first
+    }
+
+    private func reportAuthenticatedMalformedPublicData(
+        _ packet: BitchatPacket,
+        peerID: PeerID,
+        reason: PeerIdentityConflictReason
+    ) {
+        guard let fingerprint = durableFingerprintAuthenticating(
+            packet,
+            peerID: peerID
+        ) else {
+            return
+        }
+        reportIdentityConflict(forFingerprint: fingerprint, reason: reason)
+    }
+
+    /// Returns the durable full identity authenticated by fresh traffic from
+    /// this exact current Noise generation. Noise transport nonces reject
+    /// replays, while the full static-key comparison avoids assigning traffic
+    /// through a colliding or attacker-claimed short peer ID.
+    private func durableFingerprintForCurrentNoiseIdentity(
+        peerID: PeerID,
+        sessionGeneration generation: UUID
+    ) -> String? {
+        let normalizedPeerID = peerID.toShort()
+        guard let publicKey = noiseService.getPeerPublicKeyData(
+            normalizedPeerID
+        ) else {
+            return nil
+        }
+        let fingerprint = publicKey.sha256Fingerprint()
+        guard PeerID(publicKey: publicKey) == normalizedPeerID,
+        identityManager.getCryptoIdentitiesByPeerIDPrefix(
+            normalizedPeerID
+        ).contains(where: {
+            $0.publicKey == publicKey
+                && $0.fingerprint.caseInsensitiveCompare(fingerprint)
+                    == .orderedSame
+        }),
+        noiseService.withCurrentSessionGeneration(
+            for: normalizedPeerID,
+            expected: generation,
+            { true }
+        ) == true else {
+            return nil
+        }
+        return fingerprint
+    }
+
+    /// Reports malformed plaintext only after the exact current Noise
+    /// generation decrypted it and its remote static key matches a durable
+    /// full identity. Decryption success is the end-to-end attribution proof.
+    private func reportAuthenticatedDataConflict(
+        for peerID: PeerID,
+        sessionGeneration generation: UUID,
+        reason: PeerIdentityConflictReason
+    ) {
+        let normalizedPeerID = peerID.toShort()
+        guard let fingerprint = durableFingerprintForCurrentNoiseIdentity(
+            peerID: normalizedPeerID,
+            sessionGeneration: generation
+        ) else {
+            return
+        }
+        reportIdentityConflict(forFingerprint: fingerprint, reason: reason)
+    }
+
+    private func reportIdentityConflict(
+        forFingerprint fingerprint: String,
+        reason: PeerIdentityConflictReason
+    ) {
+        let detectedAt = Date()
+        notifyUI { [weak self] in
+            self?.deliverTransportEvent(.peerIdentityConflictDetected(
+                fingerprint: fingerprint.lowercased(),
+                reason: reason,
+                detectedAt: detectedAt
+            ))
+        }
+    }
+
     private func hasCurrentNoiseAuthenticatedLink(to peerID: PeerID) -> Bool {
         !currentNoiseAuthenticatedLinks(to: peerID).isEmpty
     }
@@ -4263,10 +4472,37 @@ extension BLEService {
         dispatchPrecondition(condition: .onQueue(messageQueue))
         #endif
         let normalizedPeerID = peerID.toShort()
+        guard let version = payload.first else {
+            SecureLogger.warning(
+                "Ignoring empty authenticated peer state from \(normalizedPeerID.id.prefix(8))…",
+                category: .security
+            )
+            reportAuthenticatedDataConflict(
+                for: normalizedPeerID,
+                sessionGeneration: generation,
+                reason: .malformedAuthenticatedPeerState
+            )
+            return
+        }
+        guard version == AuthenticatedPeerStatePacket.currentVersion else {
+            // A later MeshChat/bitchat version may extend this transport
+            // payload. Successful Noise decryption authenticates its sender,
+            // but an unknown version is not malformed under our protocol.
+            SecureLogger.debug(
+                "Ignoring authenticated peer state version \(version) from \(normalizedPeerID.id.prefix(8))…",
+                category: .session
+            )
+            return
+        }
         guard let state = AuthenticatedPeerStatePacket.decode(from: payload) else {
             SecureLogger.warning(
                 "Ignoring malformed authenticated peer state from \(normalizedPeerID.id.prefix(8))…",
                 category: .security
+            )
+            reportAuthenticatedDataConflict(
+                for: normalizedPeerID,
+                sessionGeneration: generation,
+                reason: .malformedAuthenticatedPeerState
             )
             return
         }
@@ -4283,18 +4519,25 @@ extension BLEService {
             for: normalizedPeerID,
             expected: generation,
             {
-                () -> (accepted: Bool, completions: [@MainActor (PrivateMediaSendPolicy) -> Void]) in
+                () -> (
+                    accepted: Bool,
+                    binding: AuthenticatedSigningKeyBindingResult,
+                    completions: [@MainActor (PrivateMediaSendPolicy) -> Void]
+                ) in
                 guard privateMediaSessions.currentGeneration(for: normalizedPeerID) == generation else {
-                    return (false, [])
+                    return (false, .invalid, [])
                 }
 
                 // The generation lease (plus the engine slot this section
                 // holds) prevents rekey/session promotion from interleaving
                 // between validation and these durable mutations.
-                identityManager.bindAuthenticatedSigningPublicKey(
+                let binding = identityManager.validateAndBindAuthenticatedSigningPublicKey(
                     state.signingPublicKey,
                     fingerprint: fingerprint
                 )
+                guard binding == .firstBinding || binding == .matchedExisting else {
+                    return (false, binding, [])
+                }
                 identityManager.upsertCryptographicIdentity(
                     fingerprint: fingerprint,
                     noisePublicKey: publicKey,
@@ -4317,11 +4560,24 @@ extension BLEService {
                     generation: generation,
                     capabilities: state.capabilities
                 ) else {
-                    return (false, [])
+                    return (false, binding, [])
                 }
-                return (true, completions)
+                return (
+                    true,
+                    binding,
+                    completions
+                )
             }
-        ), application.accepted else { return }
+        ) else { return }
+
+        if application.binding == .mismatch {
+            reportIdentityConflict(
+                forFingerprint: fingerprint,
+                reason: .authenticatedSigningKeyMismatch
+            )
+            return
+        }
+        guard application.accepted else { return }
 
         // One bounded echo makes initiator/responder proof ordering converge
         // even when message 3 and the first proof take different mesh links.
@@ -4368,13 +4624,38 @@ extension BLEService {
 
 
     
-    private func sendNoisePayload(_ typedPayload: Data, to peerID: PeerID) {
+    private func sendNoisePayload(
+        _ typedPayload: Data,
+        to peerID: PeerID,
+        expectedSessionGeneration: UUID? = nil
+    ) {
         // Hop like sendMessage: the Transport-facing wrappers (verify/vouch/
         // group payloads) call this from the main actor, and the send path
         // sync-waits on bleQueue for link state.
         if DispatchQueue.getSpecific(key: messageQueueKey) == nil {
             messageQueue.async { [weak self] in
-                self?.sendNoisePayload(typedPayload, to: peerID)
+                self?.sendNoisePayload(
+                    typedPayload,
+                    to: peerID,
+                    expectedSessionGeneration: expectedSessionGeneration
+                )
+            }
+            return
+        }
+        if let expectedSessionGeneration {
+            do {
+                broadcastPacket(
+                    try makeEncryptedNoisePacket(
+                        typedPayload,
+                        to: peerID,
+                        expectedSessionGeneration: expectedSessionGeneration
+                    )
+                )
+            } catch {
+                SecureLogger.warning(
+                    "Dropping generation-bound verification payload for \(peerID.id.prefix(8))…: \(error)",
+                    category: .security
+                )
             }
             return
         }
@@ -4399,7 +4680,8 @@ extension BLEService {
     private func makeEncryptedNoisePacket(
         _ typedPayload: Data,
         to peerID: PeerID,
-        requiresAuthenticatedPrivateMediaReceipts: Bool = false
+        requiresAuthenticatedPrivateMediaReceipts: Bool = false,
+        expectedSessionGeneration: UUID? = nil
     ) throws -> BitchatPacket {
         let encrypted: Data
         let isPrivateFile = NoisePayloadType.isPrivateFile(rawValue: typedPayload.first)
@@ -4415,6 +4697,12 @@ extension BLEService {
                 typedPayload,
                 for: peerID,
                 sessionGeneration: provenGeneration
+            )
+        } else if let expectedSessionGeneration {
+            encrypted = try noiseService.encrypt(
+                typedPayload,
+                for: peerID,
+                expectedSessionGeneration: expectedSessionGeneration
             )
         } else {
             encrypted = try noiseService.encrypt(typedPayload, for: peerID)
@@ -4697,7 +4985,8 @@ extension BLEService {
                     peerID: senderPeerID,
                     type: payloadType,
                     payload: payload,
-                    timestamp: Date()
+                    timestamp: Date(),
+                    sessionGeneration: nil
                 ))
             }
             return true
@@ -6457,14 +6746,34 @@ extension BLEService {
                     return (info?.noisePublicKey, info?.signingPublicKey)
                 }
             },
-            persistedSigningPublicKey: { [weak self] peerID in
+            persistedIdentityBinding: { [weak self] peerID in
                 // Same synchronous identity-manager read pattern as
                 // signedSenderDisplayName(for:from:); the manager serializes
                 // access on its own internal queue.
                 guard let self = self else { return nil }
-                return self.identityManager.getCryptoIdentitiesByPeerIDPrefix(peerID)
-                    .compactMap { $0.signingPublicKey }
-                    .first
+                let normalizedPeerID = peerID.toShort()
+                let bindings = self.identityManager
+                    .getCryptoIdentitiesByPeerIDPrefix(normalizedPeerID)
+                    .compactMap { identity -> BLEPersistedIdentityBinding? in
+                        let fingerprint = identity.publicKey.sha256Fingerprint()
+                        guard PeerID(publicKey: identity.publicKey)
+                                == normalizedPeerID,
+                              identity.fingerprint.caseInsensitiveCompare(
+                                fingerprint
+                              ) == .orderedSame,
+                              let signingPublicKey = self.identityManager
+                                .authenticatedSigningPublicKey(
+                                    forFingerprint: fingerprint
+                                ) ?? identity.signingPublicKey else {
+                            return nil
+                        }
+                        return BLEPersistedIdentityBinding(
+                            fingerprint: fingerprint.lowercased(),
+                            signingPublicKey: signingPublicKey
+                        )
+                    }
+                guard bindings.count == 1 else { return nil }
+                return bindings[0]
             },
             authenticatedSigningPublicKey: { [weak self] noisePublicKey in
                 self?.identityManager.authenticatedSigningPublicKey(
@@ -6473,6 +6782,12 @@ extension BLEService {
             },
             verifySignature: { [weak self] packet, signingPublicKey in
                 self?.noiseService.verifyPacketSignature(packet, publicKey: signingPublicKey) ?? false
+            },
+            reportIdentityConflict: { [weak self] fingerprint, reason in
+                self?.reportIdentityConflict(
+                    forFingerprint: fingerprint,
+                    reason: reason
+                )
             },
             linkState: { [weak self] peerID in
                 self?.linkState(for: peerID) ?? (hasPeripheral: false, hasCentral: false)
@@ -6684,6 +6999,14 @@ extension BLEService {
             signedSenderDisplayName: { [weak self] packet, peerID in
                 self?.signedSenderDisplayName(for: packet, from: peerID)
             },
+            reportAuthenticatedMalformedData: {
+                [weak self] packet, peerID, reason in
+                self?.reportAuthenticatedMalformedPublicData(
+                    packet,
+                    peerID: peerID,
+                    reason: reason
+                )
+            },
             trackPacketSeen: { [weak self] packet in
                 self?.gossipSyncManager?.onPublicPacketSeen(packet)
             },
@@ -6861,6 +7184,14 @@ extension BLEService {
             clearSession: { [weak self] peerID in
                 self?.clearNoiseSession(for: peerID)
             },
+            reportAuthenticatedDataConflict: {
+                [weak self] peerID, generation, reason in
+                self?.reportAuthenticatedDataConflict(
+                    for: peerID,
+                    sessionGeneration: generation,
+                    reason: reason
+                )
+            },
             handleAuthenticatedPeerState: { [weak self] peerID, payload, generation in
                 self?.handleAuthenticatedPeerState(
                     payload,
@@ -6868,7 +7199,8 @@ extension BLEService {
                     sessionGeneration: generation
                 )
             },
-            deliverNoisePayload: { [weak self] peerID, type, payload, timestamp in
+            deliverNoisePayload: {
+                [weak self] peerID, type, payload, timestamp, generation in
                 if type == .privateFile {
                     self?.fileTransferHandler.handlePrivatePayload(
                         payload,
@@ -6883,7 +7215,8 @@ extension BLEService {
                         peerID: peerID,
                         type: type,
                         payload: payload,
-                        timestamp: timestamp
+                        timestamp: timestamp,
+                        sessionGeneration: generation
                     ))
                 }
             }

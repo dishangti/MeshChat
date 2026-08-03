@@ -48,6 +48,18 @@ final class MockTransport: Transport, PrivateMediaDeletionPersisting,
     private(set) var protectedPrivateMediaRelativePaths: [Set<String>] = []
     private(set) var sentVerifyChallenges: [(peerID: PeerID, noiseKeyHex: String, nonceA: Data)] = []
     private(set) var sentVerifyResponses: [(peerID: PeerID, noiseKeyHex: String, nonceA: Data)] = []
+    private(set) var sentGenerationBoundVerifyChallenges: [(
+        peerID: PeerID,
+        noiseKeyHex: String,
+        nonceA: Data,
+        sessionGeneration: UUID
+    )] = []
+    private(set) var sentGenerationBoundVerifyResponses: [(
+        peerID: PeerID,
+        noiseKeyHex: String,
+        nonceA: Data,
+        sessionGeneration: UUID
+    )] = []
     private(set) var sentCourierMessages: [(content: String, messageID: String, recipientNoiseKey: Data, couriers: [PeerID])] = []
     private(set) var startServicesCallCount = 0
     private(set) var stopServicesCallCount = 0
@@ -69,6 +81,7 @@ final class MockTransport: Transport, PrivateMediaDeletionPersisting,
     var peerNoiseStates: [PeerID: LazyHandshakeState] = [:]
     var privateMediaPolicies: [PeerID: PrivateMediaSendPolicy] = [:]
     var privateMediaReceiptSessionGenerations: [PeerID: UUID] = [:]
+    var verificationSessionBindings: [PeerID: MeshVerificationSessionBinding] = [:]
     var persistDeletedPrivateMediaResult = true
     var deferDeletedPrivateMediaPersistence = false
     private var pendingDeletedPrivateMediaCompletions: [
@@ -293,8 +306,39 @@ final class MockTransport: Transport, PrivateMediaDeletionPersisting,
         sentVerifyChallenges.append((peerID, noiseKeyHex, nonceA))
     }
 
+    func verificationSessionBinding(
+        for peerID: PeerID
+    ) -> MeshVerificationSessionBinding? {
+        verificationSessionBindings[peerID]
+            ?? verificationSessionBindings[peerID.toShort()]
+    }
+
+    func sendVerifyChallenge(
+        to peerID: PeerID,
+        noiseKeyHex: String,
+        nonceA: Data,
+        sessionGeneration: UUID
+    ) {
+        sentVerifyChallenges.append((peerID, noiseKeyHex, nonceA))
+        sentGenerationBoundVerifyChallenges.append(
+            (peerID, noiseKeyHex, nonceA, sessionGeneration)
+        )
+    }
+
     func sendVerifyResponse(to peerID: PeerID, noiseKeyHex: String, nonceA: Data) {
         sentVerifyResponses.append((peerID, noiseKeyHex, nonceA))
+    }
+
+    func sendVerifyResponse(
+        to peerID: PeerID,
+        noiseKeyHex: String,
+        nonceA: Data,
+        sessionGeneration: UUID
+    ) {
+        sentVerifyResponses.append((peerID, noiseKeyHex, nonceA))
+        sentGenerationBoundVerifyResponses.append(
+            (peerID, noiseKeyHex, nonceA, sessionGeneration)
+        )
     }
 
     var courierSendResult = true
@@ -385,6 +429,8 @@ final class MockTransport: Transport, PrivateMediaDeletionPersisting,
         protectedPrivateMediaRelativePaths.removeAll()
         sentVerifyChallenges.removeAll()
         sentVerifyResponses.removeAll()
+        sentGenerationBoundVerifyChallenges.removeAll()
+        sentGenerationBoundVerifyResponses.removeAll()
         startServicesCallCount = 0
         stopServicesCallCount = 0
         emergencyDisconnectCallCount = 0

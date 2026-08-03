@@ -100,9 +100,37 @@ protocol MeshDiagnosing: AnyObject {
 }
 
 /// QR verification and transitive vouching over the Noise session.
+struct MeshVerificationSessionBinding: Equatable, Sendable {
+    /// The complete remote Curve25519 static key authenticated by Noise.
+    let remoteStaticPublicKey: Data
+    /// The local-only identifier for the exact established session instance.
+    let sessionGeneration: UUID
+}
+
 protocol MeshVerifying: AnyObject {
+    /// Atomically captures the remote static key and local generation that
+    /// currently identify an established verification transport.
+    func verificationSessionBinding(
+        for peerID: PeerID
+    ) -> MeshVerificationSessionBinding?
     func sendVerifyChallenge(to peerID: PeerID, noiseKeyHex: String, nonceA: Data)
+    /// Sends only while `sessionGeneration` is still the current Noise
+    /// generation. A replacement session causes a local drop, never a queue.
+    func sendVerifyChallenge(
+        to peerID: PeerID,
+        noiseKeyHex: String,
+        nonceA: Data,
+        sessionGeneration: UUID
+    )
     func sendVerifyResponse(to peerID: PeerID, noiseKeyHex: String, nonceA: Data)
+    /// Sends only while `sessionGeneration` is still the current Noise
+    /// generation. A replacement session causes a local drop, never a queue.
+    func sendVerifyResponse(
+        to peerID: PeerID,
+        noiseKeyHex: String,
+        nonceA: Data,
+        sessionGeneration: UUID
+    )
     /// Sends an encoded vouch-attestation batch inside the Noise session.
     func sendVouchAttestations(_ payload: Data, to peerID: PeerID)
 }

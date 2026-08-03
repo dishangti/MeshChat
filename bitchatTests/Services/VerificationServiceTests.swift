@@ -16,6 +16,32 @@ final class VerificationServiceTests: XCTestCase {
         XCTAssertEqual(parsed.signKeyHex, noise.getSigningPublicKeyData().hexEncodedString())
     }
 
+    func test_verifyScannedQR_acceptsSelfSignedHybridWithoutAttributingNoiseKey() throws {
+        let (scanner, _) = makeService()
+        let (_, victimNoise) = makeService()
+        let (_, attackerNoise) = makeService()
+        let victimNoiseKey = victimNoise.getStaticPublicKeyData()
+        let attackerSigningKey = attackerNoise.getSigningPublicKeyData()
+        let qrString = try makeSignedQR(
+            noise: attackerNoise,
+            noiseKeyHex: victimNoiseKey.hexEncodedString(),
+            signKeyHex: attackerSigningKey.hexEncodedString(),
+            nickname: "hybrid-\(UUID().uuidString)",
+            npub: nil,
+            ts: Int64(Date().timeIntervalSince1970)
+        )
+
+        // The scan proves possession of the embedded signing key only. It
+        // cannot prove that the signer owns the separately declared Noise key.
+        let parsed = try XCTUnwrap(scanner.verifyScannedQR(qrString))
+        XCTAssertEqual(parsed.noiseKeyHex, victimNoiseKey.hexEncodedString())
+        XCTAssertEqual(parsed.signKeyHex, attackerSigningKey.hexEncodedString())
+        XCTAssertNotEqual(
+            attackerSigningKey,
+            victimNoise.getSigningPublicKeyData()
+        )
+    }
+
     func test_buildMyQRString_returnsCachedValueForSameInputs() throws {
         let (service, _) = makeService()
         let nickname = "cache-\(UUID().uuidString)"
@@ -85,6 +111,29 @@ final class VerificationServiceTests: XCTestCase {
         XCTAssertNotNil(VerificationService.VerificationQR.fromURL(aliasURL))
     }
 
+    func test_verificationQR_emitsUnchangedBitchatV1URLShape() throws {
+        let (service, _) = makeService()
+        let qrString = try XCTUnwrap(
+            service.buildMyQRString(nickname: "Alice", npub: nil)
+        )
+        let components = try XCTUnwrap(URLComponents(string: qrString))
+
+        XCTAssertEqual(components.scheme, "bitchat")
+        XCTAssertEqual(components.host, "verify")
+        XCTAssertEqual(
+            components.queryItems?.map(\.name),
+            ["v", "noise", "sign", "nick", "ts", "nonce", "sig"]
+        )
+        XCTAssertEqual(
+            components.queryItems?.first(where: { $0.name == "v" })?.value,
+            "1"
+        )
+        XCTAssertEqual(
+            VerificationService.VerificationQR.context,
+            "bitchat-verify-v1"
+        )
+    }
+
     func test_verifyScannedQR_rejectsExpiredPayload() throws {
         let (service, noise) = makeService()
         let oldTimestamp = Int64(Date().addingTimeInterval(-3600).timeIntervalSince1970)
@@ -115,19 +164,25 @@ final class VerificationServiceTests: XCTestCase {
         XCTAssertNil(service.verifyScannedQR(qrString, maxAge: 3_600))
     }
 
-    func test_verifyScannedQR_rejectsExcessiveFutureTimestampButAllowsClockSkew() throws {
+    func test_verifyScannedQR_acceptsBitchatClockSkewWithinLifetime() throws {
         let (service, noise) = makeService()
         let nearFuture = try makeSignedQR(
             noise: noise,
             nickname: "near-future-\(UUID().uuidString)",
             npub: nil,
-            ts: Int64(Date().addingTimeInterval(30).timeIntervalSince1970)
+            ts: Int64(Date().addingTimeInterval(120).timeIntervalSince1970)
         )
         let farFuture = try makeSignedQR(
             noise: noise,
             nickname: "far-future-\(UUID().uuidString)",
             npub: nil,
-            ts: Int64(Date().addingTimeInterval(120).timeIntervalSince1970)
+            ts: Int64(
+                Date()
+                    .addingTimeInterval(
+                        TransportConfig.verificationQRMaxAgeSeconds + 60
+                    )
+                    .timeIntervalSince1970
+            )
         )
 
         XCTAssertNotNil(service.verifyScannedQR(nearFuture))

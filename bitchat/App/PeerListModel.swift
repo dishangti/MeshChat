@@ -14,12 +14,18 @@ struct MeshPeerRow: Identifiable, Equatable {
     let isReachable: Bool
     let isMutualFavorite: Bool
     let encryptionStatus: EncryptionStatus
-    let showsVerifiedBadgeWhenOffline: Bool
+    let identityLockState: IdentityLockState
     /// Vouched-for by someone I verified, without an explicit verification of
     /// mine — rendered as the unfilled seal (verified gets the filled one).
     let showsVouchedBadge: Bool
 
     var id: String { peerID.id }
+
+    /// Kept as a compatibility convenience for callers that distinguish an
+    /// offline persisted verification from the live transport status.
+    var showsVerifiedBadgeWhenOffline: Bool {
+        !isConnected && identityLockState == .verified
+    }
 }
 
 struct GeohashPersonRow: Identifiable, Equatable {
@@ -53,6 +59,7 @@ struct RecentMeshPeerRow: Identifiable, Equatable {
     let lastMessageAt: Date
     let hasUnread: Bool
     let isBlocked: Bool
+    let identityLockState: IdentityLockState
 
     var id: String { fingerprint }
     var conversationPeerID: PeerID { stablePeerID }
@@ -304,6 +311,13 @@ final class PeerListModel: ObservableObject {
             }
             .store(in: &cancellables)
 
+        peerIdentityStore.$identityConflicts
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] _ in
+                self?.refresh()
+            }
+            .store(in: &cancellables)
+
         NotificationCenter.default.publisher(for: Notification.Name("peerStatusUpdated"))
             .receive(on: DispatchQueue.main)
             .sink { [weak self] _ in
@@ -346,9 +360,13 @@ final class PeerListModel: ObservableObject {
             let isMe = peer.peerID == myPeerID
             let fingerprint = isMe ? nil : chatViewModel.getFingerprint(for: peer.peerID)
             let isVerifiedFingerprint = fingerprint.map { peerIdentityStore.isVerified($0) } ?? false
-            let verifiedBadge = !peer.isConnected && isVerifiedFingerprint
-            // Vouched is subordinate to verified: never show both seals.
-            let vouchedBadge = !isVerifiedFingerprint
+            let identityLockState = peerIdentityStore.identityLockState(
+                fingerprint: fingerprint
+            )
+            // Vouched is subordinate to verified and must never soften an
+            // active identity conflict with a positive trust badge.
+            let vouchedBadge = identityLockState != .identityMismatch
+                && !isVerifiedFingerprint
                 && (fingerprint.map { chatViewModel.isVouchedFingerprint($0) } ?? false)
 
             return MeshPeerRow(
@@ -362,7 +380,7 @@ final class PeerListModel: ObservableObject {
                 isReachable: peer.isReachable,
                 isMutualFavorite: peer.isMutualFavorite,
                 encryptionStatus: chatViewModel.getEncryptionStatus(for: peer.peerID),
-                showsVerifiedBadgeWhenOffline: verifiedBadge,
+                identityLockState: identityLockState,
                 showsVouchedBadge: vouchedBadge
             )
         }
@@ -511,7 +529,10 @@ final class PeerListModel: ObservableObject {
                 isBlocked: social?.isBlocked == true
                     || chatViewModel.identityManager.isBlocked(
                         fingerprint: item.identity.fingerprint
-                    )
+                    ),
+                identityLockState: peerIdentityStore.identityLockState(
+                    fingerprint: item.identity.fingerprint
+                )
             )
         }
         .sorted { lhs, rhs in

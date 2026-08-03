@@ -4,13 +4,19 @@ import Testing
 @testable import bitchat
 
 struct BLEAnnounceHandlerTests {
+    private enum FixtureError: Error {
+        case announcementEncodingFailed
+        case packetSigningFailed
+    }
+
     private final class Recorder {
         var existingNoisePublicKey: Data?
         var existingSigningPublicKey: Data?
-        var persistedSigningPublicKey: Data?
-        var persistedSigningKeyQueries: [PeerID] = []
+        var persistedIdentityBinding: BLEPersistedIdentityBinding?
+        var persistedIdentityBindingQueries: [PeerID] = []
         var authenticatedSigningPublicKey: Data?
         var signatureValid = true
+        var validSigningKeys: Set<Data>?
         var linkState: (hasPeripheral: Bool, hasCentral: Bool) = (false, false)
         var linkBoundToOtherPeer = false
         var upsertResult: BLEPeerAnnounceUpdate? = BLEPeerAnnounceUpdate(isNewPeer: false, wasDisconnected: false, previousNickname: nil)
@@ -18,6 +24,10 @@ struct BLEAnnounceHandlerTests {
         var shouldEmitReconnectLogResult = true
 
         var verifySignatureCalls: [(packet: BitchatPacket, signingPublicKey: Data)] = []
+        var identityConflicts: [(
+            fingerprint: String,
+            reason: PeerIdentityConflictReason
+        )] = []
         var barrierCount = 0
         var upsertCalls: [(peerID: PeerID, announcement: AnnouncementPacket, isConnected: Bool, now: Date)] = []
         var reconnectLogQueries: [PeerID] = []
@@ -41,14 +51,18 @@ struct BLEAnnounceHandlerTests {
             messageTTL: TransportConfig.messageTTLDefault,
             now: { now },
             existingPeerKeys: { _ in (recorder.existingNoisePublicKey, recorder.existingSigningPublicKey) },
-            persistedSigningPublicKey: { peerID in
-                recorder.persistedSigningKeyQueries.append(peerID)
-                return recorder.persistedSigningPublicKey
+            persistedIdentityBinding: { peerID in
+                recorder.persistedIdentityBindingQueries.append(peerID)
+                return recorder.persistedIdentityBinding
             },
             authenticatedSigningPublicKey: { _ in recorder.authenticatedSigningPublicKey },
             verifySignature: { packet, signingPublicKey in
                 recorder.verifySignatureCalls.append((packet, signingPublicKey))
-                return recorder.signatureValid
+                return recorder.validSigningKeys?.contains(signingPublicKey)
+                    ?? recorder.signatureValid
+            },
+            reportIdentityConflict: { fingerprint, reason in
+                recorder.identityConflicts.append((fingerprint, reason))
             },
             linkState: { _ in recorder.linkState },
             linkBoundToOtherPeer: { _, _ in recorder.linkBoundToOtherPeer },
@@ -132,6 +146,7 @@ struct BLEAnnounceHandlerTests {
         #expect(recorder.trackedPackets.count == 1)
         #expect(recorder.dedupMarkedIDs == ["announce-back-\(peerID)"])
         #expect(recorder.announceBacks == 1)
+        #expect(recorder.identityConflicts.isEmpty)
         #expect(recorder.afterglowDelays.count == 1)
     }
 
@@ -197,6 +212,7 @@ struct BLEAnnounceHandlerTests {
         #expect(recorder.persistedIdentities.isEmpty)
         #expect(recorder.trackedPackets.count == 1)
         #expect(recorder.announceBacks == 1)
+        #expect(recorder.identityConflicts.isEmpty)
     }
 
     @Test
@@ -222,6 +238,115 @@ struct BLEAnnounceHandlerTests {
         #expect(recorder.upsertCalls.isEmpty)
         #expect(recorder.uiEventDeliveries.count == 1)
         #expect(recorder.uiEventDeliveries.first?.notifyPeerConnected == false)
+        #expect(recorder.identityConflicts.isEmpty)
+    }
+
+    @Test
+    func senderMismatchSignedByPersistedIdentityReportsConflict() throws {
+        let now = Date(timeIntervalSince1970: 1_000)
+        let noiseKey = Data(repeating: 0x24, count: 32)
+        let derivedPeerID = PeerID(publicKey: noiseKey)
+        let claimedPeerID = PeerID(str: "1122334455667788")
+        let packet = try makeAnnouncePacket(
+            noisePublicKey: noiseKey,
+            peerID: derivedPeerID,
+            timestamp: timestamp(now),
+            signature: Data(repeating: 0xEE, count: 64)
+        )
+
+        let recorder = Recorder()
+        let persistedFingerprint = claimedPeerID.bare.lowercased()
+            + String(repeating: "a", count: 48)
+        let persistedSigningKey = Data(repeating: 0x99, count: 32)
+        recorder.persistedIdentityBinding = BLEPersistedIdentityBinding(
+            fingerprint: persistedFingerprint,
+            signingPublicKey: persistedSigningKey
+        )
+        recorder.validSigningKeys = [persistedSigningKey]
+        let handler = makeHandler(recorder: recorder, now: now)
+
+        let result = handler.handle(packet, from: claimedPeerID)
+
+        #expect(result == nil)
+        #expect(recorder.identityConflicts.count == 1)
+        #expect(
+            recorder.identityConflicts.first?.fingerprint
+                == persistedFingerprint
+        )
+        #expect(
+            recorder.identityConflicts.first?.reason
+                == .claimedPeerIDMismatch
+        )
+        #expect(recorder.upsertCalls.isEmpty)
+    }
+
+    @Test
+    func senderMismatchWithoutPersistedSignatureCannotLatchClaimedPeer() throws {
+        let now = Date(timeIntervalSince1970: 1_000)
+        let noiseKey = Data(repeating: 0x25, count: 32)
+        let packet = try makeAnnouncePacket(
+            noisePublicKey: noiseKey,
+            peerID: PeerID(publicKey: noiseKey),
+            timestamp: timestamp(now),
+            signature: Data(repeating: 0xEE, count: 64)
+        )
+        let claimedPeerID = PeerID(str: "1122334455667788")
+        let recorder = Recorder()
+
+        let result = makeHandler(recorder: recorder, now: now)
+            .handle(packet, from: claimedPeerID)
+
+        #expect(result == nil)
+        #expect(recorder.identityConflicts.isEmpty)
+        #expect(recorder.upsertCalls.isEmpty)
+    }
+
+    @Test
+    func senderMismatchWithAmbiguousPersistedPrefixCannotBeAttributed() throws {
+        let now = Date(timeIntervalSince1970: 1_000)
+        let noiseKey = Data(repeating: 0x27, count: 32)
+        let packet = try makeAnnouncePacket(
+            noisePublicKey: noiseKey,
+            peerID: PeerID(publicKey: noiseKey),
+            timestamp: timestamp(now),
+            signature: Data(repeating: 0xEE, count: 64)
+        )
+        let claimedPeerID = PeerID(str: "1122334455667788")
+        let recorder = Recorder()
+        // A prefix lookup with more than one durable identity returns nil.
+        // Even a signed packet cannot be assigned to either key holder.
+        recorder.persistedIdentityBinding = nil
+
+        let result = makeHandler(recorder: recorder, now: now)
+            .handle(packet, from: claimedPeerID)
+
+        #expect(result == nil)
+        #expect(
+            recorder.persistedIdentityBindingQueries == [claimedPeerID]
+        )
+        #expect(recorder.identityConflicts.isEmpty)
+        #expect(recorder.verifySignatureCalls.isEmpty)
+    }
+
+    @Test
+    func relayedSenderMismatchWithoutPersistedSignatureCannotLatchContact() throws {
+        let now = Date(timeIntervalSince1970: 1_000)
+        let noiseKey = Data(repeating: 0x26, count: 32)
+        let packet = try makeAnnouncePacket(
+            noisePublicKey: noiseKey,
+            peerID: PeerID(publicKey: noiseKey),
+            timestamp: timestamp(now),
+            signature: Data(repeating: 0xEE, count: 64),
+            ttl: TransportConfig.messageTTLDefault - 1
+        )
+        let claimedPeerID = PeerID(str: "1122334455667788")
+        let recorder = Recorder()
+
+        let result = makeHandler(recorder: recorder, now: now)
+            .handle(packet, from: claimedPeerID)
+
+        #expect(result == nil)
+        #expect(recorder.identityConflicts.isEmpty)
     }
 
     @Test
@@ -245,6 +370,45 @@ struct BLEAnnounceHandlerTests {
 
         #expect(result == nil)
         expectNoSideEffects(recorder)
+    }
+
+    @Test
+    func malformedAnnounceSignedByPersistedIdentityReportsConflict() {
+        let now = Date(timeIntervalSince1970: 1_000)
+        let peerID = PeerID(str: "1122334455667788")
+        let packet = BitchatPacket(
+            type: MessageType.announce.rawValue,
+            senderID: Data(hexString: peerID.id) ?? Data(),
+            recipientID: nil,
+            timestamp: timestamp(now),
+            payload: Data([0x01, 0x20]),
+            signature: Data(repeating: 0xEE, count: 64),
+            ttl: TransportConfig.messageTTLDefault
+        )
+        let recorder = Recorder()
+        let persistedFingerprint = peerID.bare.lowercased()
+            + String(repeating: "b", count: 48)
+        let persistedSigningKey = Data(repeating: 0x99, count: 32)
+        recorder.persistedIdentityBinding = BLEPersistedIdentityBinding(
+            fingerprint: persistedFingerprint,
+            signingPublicKey: persistedSigningKey
+        )
+        recorder.validSigningKeys = [persistedSigningKey]
+
+        let result = makeHandler(recorder: recorder, now: now)
+            .handle(packet, from: peerID)
+
+        #expect(result == nil)
+        #expect(recorder.identityConflicts.count == 1)
+        #expect(
+            recorder.identityConflicts.first?.fingerprint
+                == persistedFingerprint
+        )
+        #expect(
+            recorder.identityConflicts.first?.reason
+                == .malformedAuthenticatedData
+        )
+        #expect(recorder.verifySignatureCalls.count == 1)
     }
 
     @Test
@@ -516,7 +680,7 @@ struct BLEAnnounceHandlerTests {
     }
 
     @Test
-    func signingKeyMismatchWithPinnedKeySkipsUpsertAndIdentityPersistence() throws {
+    func selfSignedSigningKeyMismatchRejectsWithoutLatchingContact() throws {
         let now = Date(timeIntervalSince1970: 1_000)
         let noiseKey = Data(repeating: 0x9B, count: 32)
         let peerID = PeerID(publicKey: noiseKey)
@@ -532,7 +696,7 @@ struct BLEAnnounceHandlerTests {
         let recorder = Recorder()
         recorder.existingNoisePublicKey = noiseKey
         recorder.existingSigningPublicKey = Data(repeating: 0x42, count: 32) // victim's pinned key
-        recorder.signatureValid = true
+        recorder.validSigningKeys = [Data(repeating: 0x99, count: 32)]
         let handler = makeHandler(recorder: recorder, now: now)
 
         handler.handle(packet, from: peerID)
@@ -542,10 +706,48 @@ struct BLEAnnounceHandlerTests {
         #expect(recorder.topologyUpdates.isEmpty)
         #expect(recorder.uiEventDeliveries.count == 1)
         #expect(recorder.uiEventDeliveries.first?.notifyPeerConnected == false)
+        #expect(recorder.identityConflicts.isEmpty)
     }
 
     @Test
-    func persistedSigningKeyMismatchWithoutRegistryEntryIsRejected() throws {
+    func persistedIdentitySignedKeyChangeReportsConflict() throws {
+        let now = Date(timeIntervalSince1970: 1_000)
+        let noiseKey = Data(repeating: 0x9B, count: 32)
+        let peerID = PeerID(publicKey: noiseKey)
+        let packet = try makeAnnouncePacket(
+            noisePublicKey: noiseKey,
+            peerID: peerID,
+            timestamp: timestamp(now),
+            signature: Data(repeating: 0xEE, count: 64)
+        )
+        let pinnedSigningKey = Data(repeating: 0x42, count: 32)
+        let recorder = Recorder()
+        recorder.existingNoisePublicKey = noiseKey
+        recorder.existingSigningPublicKey = pinnedSigningKey
+        let fingerprint = noiseKey.sha256Fingerprint()
+        recorder.persistedIdentityBinding = BLEPersistedIdentityBinding(
+            fingerprint: fingerprint,
+            signingPublicKey: pinnedSigningKey
+        )
+        // The complete conflicting announce, not its advertised replacement
+        // key, verifies against the identity that was already pinned.
+        recorder.validSigningKeys = [pinnedSigningKey]
+
+        makeHandler(recorder: recorder, now: now)
+            .handle(packet, from: peerID)
+
+        #expect(recorder.upsertCalls.isEmpty)
+        #expect(recorder.persistedIdentities.isEmpty)
+        #expect(recorder.identityConflicts.count == 1)
+        #expect(recorder.identityConflicts.first?.fingerprint == fingerprint)
+        #expect(
+            recorder.identityConflicts.first?.reason
+                == .signingKeyMismatch
+        )
+    }
+
+    @Test
+    func selfSignedPersistedKeyMismatchRejectsWithoutLatchingContact() throws {
         // Registry has no entry (app restart or offline-peer eviction), but
         // the persisted cryptographic identity still pins the victim's
         // signing key. An attacker replaying the victim's noiseKey/peerID
@@ -563,17 +765,26 @@ struct BLEAnnounceHandlerTests {
         let recorder = Recorder()
         recorder.existingNoisePublicKey = nil
         recorder.existingSigningPublicKey = nil
-        recorder.persistedSigningPublicKey = Data(repeating: 0x42, count: 32) // victim's persisted pin
+        recorder.persistedIdentityBinding = BLEPersistedIdentityBinding(
+            fingerprint: noiseKey.sha256Fingerprint(),
+            signingPublicKey: Data(repeating: 0x42, count: 32)
+        )
+        recorder.validSigningKeys = [Data(repeating: 0x99, count: 32)]
         let handler = makeHandler(recorder: recorder, now: now)
 
         handler.handle(packet, from: peerID)
 
-        #expect(recorder.persistedSigningKeyQueries == [peerID])
+        // One lookup supplies the trust-policy pin; the second independently
+        // checks whether the rejected packet authenticates as that identity.
+        #expect(
+            recorder.persistedIdentityBindingQueries == [peerID, peerID]
+        )
         #expect(recorder.upsertCalls.isEmpty)
         #expect(recorder.persistedIdentities.isEmpty)
         #expect(recorder.topologyUpdates.isEmpty)
         #expect(recorder.uiEventDeliveries.count == 1)
         #expect(recorder.uiEventDeliveries.first?.notifyPeerConnected == false)
+        #expect(recorder.identityConflicts.isEmpty)
     }
 
     @Test
@@ -592,7 +803,10 @@ struct BLEAnnounceHandlerTests {
 
         let recorder = Recorder()
         // Matches the signing key encoded by makeAnnouncePacket.
-        recorder.persistedSigningPublicKey = Data(repeating: 0x99, count: 32)
+        recorder.persistedIdentityBinding = BLEPersistedIdentityBinding(
+            fingerprint: noiseKey.sha256Fingerprint(),
+            signingPublicKey: Data(repeating: 0x99, count: 32)
+        )
         let handler = makeHandler(recorder: recorder, now: now)
 
         handler.handle(packet, from: peerID)
@@ -620,7 +834,7 @@ struct BLEAnnounceHandlerTests {
 
         handler.handle(packet, from: peerID)
 
-        #expect(recorder.persistedSigningKeyQueries.isEmpty)
+        #expect(recorder.persistedIdentityBindingQueries.isEmpty)
         #expect(recorder.upsertCalls.count == 1)
     }
 
@@ -651,6 +865,7 @@ struct BLEAnnounceHandlerTests {
         #expect(recorder.uiEventDeliveries.count == 1)
         #expect(recorder.uiEventDeliveries.first?.notifyPeerConnected == false)
         #expect(recorder.afterglowDelays.isEmpty)
+        #expect(recorder.identityConflicts.isEmpty)
     }
 
     @Test
@@ -675,6 +890,32 @@ struct BLEAnnounceHandlerTests {
         #expect(recorder.upsertCalls.isEmpty)
         #expect(recorder.uiEventDeliveries.count == 1)
         #expect(recorder.uiEventDeliveries.first?.notifyPeerConnected == false)
+        #expect(recorder.identityConflicts.isEmpty)
+    }
+
+    @Test
+    func unauthenticatedSigningKeyMismatchRejectsWithoutLatchingContact() throws {
+        let now = Date(timeIntervalSince1970: 1_000)
+        let noiseKey = Data(repeating: 0xA2, count: 32)
+        let peerID = PeerID(publicKey: noiseKey)
+        let packet = try makeAnnouncePacket(
+            noisePublicKey: noiseKey,
+            peerID: peerID,
+            timestamp: timestamp(now),
+            signature: Data(repeating: 0xEE, count: 64)
+        )
+
+        let recorder = Recorder()
+        recorder.authenticatedSigningPublicKey = Data(
+            repeating: 0x42,
+            count: 32
+        )
+        let handler = makeHandler(recorder: recorder, now: now)
+
+        handler.handle(packet, from: peerID)
+
+        #expect(recorder.upsertCalls.isEmpty)
+        #expect(recorder.identityConflicts.isEmpty)
     }
 
     @Test
@@ -704,11 +945,12 @@ struct BLEAnnounceHandlerTests {
                 let info = box.registry.info(for: peerID)
                 return (info?.noisePublicKey, info?.signingPublicKey)
             },
-            persistedSigningPublicKey: { _ in nil },
+            persistedIdentityBinding: { _ in nil },
             authenticatedSigningPublicKey: { _ in nil },
             verifySignature: { packet, signingPublicKey in
                 victim.verifyPacketSignature(packet, publicKey: signingPublicKey)
             },
+            reportIdentityConflict: { _, _ in },
             linkState: { _ in (hasPeripheral: true, hasCentral: false) },
             linkBoundToOtherPeer: { _, _ in false },
             withRegistryBarrier: { body in body() },
@@ -743,7 +985,9 @@ struct BLEAnnounceHandlerTests {
                 signingPublicKey: signer.getSigningPublicKeyData(),
                 directNeighbors: nil
             )
-            let payload = try #require(announcement.encode())
+            guard let payload = announcement.encode() else {
+                throw FixtureError.announcementEncodingFailed
+            }
             let packet = BitchatPacket(
                 type: MessageType.announce.rawValue,
                 senderID: Data(hexString: peerID.id) ?? Data(),
@@ -753,7 +997,10 @@ struct BLEAnnounceHandlerTests {
                 signature: nil,
                 ttl: TransportConfig.messageTTLDefault
             )
-            return try #require(signer.signPacket(packet))
+            guard let signedPacket = signer.signPacket(packet) else {
+                throw FixtureError.packetSigningFailed
+            }
+            return signedPacket
         }
 
         // Legitimate announce from the victim is accepted and pinned.
@@ -815,15 +1062,37 @@ struct BLEAnnounceHandlerTests {
                 },
                 // Mirrors the BLEService wiring: fall back to the persisted
                 // cryptographic identity.
-                persistedSigningPublicKey: { peerID in
-                    identityManager.getCryptoIdentitiesByPeerIDPrefix(peerID)
-                        .compactMap { $0.signingPublicKey }
-                        .first
+                persistedIdentityBinding: { peerID in
+                    let normalizedPeerID = peerID.toShort()
+                    let bindings = identityManager
+                        .getCryptoIdentitiesByPeerIDPrefix(normalizedPeerID)
+                        .compactMap { identity -> BLEPersistedIdentityBinding? in
+                            let fingerprint = identity.publicKey
+                                .sha256Fingerprint()
+                            guard PeerID(publicKey: identity.publicKey)
+                                    == normalizedPeerID,
+                                  identity.fingerprint.caseInsensitiveCompare(
+                                    fingerprint
+                                  ) == .orderedSame,
+                                  let signingPublicKey = identityManager
+                                    .authenticatedSigningPublicKey(
+                                        forFingerprint: fingerprint
+                                    ) ?? identity.signingPublicKey else {
+                                return nil
+                            }
+                            return BLEPersistedIdentityBinding(
+                                fingerprint: fingerprint.lowercased(),
+                                signingPublicKey: signingPublicKey
+                            )
+                        }
+                    guard bindings.count == 1 else { return nil }
+                    return bindings[0]
                 },
                 authenticatedSigningPublicKey: { _ in nil },
                 verifySignature: { packet, signingPublicKey in
                     victim.verifyPacketSignature(packet, publicKey: signingPublicKey)
                 },
+                reportIdentityConflict: { _, _ in },
                 linkState: { _ in (hasPeripheral: true, hasCentral: false) },
                 linkBoundToOtherPeer: { _, _ in false },
                 withRegistryBarrier: { body in body() },
@@ -864,7 +1133,9 @@ struct BLEAnnounceHandlerTests {
                 signingPublicKey: signer.getSigningPublicKeyData(),
                 directNeighbors: nil
             )
-            let payload = try #require(announcement.encode())
+            guard let payload = announcement.encode() else {
+                throw FixtureError.announcementEncodingFailed
+            }
             let packet = BitchatPacket(
                 type: MessageType.announce.rawValue,
                 senderID: Data(hexString: peerID.id) ?? Data(),
@@ -874,7 +1145,10 @@ struct BLEAnnounceHandlerTests {
                 signature: nil,
                 ttl: TransportConfig.messageTTLDefault
             )
-            return try #require(signer.signPacket(packet))
+            guard let signedPacket = signer.signPacket(packet) else {
+                throw FixtureError.packetSigningFailed
+            }
+            return signedPacket
         }
 
         func persistedIdentity() -> CryptographicIdentity? {
@@ -931,6 +1205,7 @@ struct BLEAnnounceHandlerTests {
         #expect(recorder.upsertCalls.isEmpty)
         #expect(recorder.topologyUpdates.isEmpty)
         #expect(recorder.persistedIdentities.isEmpty)
+        #expect(recorder.identityConflicts.isEmpty)
         #expect(recorder.dedupMarkedIDs.isEmpty)
         #expect(recorder.uiEventDeliveries.isEmpty)
         #expect(recorder.trackedPackets.isEmpty)

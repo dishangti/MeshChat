@@ -17,6 +17,7 @@ import BitFoundation
 @MainActor
 private func makeTestableViewModel(
     keychain injectedKeychain: MockKeychain? = nil,
+    identityManager injectedIdentityManager: SecureIdentityStateManagerProtocol? = nil,
     panicMediaWipe: (() throws -> Void)? = nil,
     panicRecoveryOperations: PanicRecoveryOperations? = nil,
     panicNetworkLifecycle: PanicNetworkLifecycle = .noop,
@@ -27,7 +28,7 @@ private func makeTestableViewModel(
     let keychain = injectedKeychain ?? MockKeychain()
     let keychainHelper = MockKeychainHelper()
     let idBridge = NostrIdentityBridge(keychain: keychainHelper)
-    let identityManager = MockIdentityManager(keychain)
+    let identityManager = injectedIdentityManager ?? MockIdentityManager(keychain)
     let transport = MockTransport()
 
     let viewModel = ChatViewModel(
@@ -993,6 +994,86 @@ struct ChatViewModelPeerTests {
         // intentionally ignored at this typed sink.
         viewModel.didReceiveTransportEvent(.peerSnapshotsUpdated([]))
         #expect(viewModel.bluetoothState == .poweredOff)
+    }
+
+    @Test @MainActor
+    func identityConflictEventFollowsFingerprintAcrossRoutingChanges() {
+        let (viewModel, _) = makeTestableViewModel()
+        let fingerprint = Data(repeating: 0xC1, count: 32).sha256Fingerprint()
+        let otherFingerprint = Data(repeating: 0xC2, count: 32).sha256Fingerprint()
+        let oldRoute = PeerID(str: "1111111111111111")
+        let newRoute = PeerID(str: "2222222222222222")
+
+        viewModel.peerIdentityStore.setVerified(fingerprint, verified: true)
+        viewModel.peerIdentityStore.setVerified(otherFingerprint, verified: true)
+        viewModel.peerIdentityStore.setFingerprint(
+            fingerprint.uppercased(),
+            for: oldRoute
+        )
+
+        viewModel.didReceiveTransportEvent(
+            .peerIdentityConflictDetected(
+                fingerprint: fingerprint.uppercased(),
+                reason: .signingKeyMismatch,
+                detectedAt: Date(timeIntervalSince1970: 10)
+            )
+        )
+
+        #expect(
+            viewModel.peerIdentityStore.identityConflicts[fingerprint]?.reason
+                == .signingKeyMismatch
+        )
+        #expect(
+            viewModel.peerIdentityStore.identityLockState(
+                fingerprint: viewModel.peerIdentityStore.fingerprint(for: oldRoute)
+            ) == .identityMismatch
+        )
+        #expect(
+            viewModel.peerIdentityStore.identityLockState(
+                fingerprint: otherFingerprint
+            ) == .verified
+        )
+
+        #expect(
+            viewModel.peerIdentityStore.migrateFingerprintMapping(
+                from: oldRoute,
+                to: newRoute
+            ) == fingerprint
+        )
+        #expect(
+            viewModel.peerIdentityStore.identityLockState(
+                fingerprint: viewModel.peerIdentityStore.fingerprint(for: newRoute)
+            ) == .identityMismatch
+        )
+
+        viewModel.peerIdentityStore.setFingerprint(otherFingerprint, for: oldRoute)
+        #expect(
+            viewModel.peerIdentityStore.identityLockState(
+                fingerprint: viewModel.peerIdentityStore.fingerprint(for: oldRoute)
+            ) == .verified
+        )
+    }
+
+    @Test @MainActor
+    func identityConflictEventRejectsRoutingIDsAndIncompleteFingerprints() {
+        let (viewModel, _) = makeTestableViewModel()
+
+        viewModel.didReceiveTransportEvent(
+            .peerIdentityConflictDetected(
+                fingerprint: "1122334455667788",
+                reason: .claimedPeerIDMismatch,
+                detectedAt: Date(timeIntervalSince1970: 20)
+            )
+        )
+        viewModel.didReceiveTransportEvent(
+            .peerIdentityConflictDetected(
+                fingerprint: String(repeating: "z", count: 64),
+                reason: .claimedPeerIDMismatch,
+                detectedAt: Date(timeIntervalSince1970: 21)
+            )
+        )
+
+        #expect(viewModel.peerIdentityStore.identityConflicts.isEmpty)
     }
 
     @Test @MainActor

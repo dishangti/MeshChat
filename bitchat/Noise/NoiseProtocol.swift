@@ -189,26 +189,35 @@ final class NoiseCipherState {
     /// Mark nonce as seen in replay window
     private func markNonceAsSeen(_ receivedNonce: UInt64) {
         if receivedNonce > highestReceivedNonce {
-            let shift = Int(receivedNonce - highestReceivedNonce)
+            let shiftDistance = receivedNonce - highestReceivedNonce
             
-            if shift >= Self.REPLAY_WINDOW_SIZE {
+            if shiftDistance >= UInt64(Self.REPLAY_WINDOW_SIZE) {
                 // Clear entire window - shift is too large
                 replayWindow = Array(repeating: 0, count: Self.REPLAY_WINDOW_BYTES)
             } else {
-                // Shift window right by `shift` bits
-                for i in stride(from: Self.REPLAY_WINDOW_BYTES - 1, through: 0, by: -1) {
-                    let sourceByteIndex = i - shift / 8
-                    var newByte: UInt8 = 0
-                    
-                    if sourceByteIndex >= 0 {
-                        newByte = replayWindow[sourceByteIndex] >> (shift % 8)
-                        if sourceByteIndex > 0 && shift % 8 != 0 {
-                            newByte |= replayWindow[sourceByteIndex - 1] << (8 - shift % 8)
-                        }
+                // Bit offset zero represents the highest nonce. Advancing the
+                // highest nonce therefore moves every recorded bit toward a
+                // larger offset. Build a fresh array so byte-boundary carries
+                // cannot overwrite source bytes while they are still needed.
+                let shift = Int(shiftDistance)
+                let byteShift = shift / 8
+                let bitShift = shift % 8
+                var shifted = Array(
+                    repeating: UInt8(0),
+                    count: Self.REPLAY_WINDOW_BYTES
+                )
+
+                for sourceIndex in replayWindow.indices {
+                    let destinationIndex = sourceIndex + byteShift
+                    guard destinationIndex < shifted.count else { break }
+
+                    shifted[destinationIndex] |= replayWindow[sourceIndex] << bitShift
+                    if bitShift != 0, destinationIndex + 1 < shifted.count {
+                        shifted[destinationIndex + 1] |= replayWindow[sourceIndex]
+                            >> (8 - bitShift)
                     }
-                    
-                    replayWindow[i] = newByte
                 }
+                replayWindow = shifted
             }
             
             highestReceivedNonce = receivedNonce

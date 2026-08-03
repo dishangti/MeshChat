@@ -122,6 +122,474 @@ struct AppArchitectureTests {
         #expect(store.stablePeerID(forShortID: shortPeerID) == nil)
     }
 
+    @Test("Identity locks use gray, green, and permanently latched yellow states")
+    @MainActor
+    func identityLocksUseThreePermanentSecurityStates() {
+        let store = PeerIdentityStore()
+        let routeID = PeerID(str: "1122334455667788")
+        let fingerprint = Data(repeating: 0x11, count: 32).sha256Fingerprint()
+
+        #expect(IdentityLockState.unverified.icon == "lock.fill")
+        #expect(IdentityLockState.verified.icon == "lock.fill")
+        #expect(IdentityLockState.identityMismatch.icon == "lock.fill")
+        #expect(IdentityLockState.unverified.color == .gray)
+        #expect(IdentityLockState.verified.color == .green)
+        #expect(IdentityLockState.identityMismatch.color == .yellow)
+        #expect(store.identityLockState(fingerprint: nil) == .unverified)
+
+        // Transport availability does not affect the identity-only lock.
+        store.setEncryptionStatus(EncryptionStatus.none, for: routeID)
+        #expect(store.identityLockState(fingerprint: fingerprint) == .unverified)
+
+        store.setVerified(fingerprint.uppercased(), verified: true)
+        #expect(store.identityLockState(fingerprint: fingerprint) == .verified)
+
+        store.recordIdentityConflict(
+            forFingerprint: fingerprint.uppercased(),
+            reason: .signingKeyMismatch,
+            detectedAt: Date(timeIntervalSince1970: 42)
+        )
+        #expect(store.identityLockState(fingerprint: fingerprint) == .identityMismatch)
+        #expect(store.identityConflicts[fingerprint]?.reason == .signingKeyMismatch)
+
+        // Verification changes are independent and never clear the history.
+        store.setVerified(fingerprint, verified: false)
+        store.setVerified(fingerprint, verified: true)
+        #expect(store.identityLockState(fingerprint: fingerprint) == .identityMismatch)
+
+        store.clearAll()
+        #expect(store.identityConflicts.isEmpty)
+        #expect(store.identityLockState(fingerprint: fingerprint) == .unverified)
+    }
+
+    @Test("Identity conflict latches persist by normalized full fingerprint")
+    @MainActor
+    func identityConflictLatchesPersistByFullFingerprint() throws {
+        let keychain = MockKeychain()
+        let store = PeerIdentityStore(keychain: keychain)
+        let noiseKey = Data((0..<32).map(UInt8.init))
+        let fingerprint = noiseKey.sha256Fingerprint()
+        let detectedAt = Date(timeIntervalSince1970: 1_234.5)
+
+        store.recordIdentityConflict(
+            forFingerprint: fingerprint.uppercased(),
+            reason: .authenticatedSigningKeyMismatch,
+            detectedAt: detectedAt
+        )
+        let originalConflict = try #require(store.identityConflicts[fingerprint])
+        let persistedData = try #require(
+            keychain.getIdentityKey(
+                forKey: PeerIdentityStore.identityConflictStorageKey
+            )
+        )
+        let persistedText = try #require(
+            String(data: persistedData, encoding: .utf8)
+        )
+
+        #expect(persistedText.contains(fingerprint))
+        #expect(!persistedText.contains(noiseKey.hexEncodedString()))
+        #expect(persistedText.contains("authenticatedSigningKeyMismatch"))
+
+        let restored = PeerIdentityStore(keychain: keychain)
+        let restoredConflict = try #require(restored.identityConflicts[fingerprint])
+        #expect(restored.identityConflicts.count == 1)
+        #expect(restoredConflict.id == originalConflict.id)
+        #expect(restoredConflict.reason == .authenticatedSigningKeyMismatch)
+        #expect(restoredConflict.detectedAt == detectedAt)
+
+        restored.setVerified(fingerprint, verified: true)
+        #expect(restored.identityLockState(fingerprint: fingerprint) == .identityMismatch)
+    }
+
+    @Test("QR identity-binding conflicts persist as permanent yellow locks")
+    @MainActor
+    func qrIdentityBindingConflictPersistsAsPermanentYellowLock() throws {
+        let keychain = MockKeychain()
+        let fingerprint = Data(repeating: 0x19, count: 32).sha256Fingerprint()
+        let store = PeerIdentityStore(keychain: keychain)
+
+        store.recordIdentityConflict(
+            forFingerprint: fingerprint,
+            reason: .qrIdentityBindingMismatch
+        )
+
+        let persistedData = try #require(
+            keychain.getIdentityKey(
+                forKey: PeerIdentityStore.identityConflictStorageKey
+            )
+        )
+        let persistedText = try #require(
+            String(data: persistedData, encoding: .utf8)
+        )
+        #expect(persistedText.contains("qrIdentityBindingMismatch"))
+
+        let restored = PeerIdentityStore(keychain: keychain)
+        #expect(
+            restored.identityConflicts[fingerprint]?.reason
+                == .qrIdentityBindingMismatch
+        )
+        restored.setVerified(fingerprint, verified: true)
+        #expect(restored.identityLockState(fingerprint: fingerprint) == .identityMismatch)
+        #expect(IdentityLockState.identityMismatch.color == .yellow)
+    }
+
+    @Test("Authenticated malformed-data conflict reasons persist")
+    @MainActor
+    func authenticatedMalformedConflictReasonsPersist() {
+        let keychain = MockKeychain()
+        let dataFingerprint = Data(repeating: 0x21, count: 32).sha256Fingerprint()
+        let peerStateFingerprint = Data(repeating: 0x22, count: 32).sha256Fingerprint()
+        let store = PeerIdentityStore(keychain: keychain)
+
+        store.recordIdentityConflict(
+            forFingerprint: dataFingerprint,
+            reason: .malformedAuthenticatedData
+        )
+        store.recordIdentityConflict(
+            forFingerprint: peerStateFingerprint,
+            reason: .malformedAuthenticatedPeerState
+        )
+
+        let restored = PeerIdentityStore(keychain: keychain)
+        #expect(
+            restored.identityConflicts[dataFingerprint]?.reason
+                == .malformedAuthenticatedData
+        )
+        #expect(
+            restored.identityConflicts[peerStateFingerprint]?.reason
+                == .malformedAuthenticatedPeerState
+        )
+    }
+
+    @Test("Unavailable Keychain reads preserve and merge the durable snapshot")
+    @MainActor
+    func unavailableIdentityConflictSnapshotIsMergedAfterStorageReturns() throws {
+        let keychain = MockKeychain()
+        let durableFingerprint = Data(repeating: 0x31, count: 32).sha256Fingerprint()
+        let pendingFingerprint = Data(repeating: 0x32, count: 32).sha256Fingerprint()
+        let seedingStore = PeerIdentityStore(keychain: keychain)
+        seedingStore.recordIdentityConflict(
+            forFingerprint: durableFingerprint,
+            reason: .signingKeyMismatch,
+            detectedAt: Date(timeIntervalSince1970: 10)
+        )
+        let durableSnapshot = try #require(
+            keychain.getIdentityKey(
+                forKey: PeerIdentityStore.identityConflictStorageKey
+            )
+        )
+
+        keychain.simulatedReadError = .deviceLocked
+        let lockedStore = PeerIdentityStore(keychain: keychain)
+        lockedStore.recordIdentityConflict(
+            forFingerprint: durableFingerprint,
+            reason: .malformedAuthenticatedData,
+            detectedAt: Date(timeIntervalSince1970: 20)
+        )
+        lockedStore.recordIdentityConflict(
+            forFingerprint: pendingFingerprint,
+            reason: .malformedAuthenticatedData,
+            detectedAt: Date(timeIntervalSince1970: 20)
+        )
+
+        #expect(
+            lockedStore.identityConflicts[durableFingerprint]?.reason
+                == .malformedAuthenticatedData
+        )
+        #expect(
+            lockedStore.identityConflicts[pendingFingerprint]?.reason
+                == .malformedAuthenticatedData
+        )
+        #expect(
+            keychain.getIdentityKey(
+                forKey: PeerIdentityStore.identityConflictStorageKey
+            ) == durableSnapshot
+        )
+
+        keychain.simulatedReadError = nil
+        #expect(
+            lockedStore.identityLockState(fingerprint: durableFingerprint)
+                == .identityMismatch
+        )
+        #expect(lockedStore.identityConflicts.count == 2)
+        #expect(
+            lockedStore.identityConflicts[durableFingerprint]?.reason
+                == .signingKeyMismatch
+        )
+
+        let restored = PeerIdentityStore(keychain: keychain)
+        #expect(
+            restored.identityConflicts[durableFingerprint]?.reason
+                == .signingKeyMismatch
+        )
+        #expect(
+            restored.identityConflicts[pendingFingerprint]?.reason
+                == .malformedAuthenticatedData
+        )
+    }
+
+    @Test("Unknown persisted conflict reasons keep the snapshot opaque")
+    @MainActor
+    func unknownPersistedConflictReasonIsNotOverwritten() throws {
+        let keychain = MockKeychain()
+        let futureFingerprint = Data(repeating: 0x41, count: 32).sha256Fingerprint()
+        let pendingFingerprint = Data(repeating: 0x42, count: 32).sha256Fingerprint()
+        let seedingStore = PeerIdentityStore(keychain: keychain)
+        seedingStore.recordIdentityConflict(
+            forFingerprint: futureFingerprint,
+            reason: .malformedAuthenticatedData
+        )
+
+        let seededData = try #require(
+            keychain.getIdentityKey(
+                forKey: PeerIdentityStore.identityConflictStorageKey
+            )
+        )
+        var snapshot = try #require(
+            JSONSerialization.jsonObject(with: seededData)
+                as? [String: Any]
+        )
+        var conflicts = try #require(snapshot["conflicts"] as? [[String: Any]])
+        conflicts[0]["reason"] = "futureAuthenticatedConflict"
+        snapshot["conflicts"] = conflicts
+        let futureSnapshot = try JSONSerialization.data(withJSONObject: snapshot)
+        #expect(
+            keychain.saveIdentityKey(
+                futureSnapshot,
+                forKey: PeerIdentityStore.identityConflictStorageKey
+            )
+        )
+
+        let store = PeerIdentityStore(keychain: keychain)
+        store.recordIdentityConflict(
+            forFingerprint: pendingFingerprint,
+            reason: .malformedAuthenticatedData
+        )
+
+        #expect(
+            keychain.getIdentityKey(
+                forKey: PeerIdentityStore.identityConflictStorageKey
+            ) == futureSnapshot
+        )
+        #expect(
+            store.identityLockState(fingerprint: pendingFingerprint)
+                == .identityMismatch
+        )
+    }
+
+    @Test("Unavailable conflict storage suppresses positive verification")
+    @MainActor
+    func unavailableIdentityConflictStorageSuppressesVerifiedState() {
+        let keychain = MockKeychain()
+        keychain.simulatedReadError = .deviceLocked
+        let store = PeerIdentityStore(keychain: keychain)
+        let fingerprint = Data(repeating: 0x51, count: 32).sha256Fingerprint()
+        store.setVerified(fingerprint, verified: true)
+
+        #expect(store.identityLockState(fingerprint: fingerprint) == .unverified)
+
+        keychain.simulatedReadError = nil
+        #expect(store.identityLockState(fingerprint: fingerprint) == .verified)
+    }
+
+    @Test("Stronger conflict reasons cannot be downgraded")
+    @MainActor
+    func strongerIdentityConflictCannotBeDowngraded() {
+        let store = PeerIdentityStore()
+        let fingerprint = Data(repeating: 0x61, count: 32).sha256Fingerprint()
+
+        store.recordIdentityConflict(
+            forFingerprint: fingerprint,
+            reason: .authenticatedSigningKeyMismatch,
+            detectedAt: Date(timeIntervalSince1970: 10)
+        )
+        store.recordIdentityConflict(
+            forFingerprint: fingerprint,
+            reason: .malformedAuthenticatedData,
+            detectedAt: Date(timeIntervalSince1970: 20)
+        )
+
+        #expect(
+            store.identityConflicts[fingerprint]?.reason
+                == .authenticatedSigningKeyMismatch
+        )
+        #expect(
+            store.identityConflicts[fingerprint]?.detectedAt
+                == Date(timeIntervalSince1970: 20)
+        )
+    }
+
+    @Test("A conflict follows its fingerprint across routing-ID changes")
+    @MainActor
+    func identityConflictIsScopedToFingerprintAcrossRoutingChanges() {
+        let store = PeerIdentityStore()
+        let fingerprint = Data(repeating: 0x71, count: 32).sha256Fingerprint()
+        let otherFingerprint = Data(repeating: 0x72, count: 32).sha256Fingerprint()
+        let oldRoute = PeerID(str: "1111111111111111")
+        let newRoute = PeerID(str: "2222222222222222")
+
+        store.setVerified(fingerprint, verified: true)
+        store.setVerified(otherFingerprint, verified: true)
+        store.setFingerprint(fingerprint.uppercased(), for: oldRoute)
+        store.recordIdentityConflict(
+            forFingerprint: fingerprint,
+            reason: .malformedAuthenticatedData
+        )
+
+        #expect(
+            store.identityLockState(fingerprint: store.fingerprint(for: oldRoute))
+                == .identityMismatch
+        )
+        #expect(store.identityLockState(fingerprint: otherFingerprint) == .verified)
+
+        #expect(
+            store.migrateFingerprintMapping(from: oldRoute, to: newRoute)
+                == fingerprint
+        )
+        #expect(store.fingerprint(for: oldRoute) == nil)
+        #expect(
+            store.identityLockState(fingerprint: store.fingerprint(for: newRoute))
+                == .identityMismatch
+        )
+
+        // Reusing a routing ID for another identity cannot inherit the flag.
+        store.setFingerprint(otherFingerprint, for: oldRoute)
+        #expect(
+            store.identityLockState(fingerprint: store.fingerprint(for: oldRoute))
+                == .verified
+        )
+    }
+
+    @Test("Incomplete fingerprints cannot create permanent identity flags")
+    @MainActor
+    func invalidFingerprintCannotLatchIdentityConflict() {
+        let store = PeerIdentityStore()
+
+        store.recordIdentityConflict(
+            forFingerprint: "1122334455667788",
+            reason: .claimedPeerIDMismatch
+        )
+        store.recordIdentityConflict(
+            forFingerprint: String(repeating: "z", count: 64),
+            reason: .claimedPeerIDMismatch
+        )
+
+        #expect(store.identityConflicts.isEmpty)
+    }
+
+    @Test("A failed conflict write is retried without losing the latch")
+    @MainActor
+    func identityConflictPersistenceRetriesWithoutClearing() {
+        let keychain = MockKeychain()
+        let fingerprint = Data(repeating: 0x81, count: 32).sha256Fingerprint()
+        let store = PeerIdentityStore(keychain: keychain)
+        keychain.simulatedSaveError = .deviceLocked
+
+        store.recordIdentityConflict(
+            forFingerprint: fingerprint,
+            reason: .noiseStaticKeyMismatch
+        )
+        #expect(store.identityConflicts[fingerprint] != nil)
+        #expect(
+            keychain.getIdentityKey(
+                forKey: PeerIdentityStore.identityConflictStorageKey
+            ) == nil
+        )
+
+        keychain.simulatedSaveError = nil
+        #expect(store.identityLockState(fingerprint: fingerprint) == .identityMismatch)
+        #expect(
+            PeerIdentityStore(keychain: keychain).identityConflicts[fingerprint]
+                != nil
+        )
+    }
+
+    @Test("Panic clear deletes persisted identity conflict latches")
+    @MainActor
+    func panicClearDeletesIdentityConflictLatches() {
+        let keychain = MockKeychain()
+        let fingerprint = Data(repeating: 0x91, count: 32).sha256Fingerprint()
+        let store = PeerIdentityStore(keychain: keychain)
+        store.recordIdentityConflict(
+            forFingerprint: fingerprint,
+            reason: .claimedPeerIDMismatch
+        )
+
+        store.clearAll()
+
+        #expect(
+            keychain.getIdentityKey(
+                forKey: PeerIdentityStore.identityConflictStorageKey
+            ) == nil
+        )
+        #expect(PeerIdentityStore(keychain: keychain).identityConflicts.isEmpty)
+    }
+
+    @Test("Identity conflict presentation suppresses positive trust signals")
+    func identityConflictPresentationSuppressesPositiveTrust() {
+        let state = FingerprintPresentationState(
+            peerNickname: "Alice",
+            encryptionStatus: .noiseVerified,
+            identityLockState: .identityMismatch,
+            theirFingerprint: "alice-fingerprint",
+            myFingerprint: "my-fingerprint",
+            isVerified: false,
+            localPetname: nil,
+            voucherCount: 2,
+            voucherNames: ["Bob", "Carol"]
+        )
+
+        #expect(!state.isVouched)
+        #expect(!state.canToggleVerification)
+        #expect(state.showsVerificationStatus)
+
+        let pendingSessionState = FingerprintPresentationState(
+            peerNickname: "Alice",
+            encryptionStatus: EncryptionStatus.none,
+            identityLockState: .identityMismatch,
+            theirFingerprint: nil,
+            myFingerprint: "my-fingerprint",
+            isVerified: false,
+            localPetname: nil,
+            voucherCount: 0,
+            voucherNames: []
+        )
+        #expect(!pendingSessionState.canToggleVerification)
+        #expect(pendingSessionState.showsVerificationStatus)
+    }
+
+    @Test("ChatViewModel publishes transport identity conflicts to UI state")
+    @MainActor
+    func chatViewModelPublishesIdentityConflicts() {
+        let viewModel = makeArchitectureViewModel()
+        let fingerprint = Data(repeating: 0xA1, count: 32).sha256Fingerprint()
+        let otherFingerprint = Data(repeating: 0xA2, count: 32).sha256Fingerprint()
+        viewModel.peerIdentityStore.setVerified(fingerprint, verified: true)
+        viewModel.peerIdentityStore.setVerified(otherFingerprint, verified: true)
+
+        viewModel.didReceiveTransportEvent(
+            .peerIdentityConflictDetected(
+                fingerprint: fingerprint.uppercased(),
+                reason: .claimedPeerIDMismatch,
+                detectedAt: Date(timeIntervalSince1970: 42)
+            )
+        )
+
+        #expect(
+            viewModel.peerIdentityStore.identityLockState(fingerprint: fingerprint)
+                == .identityMismatch
+        )
+        #expect(
+            viewModel.peerIdentityStore.identityConflicts[fingerprint]?.reason
+                == .claimedPeerIDMismatch
+        )
+        #expect(
+            viewModel.peerIdentityStore.identityLockState(
+                fingerprint: otherFingerprint
+            ) == .verified
+        )
+    }
+
     @Test("LocationPresenceStore normalizes and resets geohash presence state")
     @MainActor
     func locationPresenceStoreNormalizesPresenceState() {
@@ -620,6 +1088,10 @@ struct AppArchitectureTests {
         #expect(conversationModel.selectedHeaderState?.displayName == "alice")
         #expect(conversationModel.selectedHeaderState?.availability == .meshReachable)
         #expect(conversationModel.selectedHeaderState?.encryptionStatus == .noHandshake)
+        #expect(
+            conversationModel.selectedHeaderState?.identityLockState
+                == .unverified
+        )
 
         conversationModel.endConversation()
         await waitUntil {
@@ -627,6 +1099,29 @@ struct AppArchitectureTests {
         }
         #expect(conversationModel.selectedPeerID == nil)
         #expect(conversationModel.selectedHeaderState == nil)
+    }
+
+    @Test("Legacy private header accessibility includes identity mismatch")
+    @MainActor
+    func legacyPrivateHeaderAccessibilityIncludesMismatch() {
+        let peerID = PeerID(str: "0011223344556677")
+        let headerState = PrivateConversationHeaderState(
+            conversationPeerID: peerID,
+            headerPeerID: peerID,
+            displayName: "Alice",
+            availability: .offline,
+            isFavorite: false,
+            encryptionStatus: EncryptionStatus.none,
+            identityLockState: .identityMismatch
+        )
+
+        let label = contentPrivateHeaderAccessibilityLabel(for: headerState)
+        #expect(label.contains("Alice"))
+        #expect(
+            label.contains(
+                IdentityLockState.identityMismatch.accessibilityDescription
+            )
+        )
     }
 
     @Test("ConversationUIModel mirrors composer state and forwards sends")
@@ -690,6 +1185,56 @@ struct AppArchitectureTests {
         }
 
         #expect(transport.sentMessages.last?.content == "hello mesh")
+    }
+
+    @Test("ConversationUIModel removes verified sender seals on identity conflict")
+    @MainActor
+    func conversationUIModelSuppressesConflictedSenderSeals() async {
+        let viewModel = makeArchitectureViewModel()
+        guard let transport = viewModel.meshService as? MockTransport else {
+            Issue.record("Expected ChatViewModel meshService to be a MockTransport in architecture tests")
+            return
+        }
+        let peerID = PeerID(str: "0011223344556677")
+        let fingerprint = Data(repeating: 0xB1, count: 32).sha256Fingerprint()
+        transport.peerFingerprints[peerID] = fingerprint
+        viewModel.peerIdentityStore.setVerified(fingerprint, verified: true)
+
+        let privateConversationModel = PrivateConversationModel(
+            chatViewModel: viewModel,
+            conversations: viewModel.conversations,
+            locationChannelsModel: LocationChannelsModel(
+                manager: makeArchitectureLocationManager()
+            )
+        )
+        let uiModel = ConversationUIModel(
+            chatViewModel: viewModel,
+            privateConversationModel: privateConversationModel,
+            conversations: viewModel.conversations
+        )
+        let message = makeArchitectureMessage(
+            id: "verified-private-message",
+            isPrivate: true,
+            senderPeerID: peerID
+        )
+
+        #expect(uiModel.showsVerifiedSeal(for: message))
+        try? await Task.sleep(nanoseconds: 100_000_000)
+
+        var refreshed = false
+        let cancellable = uiModel.objectWillChange.sink { _ in
+            refreshed = true
+        }
+        defer { cancellable.cancel() }
+
+        viewModel.peerIdentityStore.recordIdentityConflict(
+            forFingerprint: fingerprint,
+            reason: .signingKeyMismatch
+        )
+        await waitUntil { refreshed }
+
+        #expect(refreshed)
+        #expect(!uiModel.showsVerifiedSeal(for: message))
     }
 
     @Test("VerificationModel bridges selected conversation and fingerprint actions")
@@ -819,6 +1364,88 @@ struct AppArchitectureTests {
                 .getSocialIdentity(for: candidate.fingerprint)?.localPetname == "Neighbor"
         )
         #expect(verificationModel.friendVerificationState == .ready)
+    }
+
+    @Test("Hybrid QR marks the authenticated signing-key holder, not its claimed Noise identity")
+    @MainActor
+    func verificationModelAttributesHybridQRToSigningKeyHolder() throws {
+        let keychain = MockKeychain()
+        let identityManager = SecureIdentityStateManager(keychain)
+        let peerIdentityStore = PeerIdentityStore(keychain: keychain)
+        let viewModel = ChatViewModel(
+            keychain: keychain,
+            idBridge: NostrIdentityBridge(keychain: MockKeychainHelper()),
+            identityManager: identityManager,
+            transport: MockTransport(),
+            peerIdentityStore: peerIdentityStore,
+            locationManager: makeArchitectureLocationManager()
+        )
+        VerificationService.shared.configure(with: viewModel.meshService)
+        let verificationModel = VerificationModel(
+            chatViewModel: viewModel,
+            privateConversationModel: PrivateConversationModel(
+                chatViewModel: viewModel,
+                conversations: viewModel.conversations,
+                locationChannelsModel: LocationChannelsModel(
+                    manager: makeArchitectureLocationManager()
+                )
+            ),
+            peerIdentityStore: peerIdentityStore
+        )
+
+        let victim = MockTransport()
+        let attacker = MockTransport()
+        let victimNoiseKey = victim.noiseStaticPublicKeyData()
+        let victimFingerprint = victimNoiseKey.sha256Fingerprint()
+        let attackerSigningKey = attacker.noiseSigningPublicKeyData()
+        let keyHolderFingerprint = Data(repeating: 0xA7, count: 32)
+            .sha256Fingerprint()
+        identityManager.bindAuthenticatedSigningPublicKey(
+            victim.noiseSigningPublicKeyData(),
+            fingerprint: victimFingerprint
+        )
+        identityManager.bindAuthenticatedSigningPublicKey(
+            attackerSigningKey,
+            fingerprint: keyHolderFingerprint
+        )
+
+        var hybridQR = VerificationService.VerificationQR(
+            v: 1,
+            noiseKeyHex: victimNoiseKey.hexEncodedString(),
+            signKeyHex: attackerSigningKey.hexEncodedString(),
+            npub: nil,
+            nickname: "Alice",
+            ts: Int64(Date().timeIntervalSince1970),
+            nonceB64: Data((0..<16).map(UInt8.init)).base64EncodedString(),
+            sigHex: ""
+        )
+        hybridQR.sigHex = try #require(
+            attacker.noiseSignData(hybridQR.canonicalBytes())
+        ).hexEncodedString()
+
+        let outcome = verificationModel.verifyScannedPayload(
+            hybridQR.toURLString()
+        )
+        guard case .candidate(let candidate) = outcome else {
+            Issue.record("Expected the self-consistent hybrid QR to pass scan validation")
+            return
+        }
+
+        #expect(candidate.fingerprint == victimFingerprint)
+        #expect(
+            peerIdentityStore.identityConflicts[keyHolderFingerprint]?.reason
+                == .qrIdentityBindingMismatch
+        )
+        #expect(
+            peerIdentityStore.identityLockState(
+                fingerprint: keyHolderFingerprint
+            ) == .identityMismatch
+        )
+        #expect(peerIdentityStore.identityConflicts[victimFingerprint] == nil)
+        #expect(
+            peerIdentityStore.identityLockState(fingerprint: victimFingerprint)
+                == .unverified
+        )
     }
 
     @Test("QR friend addition rechecks a newly pinned signing key")
@@ -994,6 +1621,7 @@ struct AppArchitectureTests {
         #expect(peerListModel.connectedMeshPeerCount == 0)
         #expect(meshRow?.displayName == "alice")
         #expect(meshRow?.showsVerifiedBadgeWhenOffline == true)
+        #expect(meshRow?.identityLockState == .verified)
         #expect(meshRow?.hasUnread == true)
         #expect(peerListModel.visibleGeohashPeerCount >= 1)
         #expect(peerListModel.participantCount(for: geohash) >= 1)
@@ -1009,6 +1637,75 @@ struct AppArchitectureTests {
             }
             return false
         }
+    }
+
+    @Test("PeerListModel hides vouch badge during identity mismatch")
+    @MainActor
+    func peerListModelSuppressesConflictedVouchBadge() async {
+        let viewModel = makeArchitectureViewModel()
+        guard let transport = viewModel.meshService as? MockTransport else {
+            Issue.record("Expected ChatViewModel meshService to be a MockTransport in architecture tests")
+            return
+        }
+        let myPeerID = PeerID(str: "me-peer")
+        let peerID = PeerID(str: "0011223344556677")
+        let noiseKey = Data(repeating: 0xA1, count: 32)
+        let fingerprint = noiseKey.sha256Fingerprint()
+
+        transport.myPeerID = myPeerID
+        transport.peerFingerprints[peerID] = fingerprint
+        transport.peerNicknames[peerID] = "Alice"
+        _ = viewModel.identityManager.recordVouch(
+            voucheeFingerprint: fingerprint,
+            voucherFingerprint: "voucher-fingerprint",
+            timestamp: Date()
+        )
+        transport.updatePeerSnapshots([
+            makeArchitectureSnapshot(
+                peerID: myPeerID,
+                nickname: "Me",
+                connected: true,
+                noisePublicKey: Data(repeating: 0, count: 32)
+            ),
+            makeArchitectureSnapshot(
+                peerID: peerID,
+                nickname: "Alice",
+                connected: true,
+                noisePublicKey: noiseKey
+            )
+        ])
+
+        let model = PeerListModel(
+            chatViewModel: viewModel,
+            conversations: viewModel.conversations,
+            locationChannelsModel: LocationChannelsModel(
+                manager: makeArchitectureLocationManager()
+            )
+        )
+        await waitUntil {
+            model.meshRows.first(where: { $0.peerID == peerID })?
+                .showsVouchedBadge == true
+        }
+        #expect(
+            model.meshRows.first(where: { $0.peerID == peerID })?
+                .showsVouchedBadge == true
+        )
+
+        viewModel.peerIdentityStore.recordIdentityConflict(
+            forFingerprint: fingerprint,
+            reason: .authenticatedSigningKeyMismatch
+        )
+        await waitUntil {
+            guard let row = model.meshRows.first(where: { $0.peerID == peerID }) else {
+                return false
+            }
+            return row.identityLockState == .identityMismatch
+                && !row.showsVouchedBadge
+        }
+
+        let conflictedRow = model.meshRows.first(where: { $0.peerID == peerID })
+        #expect(conflictedRow?.identityLockState == .identityMismatch)
+        #expect(conflictedRow?.showsVouchedBadge == false)
     }
 
     @Test("PeerListModel publishes deduplicated offline non-friend recents by last message")
@@ -1154,6 +1851,39 @@ struct AppArchitectureTests {
             aliceStableID
         ])
         #expect(model.recentMeshRows.first?.hasUnread == true)
+        #expect(model.recentMeshRows.first?.identityLockState == .unverified)
+
+        viewModel.peerIdentityStore.setVerified(
+            aliceFingerprint,
+            verified: true
+        )
+        await waitUntil {
+            model.recentMeshRows.first?.identityLockState == .verified
+        }
+        #expect(model.recentMeshRows.first?.identityLockState == .verified)
+
+        viewModel.peerIdentityStore.recordIdentityConflict(
+            forFingerprint: aliceFingerprint,
+            reason: .authenticatedSigningKeyMismatch
+        )
+        await waitUntil {
+            model.recentMeshRows.first?.identityLockState == .identityMismatch
+        }
+        #expect(
+            model.recentMeshRows.first?.identityLockState
+                == .identityMismatch
+        )
+        viewModel.peerIdentityStore.setVerified(
+            aliceFingerprint,
+            verified: false
+        )
+        viewModel.peerIdentityStore.setVerified(
+            aliceFingerprint,
+            verified: true
+        )
+        await waitUntil {
+            model.recentMeshRows.first?.identityLockState == .identityMismatch
+        }
 
         if let aliceRecent = model.recentMeshRows.first {
             #expect(model.prepareRecentConversationForOpening(aliceRecent) == aliceStableID)

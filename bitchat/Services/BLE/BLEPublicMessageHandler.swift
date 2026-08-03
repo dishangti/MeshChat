@@ -20,6 +20,14 @@ struct BLEPublicMessageHandlerEnvironment {
     let verifyPacketSignature: (_ packet: BitchatPacket, _ signingPublicKey: Data) -> Bool
     /// Resolves a display name from a verified packet signature for peers missing from the registry.
     let signedSenderDisplayName: (_ packet: BitchatPacket, _ peerID: PeerID) -> String?
+    /// Reports malformed data only after the handler established a valid
+    /// sender signature. The service verifies the durable signing pin again
+    /// before emitting contact security state.
+    let reportAuthenticatedMalformedData: (
+        _ packet: BitchatPacket,
+        _ peerID: PeerID,
+        _ reason: PeerIdentityConflictReason
+    ) -> Void
     /// Tracks the broadcast message packet for gossip sync.
     let trackPacketSeen: (BitchatPacket) -> Void
     /// Direct link state for the peer (BLE-queue read).
@@ -112,6 +120,13 @@ final class BLEPublicMessageHandler {
 
         guard let content = String(data: packet.payload, encoding: .utf8) else {
             SecureLogger.error("❌ Failed to decode message payload as UTF-8", category: .session)
+            if !isSelf {
+                env.reportAuthenticatedMalformedData(
+                    packet,
+                    peerID,
+                    .malformedAuthenticatedData
+                )
+            }
             return
         }
         // Determine if we have a direct link to the sender

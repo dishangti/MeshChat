@@ -169,18 +169,18 @@ struct MeshChatHelpView: View {
         ) {
             verificationState(
                 icon: "lock.fill",
-                iconColor: .red,
+                iconColor: IdentityLockState.unverified.color,
                 label: "fingerprint.badge.not_verified"
             )
             verificationState(
-                icon: "checkmark.seal.fill",
-                iconColor: .green,
+                icon: "lock.fill",
+                iconColor: IdentityLockState.verified.color,
                 label: "fingerprint.badge.verified"
             )
             verificationState(
                 icon: "lock.fill",
-                iconColor: .orange,
-                label: "app_info.legend.private_message"
+                iconColor: IdentityLockState.identityMismatch.color,
+                label: "identity.status.mismatch"
             )
         }
         .padding(.horizontal, 12)

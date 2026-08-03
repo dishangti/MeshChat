@@ -106,6 +106,7 @@ struct PrivateConversationHeaderState: Equatable {
     let availability: PrivateConversationAvailability
     let isFavorite: Bool
     let encryptionStatus: EncryptionStatus?
+    let identityLockState: IdentityLockState?
 
     var supportsFriendAction: Bool {
         !conversationPeerID.isGeoDM && !conversationPeerID.isGroup
@@ -209,6 +210,20 @@ final class PrivateConversationModel: ObservableObject {
             }
             .store(in: &cancellables)
 
+        peerIdentityStore.$verifiedFingerprints
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] _ in
+                self?.refreshSelectedConversation()
+            }
+            .store(in: &cancellables)
+
+        peerIdentityStore.$identityConflicts
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] _ in
+                self?.refreshSelectedConversation()
+            }
+            .store(in: &cancellables)
+
         NotificationCenter.default.publisher(for: .favoriteStatusChanged)
             .receive(on: DispatchQueue.main)
             .sink { [weak self] _ in
@@ -262,7 +277,8 @@ final class PrivateConversationModel: ObservableObject {
                 displayName: displayName,
                 availability: .meshReachable,
                 isFavorite: false,
-                encryptionStatus: nil
+                encryptionStatus: nil,
+                identityLockState: nil
             )
         }
 
@@ -279,6 +295,12 @@ final class PrivateConversationModel: ObservableObject {
         let encryptionStatus: EncryptionStatus? = conversationPeerID.isGeoDM
             ? nil
             : chatViewModel.getEncryptionStatus(for: headerPeerID)
+        let identityLockState: IdentityLockState? = conversationPeerID.isGeoDM
+            ? nil
+            : peerIdentityStore.identityLockState(
+                fingerprint: chatViewModel.getFingerprint(for: headerPeerID)
+                    ?? conversationPeerID.noiseKey?.sha256Fingerprint()
+            )
 
         return PrivateConversationHeaderState(
             conversationPeerID: conversationPeerID,
@@ -286,7 +308,8 @@ final class PrivateConversationModel: ObservableObject {
             displayName: displayName,
             availability: availability,
             isFavorite: chatViewModel.isFavorite(peerID: headerPeerID),
-            encryptionStatus: encryptionStatus
+            encryptionStatus: encryptionStatus,
+            identityLockState: identityLockState
         )
     }
 

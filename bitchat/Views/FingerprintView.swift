@@ -84,22 +84,16 @@ struct FingerprintView: View {
             
             VStack(alignment: .leading, spacing: 16) {
                 HStack {
-                    if let icon = fingerprintState.encryptionStatus.icon {
-                        Image(systemName: icon)
-                            .font(.bitchatSystem(size: 20))
-                            .foregroundColor(
-                                fingerprintState.encryptionStatus == .noiseVerified
-                                    ? Color.green
-                                    : Color.red
-                            )
-                    }
+                    Image(systemName: fingerprintState.identityLockState.icon)
+                        .font(.bitchatSystem(size: 20))
+                        .foregroundColor(fingerprintState.identityLockState.color)
                     
                     VStack(alignment: .leading, spacing: 4) {
                         Text(fingerprintState.peerNickname)
                             .bitchatFont(size: 18, weight: .semibold)
                             .foregroundColor(textColor)
                         
-                        Text(fingerprintState.encryptionStatus.description)
+                        Text(verbatim: fingerprintState.identityLockState.accessibilityDescription)
                             .bitchatFont(size: 12)
                             .foregroundColor(textColor.opacity(0.7))
                     }
@@ -218,9 +212,9 @@ struct FingerprintView: View {
                         }
                 }
                 
-                // Vouched (transitively verified) status: shown whenever the
-                // peer isn't explicitly verified but people I verified vouch
-                // for them, independent of the current session state.
+                // Vouched (transitively verified) status is suppressed while
+                // conflicting identity data is active, so positive trust
+                // signals never compete with the suspicious-data state.
                 if fingerprintState.isVouched && !fingerprintState.isVerified {
                     VStack(spacing: 8) {
                         HStack(spacing: 6) {
@@ -254,15 +248,18 @@ struct FingerprintView: View {
                 }
 
                 // Verification status
-                if fingerprintState.canToggleVerification {
+                if fingerprintState.showsVerificationStatus {
                     VStack(spacing: 12) {
-                        Text(fingerprintState.isVerified ? Strings.verifiedBadge : Strings.notVerifiedBadge)
+                        Text(verbatim: fingerprintState.identityLockState.accessibilityDescription)
                             .bitchatFont(size: 14, weight: .bold)
-                            .foregroundColor(fingerprintState.isVerified ? Color.green : Color.red)
+                            .foregroundColor(fingerprintState.identityLockState.color)
                             .frame(maxWidth: .infinity)
                         
                         Group {
-                            if fingerprintState.isVerified {
+                            if fingerprintState.identityLockState
+                                == .identityMismatch {
+                                Text("meshchat.help.verification.description")
+                            } else if fingerprintState.isVerified {
                                 Text(Strings.verifiedMessage)
                             } else {
                                 Text(Strings.verifyHint(fingerprintState.peerNickname))
@@ -275,34 +272,36 @@ struct FingerprintView: View {
                             .fixedSize(horizontal: false, vertical: true)
                             .frame(maxWidth: .infinity)
                         
-                        if !fingerprintState.isVerified {
-                            Button(action: {
-                                verificationModel.verifyFingerprint(for: peerID)
-                                dismiss()
-                            }) {
-                                Text(Strings.markVerified)
-                                    .bitchatFont(size: 14, weight: .bold)
-                                    .foregroundColor(.white)
-                                    .padding(.horizontal, 20)
-                                    .padding(.vertical, 10)
-                                    .background(Color.green)
-                                    .cornerRadius(8)
+                        if fingerprintState.canToggleVerification {
+                            if !fingerprintState.isVerified {
+                                Button(action: {
+                                    verificationModel.verifyFingerprint(for: peerID)
+                                    dismiss()
+                                }) {
+                                    Text(Strings.markVerified)
+                                        .bitchatFont(size: 14, weight: .bold)
+                                        .foregroundColor(.white)
+                                        .padding(.horizontal, 20)
+                                        .padding(.vertical, 10)
+                                        .background(Color.green)
+                                        .cornerRadius(8)
+                                }
+                                .buttonStyle(PlainButtonStyle())
+                            } else {
+                                Button(action: {
+                                    verificationModel.unverifyFingerprint(for: peerID)
+                                    dismiss()
+                                }) {
+                                    Text(Strings.removeVerification)
+                                        .bitchatFont(size: 14, weight: .bold)
+                                        .foregroundColor(.white)
+                                        .padding(.horizontal, 20)
+                                        .padding(.vertical, 10)
+                                        .background(Color.red)
+                                        .cornerRadius(8)
+                                }
+                                .buttonStyle(PlainButtonStyle())
                             }
-                            .buttonStyle(PlainButtonStyle())
-                        } else {
-                            Button(action: {
-                                verificationModel.unverifyFingerprint(for: peerID)
-                                dismiss()
-                            }) {
-                                Text(Strings.removeVerification)
-                                    .bitchatFont(size: 14, weight: .bold)
-                                    .foregroundColor(.white)
-                                    .padding(.horizontal, 20)
-                                    .padding(.vertical, 10)
-                                    .background(Color.red)
-                                    .cornerRadius(8)
-                            }
-                            .buttonStyle(PlainButtonStyle())
                         }
                     }
                     .padding(.top)

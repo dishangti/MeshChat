@@ -741,39 +741,18 @@ private struct ContentPrivateHeaderInfoButton: View {
                     .lineLimit(1)
                     .truncationMode(.middle)
 
-                if let encryptionStatus = headerState.encryptionStatus,
-                   let icon = encryptionStatus.icon {
-                    Image(systemName: icon)
+                if let identityLockState = headerState.identityLockState {
+                    Image(systemName: identityLockState.icon)
                         .font(.bitchatSystem(size: 14))
-                        // Optical centering: the lock glyphs' ink is bottom-heavy
-                        // (solid body, thin shackle), so geometric centering reads
-                        // ~1pt low next to the name. The seal badge is symmetric
-                        // and needs no lift.
-                        .offset(y: icon.hasPrefix("lock") ? -1 : 0)
-                        .foregroundColor(
-                            encryptionStatus == .noiseVerified
-                                ? Color.green
-                                : Color.red
-                        )
-                        .accessibilityLabel(
-                            String(
-                                format: String(localized: "content.accessibility.encryption_status", comment: "Accessibility label announcing encryption status"),
-                                locale: .current,
-                                encryptionStatus.accessibilityDescription
-                            )
-                        )
+                        .offset(y: -1)
+                        .foregroundColor(identityLockState.color)
+                        .accessibilityLabel(identityLockState.accessibilityDescription)
                 }
 
             }
         }
         .buttonStyle(.plain)
-        .accessibilityLabel(
-            String(
-                format: String(localized: "content.accessibility.private_chat_header", comment: "Accessibility label describing the private chat header"),
-                locale: .current,
-                headerState.displayName
-            )
-        )
+        .accessibilityLabel(contentPrivateHeaderAccessibilityLabel(for: headerState))
         .accessibilityHint(
             headerState.isGroupConversation
             ? ""
@@ -781,4 +760,23 @@ private struct ContentPrivateHeaderInfoButton: View {
         )
         .frame(minHeight: headerHeight)
     }
+}
+
+func contentPrivateHeaderAccessibilityLabel(
+    for headerState: PrivateConversationHeaderState
+) -> String {
+    let base = String(
+        format: String(
+            localized: "content.accessibility.private_chat_header",
+            defaultValue: "Private Chat with %@",
+            comment: "Accessibility label describing the private chat header"
+        ),
+        locale: .current,
+        headerState.displayName
+    )
+    guard let identityLockState = headerState.identityLockState else {
+        return base
+    }
+    return [base, identityLockState.accessibilityDescription]
+        .joined(separator: ", ")
 }

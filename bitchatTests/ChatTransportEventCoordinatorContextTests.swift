@@ -154,15 +154,31 @@ private final class MockChatTransportEventContext: ChatTransportEventContext {
     }
 
     // Verification payloads
-    private(set) var verifyChallengePayloads: [(peerID: PeerID, payload: Data)] = []
-    private(set) var verifyResponsePayloads: [(peerID: PeerID, payload: Data)] = []
+    private(set) var verifyChallengePayloads: [(
+        peerID: PeerID,
+        payload: Data,
+        sessionGeneration: UUID?
+    )] = []
+    private(set) var verifyResponsePayloads: [(
+        peerID: PeerID,
+        payload: Data,
+        sessionGeneration: UUID?
+    )] = []
 
-    func handleVerifyChallengePayload(from peerID: PeerID, payload: Data) {
-        verifyChallengePayloads.append((peerID, payload))
+    func handleVerifyChallengePayload(
+        from peerID: PeerID,
+        payload: Data,
+        sessionGeneration: UUID?
+    ) {
+        verifyChallengePayloads.append((peerID, payload, sessionGeneration))
     }
 
-    func handleVerifyResponsePayload(from peerID: PeerID, payload: Data) {
-        verifyResponsePayloads.append((peerID, payload))
+    func handleVerifyResponsePayload(
+        from peerID: PeerID,
+        payload: Data,
+        sessionGeneration: UUID?
+    ) {
+        verifyResponsePayloads.append((peerID, payload, sessionGeneration))
     }
 
     // Group payloads
@@ -519,12 +535,34 @@ struct ChatTransportEventCoordinatorContextTests {
             Issue.record("expected .read status")
         }
 
-        // Verification payloads are forwarded untouched.
-        coordinator.didReceiveNoisePayload(from: peerID, type: .verifyChallenge, payload: Data([0x01]), timestamp: Date())
-        coordinator.didReceiveNoisePayload(from: peerID, type: .verifyResponse, payload: Data([0x02]), timestamp: Date())
+        // Verification payloads and their local Noise-generation metadata are
+        // forwarded untouched. The generation never enters Bitchat wire data.
+        let verificationGeneration = UUID()
+        coordinator.didReceiveNoisePayload(
+            from: peerID,
+            type: .verifyChallenge,
+            payload: Data([0x01]),
+            timestamp: Date(),
+            sessionGeneration: verificationGeneration
+        )
+        coordinator.didReceiveNoisePayload(
+            from: peerID,
+            type: .verifyResponse,
+            payload: Data([0x02]),
+            timestamp: Date(),
+            sessionGeneration: verificationGeneration
+        )
         await drainMainActorTasks()
         #expect(context.verifyChallengePayloads.count == 1)
         #expect(context.verifyResponsePayloads.count == 1)
+        #expect(
+            context.verifyChallengePayloads.first?.sessionGeneration
+                == verificationGeneration
+        )
+        #expect(
+            context.verifyResponsePayloads.first?.sessionGeneration
+                == verificationGeneration
+        )
 
         // Blocked peers' private messages are dropped (no handling, no ack).
         context.blockedPeers = [peerID]

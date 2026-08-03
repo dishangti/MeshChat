@@ -142,39 +142,12 @@ struct MeshPeerList: View {
                         }
 
                         if !isMe {
-                            if peer.isConnected {
-                                if let icon = peer.encryptionStatus.icon {
-                                    Image(systemName: icon)
-                                        .font(.bitchatSystem(size: 10))
-                                        // Optical centering: lock glyph ink is
-                                        // bottom-heavy, so geometric centering
-                                        // reads low next to the name.
-                                        .offset(y: icon.hasPrefix("lock") ? -0.5 : 0)
-                                        .foregroundColor(
-                                            peer.encryptionStatus == .noiseVerified
-                                                ? .green
-                                                : .red
-                                        )
-                                }
-                            } else {
-                                // Offline: prefer showing verified badge from persisted fingerprints
-                                if peer.showsVerifiedBadgeWhenOffline {
-                                    Image(systemName: "checkmark.seal.fill")
-                                        .font(.bitchatSystem(size: 10))
-                                        .foregroundColor(.green)
-                                } else if let icon = peer.encryptionStatus.icon {
-                                    // Preserve the verified color during the
-                                    // brief alias/persistence refresh window.
-                                    Image(systemName: icon)
-                                        .font(.bitchatSystem(size: 10))
-                                        .offset(y: icon.hasPrefix("lock") ? -0.5 : 0)
-                                        .foregroundColor(
-                                            peer.encryptionStatus == .noiseVerified
-                                                ? .green
-                                                : .red
-                                        )
-                                }
-                            }
+                            Image(systemName: peer.identityLockState.icon)
+                                .font(.bitchatSystem(size: 10))
+                                // Lock glyph ink is bottom-heavy next to text.
+                                .offset(y: -0.5)
+                                .foregroundColor(peer.identityLockState.color)
+                                .help(peer.identityLockState.accessibilityDescription)
 
                             // Vouched (transitively verified): unfilled seal,
                             // deliberately distinct from verified's filled one.
@@ -310,6 +283,7 @@ struct MeshPeerList: View {
             } else {
                 parts.append(Strings.offline)
             }
+            parts.append(peer.identityLockState.accessibilityDescription)
         }
         if peer.showsVouchedBadge { parts.append(Strings.vouched) }
         if peer.isFavorite { parts.append(Strings.favorite) }

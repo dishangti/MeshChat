@@ -51,11 +51,22 @@ struct MeshChatConversationHeader: View {
                     conversationAvatar
 
                     VStack(alignment: .leading, spacing: 2) {
-                        Text(conversationTitle)
-                            .font(.headline)
-                            .foregroundStyle(palette.primary)
-                            .lineLimit(1)
-                            .truncationMode(.middle)
+                        HStack(spacing: 5) {
+                            Text(conversationTitle)
+                                .font(.headline)
+                                .foregroundStyle(palette.primary)
+                                .lineLimit(1)
+                                .truncationMode(.middle)
+
+                            if let identityLockState = privateHeader?.identityLockState {
+                                Image(systemName: identityLockState.icon)
+                                    .font(.caption)
+                                    .foregroundStyle(identityLockState.color)
+                                    .accessibilityLabel(
+                                        identityLockState.accessibilityDescription
+                                    )
+                            }
+                        }
 
                         HStack(spacing: 5) {
                             if let statusSymbol {

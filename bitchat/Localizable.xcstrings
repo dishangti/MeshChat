@@ -578,39 +578,75 @@
       }
     },
     "meshchat.help.verification.description": {
-      "comment": "Help text explaining identity verification markers and distinguishing them from the private-message scope lock",
+      "comment": "Help text explaining Bitchat-compatible QR verification and permanent fingerprint-bound lock states",
       "extractionState": "manual",
       "localizations": {
-        "ar": { "stringUnit": { "state": "translated", "value": "قارن البصمات أو أكمل تحدي QR عبر الاتصال المشفّر المباشر. القفل الأحمر يعني أن الهوية غير موثّقة، والختم الأخضر يعني أنها موثّقة. القفل البرتقالي يميّز رسالة خاصة؛ ويعرض الشرح أسفل محرر الرسالة حالة تشفير الجلسة الحالية." } },
-        "bn": { "stringUnit": { "state": "translated", "value": "ফিঙ্গারপ্রিন্ট তুলনা করুন বা সক্রিয় এনক্রিপ্টেড সংযোগে QR চ্যালেঞ্জ সম্পন্ন করুন। লাল তালা মানে পরিচয় যাচাই করা হয়নি, সবুজ সিল মানে যাচাই করা হয়েছে। কমলা তালা একটি ব্যক্তিগত বার্তা চিহ্নিত করে; বার্তা লেখার অংশের নিচের লেখা বর্তমান সেশনের এনক্রিপশন অবস্থা দেখায়।" } },
-        "de": { "stringUnit": { "state": "translated", "value": "Vergleiche Fingerabdrücke oder schließe die QR-Aufgabe über die aktive verschlüsselte Verbindung ab. Ein rotes Schloss bedeutet, dass die Identität nicht verifiziert ist; ein grünes Siegel bedeutet, dass sie verifiziert ist. Ein orangefarbenes Schloss kennzeichnet eine private Nachricht; der Hinweis unter dem Eingabefeld zeigt den Verschlüsselungsstatus der aktuellen Sitzung." } },
-        "en": { "stringUnit": { "state": "translated", "value": "Compare fingerprints or complete the QR challenge over the live encrypted link. A red lock means the identity is not verified; a green seal means it is verified. An orange lock marks a private message; the composer caption shows the current session’s encryption state." } },
-        "es": { "stringUnit": { "state": "translated", "value": "Compara las huellas o completa el desafío QR mediante el enlace cifrado activo. Un candado rojo indica que la identidad no está verificada; un sello verde indica que sí. Un candado naranja marca un mensaje privado; el texto bajo el editor muestra el estado de cifrado de la sesión actual." } },
-        "fa": { "stringUnit": { "state": "translated", "value": "اثر انگشت‌ها را مقایسه کنید یا چالش QR را از طریق پیوند رمزگذاری‌شده فعال انجام دهید. قفل قرمز یعنی هویت تأیید نشده و نشان سبز یعنی تأیید شده است. قفل نارنجی پیام خصوصی را مشخص می‌کند؛ توضیح زیر کادر نوشتن وضعیت رمزنگاری نشست فعلی را نشان می‌دهد." } },
-        "fil": { "stringUnit": { "state": "translated", "value": "Ihambing ang mga fingerprint o kumpletuhin ang QR challenge sa aktibong encrypted link. Ang pulang lock ay hindi pa verified ang identity; ang berdeng seal ay verified na. Minamarkahan ng orange na lock ang private message; ipinapakita ng caption sa ilalim ng composer ang encryption state ng kasalukuyang session." } },
-        "fr": { "stringUnit": { "state": "translated", "value": "Compare les empreintes ou termine le défi QR via la liaison chiffrée active. Un cadenas rouge signifie que l'identité n'est pas vérifiée ; un sceau vert qu'elle l'est. Un cadenas orange indique un message privé ; le texte sous l'éditeur affiche l'état de chiffrement de la session en cours." } },
-        "he": { "stringUnit": { "state": "translated", "value": "השוו טביעות אצבע או השלימו את אתגר ה-QR דרך החיבור המוצפן הפעיל. מנעול אדום פירושו שהזהות לא אומתה; חותם ירוק פירושו שאומתה. מנעול כתום מסמן הודעה פרטית; הכיתוב מתחת לעורך ההודעה מציג את מצב ההצפנה של החיבור הנוכחי." } },
-        "hi": { "stringUnit": { "state": "translated", "value": "फ़िंगरप्रिंट मिलाएँ या सक्रिय एन्क्रिप्टेड लिंक पर QR चुनौती पूरी करें। लाल लॉक का अर्थ है पहचान सत्यापित नहीं है; हरी सील सत्यापित पहचान दर्शाती है। नारंगी लॉक निजी संदेश को चिह्नित करता है; संदेश लिखने की जगह के नीचे का कैप्शन मौजूदा सत्र की एन्क्रिप्शन स्थिति दिखाता है।" } },
-        "id": { "stringUnit": { "state": "translated", "value": "Bandingkan sidik jari atau selesaikan tantangan QR melalui tautan terenkripsi yang aktif. Gembok merah berarti identitas belum diverifikasi; segel hijau berarti sudah diverifikasi. Gembok oranye menandai pesan pribadi; keterangan di bawah penulis pesan menunjukkan status enkripsi sesi saat ini." } },
-        "it": { "stringUnit": { "state": "translated", "value": "Confronta le impronte oppure completa la verifica QR tramite il collegamento cifrato attivo. Un lucchetto rosso indica che l'identità non è verificata; un sigillo verde che lo è. Un lucchetto arancione contrassegna un messaggio privato; la didascalia sotto l'editor mostra lo stato di cifratura della sessione corrente." } },
-        "ja": { "stringUnit": { "state": "translated", "value": "フィンガープリントを比較するか、現在の暗号化接続でQRチャレンジを完了します。赤い鍵は本人確認が未検証、緑のシールは検証済みを示します。オレンジ色の鍵は個別メッセージを示し、入力欄の下の説明に現在のセッションの暗号化状態が表示されます。" } },
-        "ko": { "stringUnit": { "state": "translated", "value": "지문을 비교하거나 활성 암호화 연결에서 QR 확인 절차를 완료하세요. 빨간 자물쇠는 신원 미확인, 초록 확인 표시는 신원 확인 완료를 뜻합니다. 주황색 자물쇠는 비공개 메시지를 나타내며, 입력창 아래의 설명에 현재 세션의 암호화 상태가 표시됩니다." } },
-        "ms": { "stringUnit": { "state": "translated", "value": "Bandingkan cap jari atau lengkapkan cabaran QR melalui pautan disulitkan yang aktif. Kunci merah bermaksud identiti belum disahkan; meterai hijau bermaksud telah disahkan. Kunci jingga menandakan mesej peribadi; kapsyen di bawah penggubah menunjukkan keadaan penyulitan sesi semasa." } },
-        "ne": { "stringUnit": { "state": "translated", "value": "फिङ्गरप्रिन्ट तुलना गर्नुहोस् वा सक्रिय इन्क्रिप्टेड लिङ्कमा QR चुनौती पूरा गर्नुहोस्। रातो तालाले पहिचान प्रमाणित नभएको, हरियो छापले प्रमाणित भएको जनाउँछ। सुन्तला तालाले निजी सन्देश जनाउँछ; सन्देश लेख्ने ठाउँमुनिको विवरणले हालको सत्रको इन्क्रिप्सन अवस्था देखाउँछ।" } },
-        "nl": { "stringUnit": { "state": "translated", "value": "Vergelijk vingerafdrukken of voltooi de QR-controle via de actieve versleutelde verbinding. Een rood slot betekent dat de identiteit niet is geverifieerd; een groen zegel dat dit wel zo is. Een oranje slot markeert een privébericht; het bijschrift onder het invoerveld toont de versleutelingsstatus van de huidige sessie." } },
-        "pl": { "stringUnit": { "state": "translated", "value": "Porównaj odciski albo ukończ wyzwanie QR przez aktywne szyfrowane połączenie. Czerwona kłódka oznacza niezweryfikowaną tożsamość, a zielona pieczęć — zweryfikowaną. Pomarańczowa kłódka oznacza wiadomość prywatną; podpis pod edytorem pokazuje stan szyfrowania bieżącej sesji." } },
-        "pt": { "stringUnit": { "state": "translated", "value": "Compare as impressões digitais ou conclua o desafio QR através da ligação encriptada ativa. Um cadeado vermelho significa que a identidade não está verificada; um selo verde significa que está. Um cadeado laranja assinala uma mensagem privada; a legenda sob o editor mostra o estado de encriptação da sessão atual." } },
-        "pt-BR": { "stringUnit": { "state": "translated", "value": "Compare as impressões digitais ou conclua o desafio QR pelo vínculo criptografado ativo. Um cadeado vermelho significa que a identidade não foi verificada; um selo verde significa que foi. Um cadeado laranja marca uma mensagem privada; a legenda abaixo do editor mostra o estado de criptografia da sessão atual." } },
-        "ru": { "stringUnit": { "state": "translated", "value": "Сравните отпечатки или выполните QR-проверку по активному зашифрованному соединению. Красный замок означает, что личность не проверена, зелёная печать — что проверена. Оранжевый замок отмечает личное сообщение; подпись под полем ввода показывает состояние шифрования текущего сеанса." } },
-        "sv": { "stringUnit": { "state": "translated", "value": "Jämför fingeravtryck eller slutför QR-utmaningen via den aktiva krypterade länken. Ett rött lås betyder att identiteten inte är verifierad; ett grönt sigill att den är verifierad. Ett orange lås markerar ett privat meddelande; texten under skrivfältet visar den aktuella sessionens krypteringsstatus." } },
-        "ta": { "stringUnit": { "state": "translated", "value": "கைரேகைகளை ஒப்பிடுங்கள் அல்லது செயலிலுள்ள மறைகுறியாக்க இணைப்பில் QR சவாலை முடிக்கவும். சிவப்பு பூட்டு அடையாளம் சரிபார்க்கப்படவில்லை என்பதையும் பச்சை முத்திரை சரிபார்க்கப்பட்டது என்பதையும் குறிக்கும். ஆரஞ்சு பூட்டு தனிப்பட்ட செய்தியைக் குறிக்கும்; செய்தி எழுதும் பெட்டியின் கீழுள்ள விளக்கம் தற்போதைய அமர்வின் மறைகுறியாக்க நிலையைக் காட்டும்." } },
-        "th": { "stringUnit": { "state": "translated", "value": "เปรียบเทียบลายนิ้วมือหรือทำคำท้า QR ผ่านลิงก์ที่เข้ารหัสซึ่งกำลังใช้งาน แม่กุญแจสีแดงหมายถึงยังไม่ได้ยืนยันตัวตน ตราสีเขียวหมายถึงยืนยันแล้ว แม่กุญแจสีส้มทำเครื่องหมายข้อความส่วนตัว ส่วนคำอธิบายใต้ช่องเขียนข้อความจะแสดงสถานะการเข้ารหัสของเซสชันปัจจุบัน" } },
-        "tr": { "stringUnit": { "state": "translated", "value": "Parmak izlerini karşılaştırın veya etkin şifreli bağlantı üzerinden QR doğrulamasını tamamlayın. Kırmızı kilit kimliğin doğrulanmadığını, yeşil mühür doğrulandığını gösterir. Turuncu kilit özel mesajı işaretler; yazma alanının altındaki açıklama mevcut oturumun şifreleme durumunu gösterir." } },
-        "uk": { "stringUnit": { "state": "translated", "value": "Порівняйте відбитки або виконайте QR-перевірку через активне зашифроване з’єднання. Червоний замок означає, що особу не перевірено, зелена печатка — що перевірено. Помаранчевий замок позначає приватне повідомлення; підпис під полем введення показує стан шифрування поточного сеансу." } },
-        "ur": { "stringUnit": { "state": "translated", "value": "فنگر پرنٹس کا موازنہ کریں یا فعال انکرپٹڈ لنک پر QR چیلنج مکمل کریں۔ سرخ تالا بتاتا ہے کہ شناخت کی تصدیق نہیں ہوئی، سبز مہر تصدیق شدہ شناخت دکھاتی ہے۔ نارنجی تالا نجی پیغام کی علامت ہے؛ پیغام لکھنے کی جگہ کے نیچے عبارت موجودہ سیشن کی انکرپشن حالت دکھاتی ہے۔" } },
-        "vi": { "stringUnit": { "state": "translated", "value": "So sánh dấu vân tay hoặc hoàn tất thử thách QR qua liên kết mã hóa đang hoạt động. Khóa đỏ nghĩa là danh tính chưa được xác minh; dấu xác nhận xanh nghĩa là đã xác minh. Khóa cam đánh dấu tin nhắn riêng; chú thích dưới ô soạn thảo hiển thị trạng thái mã hóa của phiên hiện tại." } },
-        "zh-Hans": { "stringUnit": { "state": "translated", "value": "请对比安全指纹，或通过当前加密连接完成二维码挑战。红色锁表示身份尚未验证，绿色验证印章表示已经验证。橙色锁用于标记私聊消息；输入框下方的说明会显示当前会话实际的加密状态。" } },
-        "zh-Hant": { "stringUnit": { "state": "translated", "value": "請比對安全指紋，或透過目前的加密連線完成 QR Code 挑戰。紅色鎖表示身分尚未驗證，綠色驗證印章表示已經驗證。橙色鎖用於標示私訊；輸入框下方的說明會顯示目前工作階段實際的加密狀態。" } }
+        "ar": { "stringUnit": { "state": "translated", "value": "قارن البصمات أو أكمل تحدي QR المتوافق مع Bitchat عبر الاتصال المشفّر المباشر. الرمادي يعني غير موثّق، والأخضر موثّق. الأصفر يعني تسجيل تعارض منسوب إلى بصمة المفتاح الدقيقة، لا إلى معرّف النظير المؤقت. لا تمحوه الحركة العادية أو إعادة التحقق؛ إعادة ضبط الهوية تنشئ مفاتيح جديدة منفصلة تبدأ بالرمادي." } },
+        "bn": { "stringUnit": { "state": "translated", "value": "ফিঙ্গারপ্রিন্ট তুলনা করুন বা সক্রিয় এনক্রিপ্টেড সংযোগে Bitchat-সামঞ্জস্যপূর্ণ QR চ্যালেঞ্জ সম্পন্ন করুন। ধূসর মানে যাচাইহীন, সবুজ মানে যাচাইকৃত। হলুদ মানে অস্থায়ী peer ID নয়, ঠিক ওই কী-ফিঙ্গারপ্রিন্টে নির্ভরযোগ্য দ্বন্দ্ব নথিভুক্ত হয়েছে। স্বাভাবিক ট্র্যাফিক বা পুনরায় যাচাই এটি মুছে না; পরিচয় রিসেট করলে নতুন পৃথক কী ধূসর অবস্থায় শুরু হয়।" } },
+        "de": { "stringUnit": { "state": "translated", "value": "Vergleiche Fingerabdrücke oder schließe die Bitchat-kompatible QR-Prüfung über die aktive verschlüsselte Verbindung ab. Grau bedeutet nicht verifiziert, Grün verifiziert. Gelb bedeutet, dass für genau diesen Schlüssel-Fingerabdruck – nicht für eine temporäre Peer-ID – ein zurechenbarer Konflikt gespeichert wurde. Normaler Verkehr und erneute Verifizierung löschen ihn nicht; ein Identitätsreset erzeugt separate neue Schlüssel, die grau beginnen." } },
+        "en": { "stringUnit": { "state": "translated", "value": "Compare fingerprints or complete the Bitchat-compatible QR challenge over the live encrypted link. Gray means unverified; green means verified. Yellow means an attributable conflict was recorded for that exact key fingerprint, not its temporary peer ID. Normal traffic and reverification never clear it; an identity reset creates separate new keys that start gray." } },
+        "es": { "stringUnit": { "state": "translated", "value": "Compara las huellas o completa el desafío QR compatible con Bitchat mediante el enlace cifrado activo. Gris significa sin verificar y verde, verificado. Amarillo indica que se registró un conflicto atribuible a esa huella de clave exacta, no a su ID temporal. El tráfico normal y una nueva verificación no lo borran; restablecer la identidad crea claves nuevas e independientes que empiezan en gris." } },
+        "fa": { "stringUnit": { "state": "translated", "value": "اثر انگشت‌ها را مقایسه کنید یا چالش QR سازگار با Bitchat را روی پیوند رمزگذاری‌شده فعال انجام دهید. خاکستری یعنی تأییدنشده و سبز یعنی تأییدشده. زرد یعنی برای همان اثر انگشت دقیق کلید، نه شناسه موقت همتا، تعارضی قابل انتساب ثبت شده است. ترافیک عادی یا تأیید دوباره آن را پاک نمی‌کند؛ بازنشانی هویت کلیدهای جداگانه جدیدی می‌سازد که خاکستری شروع می‌شوند." } },
+        "fil": { "stringUnit": { "state": "translated", "value": "Ihambing ang mga fingerprint o kumpletuhin ang Bitchat-compatible QR challenge sa aktibong encrypted link. Gray ang hindi verified at green ang verified. Yellow kapag may naitalang maipapanagot na conflict sa eksaktong key fingerprint, hindi sa pansamantalang peer ID. Hindi ito inaalis ng normal na traffic o muling verification; gumagawa ang identity reset ng hiwalay na bagong keys na nagsisimulang gray." } },
+        "fr": { "stringUnit": { "state": "translated", "value": "Compare les empreintes ou termine le défi QR compatible avec Bitchat via la liaison chiffrée active. Gris signifie non vérifié, vert vérifié. Jaune signifie qu’un conflit attribuable a été enregistré pour cette empreinte de clé exacte, et non pour son ID temporaire. Le trafic normal et une nouvelle vérification ne l’effacent pas ; une réinitialisation d’identité crée de nouvelles clés distinctes qui commencent en gris." } },
+        "he": { "stringUnit": { "state": "translated", "value": "השוו טביעות אצבע או השלימו את אתגר ה-QR התואם ל-Bitchat דרך החיבור המוצפן הפעיל. אפור פירושו לא מאומת וירוק מאומת. צהוב פירושו שנרשמה התנגשות שניתן לייחס לטביעת המפתח המדויקת, ולא למזהה עמית זמני. תעבורה רגילה או אימות מחדש אינם מוחקים אותה; איפוס זהות יוצר מפתחות חדשים ונפרדים שמתחילים באפור." } },
+        "hi": { "stringUnit": { "state": "translated", "value": "फ़िंगरप्रिंट मिलाएँ या सक्रिय एन्क्रिप्टेड लिंक पर Bitchat-संगत QR चुनौती पूरी करें। धूसर का अर्थ अप्रमाणित और हरे का प्रमाणित है। पीला बताता है कि अस्थायी peer ID नहीं, उसी सटीक कुंजी फ़िंगरप्रिंट के लिए आरोपण योग्य विरोध दर्ज हुआ। सामान्य ट्रैफ़िक या पुनः सत्यापन इसे नहीं मिटाते; पहचान रीसेट अलग नई कुंजियाँ बनाता है जो धूसर से शुरू होती हैं।" } },
+        "id": { "stringUnit": { "state": "translated", "value": "Bandingkan sidik jari atau selesaikan tantangan QR yang kompatibel dengan Bitchat melalui tautan terenkripsi aktif. Abu-abu berarti belum diverifikasi dan hijau berarti terverifikasi. Kuning berarti konflik yang dapat diatribusikan tercatat untuk sidik jari kunci yang tepat, bukan ID peer sementara. Lalu lintas biasa atau verifikasi ulang tidak menghapusnya; reset identitas membuat kunci baru terpisah yang dimulai dari abu-abu." } },
+        "it": { "stringUnit": { "state": "translated", "value": "Confronta le impronte o completa la verifica QR compatibile con Bitchat tramite il collegamento cifrato attivo. Grigio significa non verificato, verde verificato. Giallo indica un conflitto attribuibile registrato per l’esatta impronta della chiave, non per l’ID peer temporaneo. Il traffico normale e una nuova verifica non lo eliminano; il ripristino dell’identità crea nuove chiavi separate che iniziano in grigio." } },
+        "ja": { "stringUnit": { "state": "translated", "value": "フィンガープリントを比較するか、現在の暗号化接続でBitchat互換のQRチャレンジを完了します。灰色は未検証、緑色は検証済みです。黄色は一時的なPeer IDではなく、その正確な鍵フィンガープリントに帰属可能な競合が記録されたことを示します。通常通信や再検証では消えず、IDをリセットすると別の新しい鍵が灰色から始まります。" } },
+        "ko": { "stringUnit": { "state": "translated", "value": "지문을 비교하거나 현재 암호화 연결에서 Bitchat 호환 QR 확인을 완료하세요. 회색은 미확인, 초록색은 확인 완료입니다. 노란색은 임시 Peer ID가 아니라 정확한 키 지문에 귀속 가능한 충돌이 기록되었음을 뜻합니다. 일반 통신이나 재확인으로 지워지지 않으며, 신원 재설정은 회색으로 시작하는 별도의 새 키를 만듭니다." } },
+        "ms": { "stringUnit": { "state": "translated", "value": "Bandingkan cap jari atau lengkapkan cabaran QR serasi Bitchat melalui pautan disulitkan aktif. Kelabu bermaksud belum disahkan dan hijau bermaksud disahkan. Kuning bermaksud konflik yang boleh dikaitkan direkodkan pada cap jari kunci tepat itu, bukan ID rakan sementara. Trafik biasa atau pengesahan semula tidak memadamkannya; tetapan semula identiti menghasilkan kunci baharu berasingan yang bermula kelabu." } },
+        "ne": { "stringUnit": { "state": "translated", "value": "फिङ्गरप्रिन्ट तुलना गर्नुहोस् वा सक्रिय इन्क्रिप्टेड लिङ्कमा Bitchat-संगत QR चुनौती पूरा गर्नुहोस्। खैरोले अप्रमाणित र हरियोले प्रमाणित जनाउँछ। पहेँलोले अस्थायी peer ID होइन, त्यही सटीक कुञ्जी फिङ्गरप्रिन्टमा जिम्मेवार ठहरिने द्वन्द्व रेकर्ड भएको जनाउँछ। सामान्य ट्राफिक वा पुनःप्रमाणीकरणले यसलाई हटाउँदैन; पहिचान रिसेटले खैरोबाट सुरु हुने अलग नयाँ कुञ्जी बनाउँछ।" } },
+        "nl": { "stringUnit": { "state": "translated", "value": "Vergelijk vingerafdrukken of voltooi de Bitchat-compatibele QR-controle via de actieve versleutelde verbinding. Grijs betekent niet geverifieerd, groen geverifieerd. Geel betekent dat voor precies die sleutelvingerafdruk, niet voor een tijdelijke peer-ID, een toerekenbaar conflict is vastgelegd. Normaal verkeer en herverificatie wissen dit niet; een identiteitsreset maakt afzonderlijke nieuwe sleutels die grijs beginnen." } },
+        "pl": { "stringUnit": { "state": "translated", "value": "Porównaj odciski lub ukończ zgodne z Bitchat wyzwanie QR przez aktywne szyfrowane połączenie. Szary oznacza brak weryfikacji, zielony — weryfikację. Żółty oznacza konflikt przypisany dokładnie do tego odcisku klucza, a nie do tymczasowego ID peera. Zwykły ruch ani ponowna weryfikacja go nie usuwają; reset tożsamości tworzy oddzielne nowe klucze zaczynające jako szare." } },
+        "pt": { "stringUnit": { "state": "translated", "value": "Compare as impressões digitais ou conclua o desafio QR compatível com Bitchat através da ligação encriptada ativa. Cinzento significa não verificado e verde verificado. Amarelo significa que foi registado um conflito atribuível à impressão exata dessa chave, não ao ID temporário. O tráfego normal e nova verificação não o apagam; repor a identidade cria chaves novas e separadas que começam a cinzento." } },
+        "pt-BR": { "stringUnit": { "state": "translated", "value": "Compare as impressões digitais ou conclua o desafio QR compatível com Bitchat pelo vínculo criptografado ativo. Cinza significa não verificado e verde, verificado. Amarelo indica um conflito atribuível à impressão exata dessa chave, não ao ID temporário. Tráfego normal e nova verificação não o apagam; redefinir a identidade cria chaves novas e separadas que começam em cinza." } },
+        "ru": { "stringUnit": { "state": "translated", "value": "Сравните отпечатки или выполните совместимую с Bitchat QR-проверку по активному зашифрованному соединению. Серый означает, что личность не проверена, зелёный — проверена. Жёлтый означает, что конфликт надёжно отнесён к точному отпечатку ключа, а не временному ID узла. Обычный трафик и повторная проверка его не удаляют; сброс личности создаёт отдельные новые ключи, начинающие с серого." } },
+        "sv": { "stringUnit": { "state": "translated", "value": "Jämför fingeravtryck eller slutför den Bitchat-kompatibla QR-kontrollen via den aktiva krypterade länken. Grått betyder overifierad och grönt verifierad. Gult betyder att en hänförbar konflikt registrerats för exakt det nyckelfingeravtrycket, inte ett tillfälligt peer-ID. Normal trafik och ny verifiering tar inte bort den; en identitetsåterställning skapar separata nya nycklar som börjar grå." } },
+        "ta": { "stringUnit": { "state": "translated", "value": "கைரேகைகளை ஒப்பிடுங்கள் அல்லது செயலில் உள்ள மறைகுறியாக்க இணைப்பில் Bitchat-இணக்க QR சவாலை முடிக்கவும். சாம்பல் சரிபார்க்கப்படாதது, பச்சை சரிபார்க்கப்பட்டது. மஞ்சள் என்பது தற்காலிக peer ID-க்கு அல்ல, அந்தத் துல்லியமான சாவிக் கைரேகைக்கே பொறுப்புடன் இணைக்கப்பட்ட முரண்பாடு பதிவானது. இயல்பான போக்குவரத்து அல்லது மறுசரிபார்ப்பு இதை நீக்காது; அடையாள மீட்டமைப்பு சாம்பலாகத் தொடங்கும் தனிப் புதிய சாவிகளை உருவாக்கும்." } },
+        "th": { "stringUnit": { "state": "translated", "value": "เปรียบเทียบลายนิ้วมือหรือทำคำท้า QR ที่เข้ากันได้กับ Bitchat ผ่านลิงก์เข้ารหัสที่ใช้งานอยู่ สีเทาหมายถึงยังไม่ยืนยัน สีเขียวหมายถึงยืนยันแล้ว สีเหลืองหมายถึงบันทึกข้อขัดแย้งที่ระบุแหล่งที่มาได้กับลายนิ้วมือของคีย์นั้นโดยตรง ไม่ใช่ Peer ID ชั่วคราว การสื่อสารปกติหรือยืนยันซ้ำจะไม่ลบสถานะนี้ การรีเซ็ตตัวตนจะสร้างคีย์ใหม่แยกต่างหากและเริ่มเป็นสีเทา" } },
+        "tr": { "stringUnit": { "state": "translated", "value": "Parmak izlerini karşılaştırın veya etkin şifreli bağlantı üzerinden Bitchat uyumlu QR doğrulamasını tamamlayın. Gri doğrulanmamış, yeşil doğrulanmış demektir. Sarı, geçici peer kimliğine değil tam o anahtar parmak izine atfedilebilen bir çakışma kaydedildiğini gösterir. Normal trafik ve yeniden doğrulama bunu temizlemez; kimlik sıfırlama gri başlayan ayrı yeni anahtarlar oluşturur." } },
+        "uk": { "stringUnit": { "state": "translated", "value": "Порівняйте відбитки або виконайте сумісну з Bitchat QR-перевірку через активне зашифроване з’єднання. Сірий означає неперевірену особу, зелений — перевірену. Жовтий означає, що конфлікт надійно віднесено до точного відбитка ключа, а не тимчасового ID вузла. Звичайний трафік і повторна перевірка його не стирають; скидання особи створює окремі нові ключі, що починають із сірого." } },
+        "ur": { "stringUnit": { "state": "translated", "value": "فنگر پرنٹس کا موازنہ کریں یا فعال انکرپٹڈ لنک پر Bitchat سے مطابقت رکھنے والا QR چیلنج مکمل کریں۔ سرمئی غیر تصدیق شدہ اور سبز تصدیق شدہ ہے۔ پیلا بتاتا ہے کہ عارضی peer ID نہیں بلکہ اسی درست کلیدی فنگر پرنٹ کے لیے قابلِ نسبت تضاد درج ہوا۔ عام ٹریفک یا دوبارہ تصدیق اسے نہیں مٹاتی؛ شناخت ری سیٹ الگ نئی کلیدیں بناتا ہے جو سرمئی سے شروع ہوتی ہیں۔" } },
+        "vi": { "stringUnit": { "state": "translated", "value": "So sánh dấu vân tay hoặc hoàn tất thử thách QR tương thích Bitchat qua liên kết mã hóa đang hoạt động. Xám là chưa xác minh, xanh là đã xác minh. Vàng nghĩa là một xung đột có thể quy kết đã được ghi cho đúng dấu vân tay khóa đó, không phải ID ngang hàng tạm thời. Lưu lượng bình thường hay xác minh lại không xóa trạng thái này; đặt lại danh tính tạo bộ khóa mới riêng biệt bắt đầu ở màu xám." } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "请对比安全指纹，或通过当前加密连接完成兼容 Bitchat 的二维码挑战。灰色闭锁表示未验证，绿色表示已验证。黄色闭锁表示这个确切的密钥指纹（而非临时 Peer ID）已有可可靠归因的冲突记录。正常通信或重新验证都不会清除；对方重置身份后会生成一套独立的新密钥，并从灰色状态开始。" } },
+        "zh-Hant": { "stringUnit": { "state": "translated", "value": "請比對安全指紋，或透過目前的加密連線完成相容 Bitchat 的 QR Code 挑戰。灰色閉鎖表示未驗證，綠色表示已驗證。黃色閉鎖表示這個確切的密鑰指紋（而非暫時 Peer ID）已有可可靠歸因的衝突記錄。正常通訊或重新驗證都不會清除；對方重設身分後會產生一套獨立的新密鑰，並從灰色狀態開始。" } }
+      }
+    },
+    "identity.status.mismatch": {
+      "comment": "Permanent yellow-lock status for an exact identity-key fingerprint with an attributable conflict",
+      "extractionState": "manual",
+      "localizations": {
+        "ar": { "stringUnit": { "state": "translated", "value": "تم تسجيل تعارض في مفتاح الهوية" } },
+        "bn": { "stringUnit": { "state": "translated", "value": "পরিচয়-কী দ্বন্দ্ব নথিভুক্ত" } },
+        "de": { "stringUnit": { "state": "translated", "value": "Identitätsschlüssel-Konflikt gespeichert" } },
+        "en": { "stringUnit": { "state": "translated", "value": "Identity-key conflict recorded" } },
+        "es": { "stringUnit": { "state": "translated", "value": "Conflicto de clave de identidad registrado" } },
+        "fa": { "stringUnit": { "state": "translated", "value": "تعارض کلید هویت ثبت شد" } },
+        "fil": { "stringUnit": { "state": "translated", "value": "Naitala ang salungatan sa identity key" } },
+        "fr": { "stringUnit": { "state": "translated", "value": "Conflit de clé d’identité enregistré" } },
+        "he": { "stringUnit": { "state": "translated", "value": "נרשמה התנגשות במפתח הזהות" } },
+        "hi": { "stringUnit": { "state": "translated", "value": "पहचान-कुंजी विरोध दर्ज हुआ" } },
+        "id": { "stringUnit": { "state": "translated", "value": "Konflik kunci identitas tercatat" } },
+        "it": { "stringUnit": { "state": "translated", "value": "Conflitto della chiave identità registrato" } },
+        "ja": { "stringUnit": { "state": "translated", "value": "ID鍵の競合を記録済み" } },
+        "ko": { "stringUnit": { "state": "translated", "value": "신원 키 충돌 기록됨" } },
+        "ms": { "stringUnit": { "state": "translated", "value": "Konflik kunci identiti direkodkan" } },
+        "ne": { "stringUnit": { "state": "translated", "value": "पहिचान कुञ्जी द्वन्द्व रेकर्ड गरियो" } },
+        "nl": { "stringUnit": { "state": "translated", "value": "Conflict met identiteitssleutel vastgelegd" } },
+        "pl": { "stringUnit": { "state": "translated", "value": "Zapisano konflikt klucza tożsamości" } },
+        "pt": { "stringUnit": { "state": "translated", "value": "Conflito de chave de identidade registado" } },
+        "pt-BR": { "stringUnit": { "state": "translated", "value": "Conflito de chave de identidade registrado" } },
+        "ru": { "stringUnit": { "state": "translated", "value": "Зафиксирован конфликт ключа личности" } },
+        "sv": { "stringUnit": { "state": "translated", "value": "Konflikt för identitetsnyckel registrerad" } },
+        "ta": { "stringUnit": { "state": "translated", "value": "அடையாளச் சாவி முரண்பாடு பதிவானது" } },
+        "th": { "stringUnit": { "state": "translated", "value": "บันทึกข้อขัดแย้งของคีย์ตัวตนแล้ว" } },
+        "tr": { "stringUnit": { "state": "translated", "value": "Kimlik anahtarı çakışması kaydedildi" } },
+        "uk": { "stringUnit": { "state": "translated", "value": "Зафіксовано конфлікт ключа особи" } },
+        "ur": { "stringUnit": { "state": "translated", "value": "شناختی کلید کا تضاد ریکارڈ ہوا" } },
+        "vi": { "stringUnit": { "state": "translated", "value": "Đã ghi nhận xung đột khóa danh tính" } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "已记录身份密钥冲突" } },
+        "zh-Hant": { "stringUnit": { "state": "translated", "value": "已記錄身分密鑰衝突" } }
       }
     },
     "meshchat.help.notifications.description": {
@@ -17963,181 +17999,181 @@
         "ar": {
           "stringUnit": {
             "state": "translated",
-            "value": "مسح الذعر"
+            "value": "إعادة تعيين الهوية ومسح البيانات"
           }
         },
         "bn": {
           "stringUnit": {
             "state": "translated",
-            "value": "প্যানিক ওয়াইপ"
+            "value": "পরিচয় রিসেট ও ডেটা মুছুন"
           }
         },
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "panik-löschung"
+            "value": "Identität zurücksetzen & Daten löschen"
           }
         },
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Panic Wipe"
+            "value": "Reset Identity & Wipe Data"
           }
         },
         "es": {
           "stringUnit": {
             "state": "translated",
-            "value": "borrado de pánico"
+            "value": "Restablecer identidad y borrar datos"
           }
         },
         "fa": {
           "stringUnit": {
             "state": "translated",
-            "value": "پاک‌سازی اضطراری"
+            "value": "بازنشانی هویت و پاک کردن داده‌ها"
           }
         },
         "fil": {
           "stringUnit": {
             "state": "translated",
-            "value": "panic wipe"
+            "value": "I-reset ang Identity at Burahin ang Data"
           }
         },
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "effacement panique"
+            "value": "Réinitialiser l’identité et effacer les données"
           }
         },
         "he": {
           "stringUnit": {
             "state": "translated",
-            "value": "מחיקת בהלה"
+            "value": "איפוס זהות ומחיקת נתונים"
           }
         },
         "hi": {
           "stringUnit": {
             "state": "translated",
-            "value": "पैनिक वाइप"
+            "value": "पहचान रीसेट करें और डेटा मिटाएँ"
           }
         },
         "id": {
           "stringUnit": {
             "state": "translated",
-            "value": "hapus panik"
+            "value": "Atur Ulang Identitas & Hapus Data"
           }
         },
         "it": {
           "stringUnit": {
             "state": "translated",
-            "value": "cancellazione panico"
+            "value": "Reimposta identità e cancella dati"
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "パニック消去"
+            "value": "IDをリセットしてデータを消去"
           }
         },
         "ko": {
           "stringUnit": {
             "state": "translated",
-            "value": "패닉 삭제"
+            "value": "신원 재설정 및 데이터 삭제"
           }
         },
         "ms": {
           "stringUnit": {
             "state": "translated",
-            "value": "hapus panik"
+            "value": "Tetapkan Semula Identiti & Padam Data"
           }
         },
         "ne": {
           "stringUnit": {
             "state": "translated",
-            "value": "घबराहट मेटाइ"
+            "value": "पहिचान रिसेट गरी डाटा मेटाउनुहोस्"
           }
         },
         "nl": {
           "stringUnit": {
             "state": "translated",
-            "value": "paniekwissen"
+            "value": "Identiteit resetten en gegevens wissen"
           }
         },
         "pl": {
           "stringUnit": {
             "state": "translated",
-            "value": "awaryjne wymazanie"
+            "value": "Zresetuj tożsamość i wymaż dane"
           }
         },
         "pt": {
           "stringUnit": {
             "state": "translated",
-            "value": "limpeza de pânico"
+            "value": "Repor identidade e apagar dados"
           }
         },
         "pt-BR": {
           "stringUnit": {
             "state": "translated",
-            "value": "limpeza de pânico"
+            "value": "Redefinir identidade e apagar dados"
           }
         },
         "ru": {
           "stringUnit": {
             "state": "translated",
-            "value": "экстренное стирание"
+            "value": "Сбросить личность и стереть данные"
           }
         },
         "sv": {
           "stringUnit": {
             "state": "translated",
-            "value": "panikradering"
+            "value": "Återställ identitet och radera data"
           }
         },
         "ta": {
           "stringUnit": {
             "state": "translated",
-            "value": "பதற்ற அழிப்பு"
+            "value": "அடையாளத்தை மீட்டமைத்து தரவை அழி"
           }
         },
         "th": {
           "stringUnit": {
             "state": "translated",
-            "value": "ล้างข้อมูลฉุกเฉิน"
+            "value": "รีเซ็ตตัวตนและล้างข้อมูล"
           }
         },
         "tr": {
           "stringUnit": {
             "state": "translated",
-            "value": "panik silme"
+            "value": "Kimliği Sıfırla ve Verileri Sil"
           }
         },
         "uk": {
           "stringUnit": {
             "state": "translated",
-            "value": "екстрене стирання"
+            "value": "Скинути ідентичність і стерти дані"
           }
         },
         "ur": {
           "stringUnit": {
             "state": "translated",
-            "value": "پینک وائپ"
+            "value": "شناخت ری سیٹ کریں اور ڈیٹا مٹائیں"
           }
         },
         "vi": {
           "stringUnit": {
             "state": "translated",
-            "value": "xóa khẩn cấp"
+            "value": "Đặt lại danh tính và xóa dữ liệu"
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "紧急抹除"
+            "value": "重置身份并抹除数据"
           }
         },
         "zh-Hant": {
           "stringUnit": {
             "state": "translated",
-            "value": "緊急抹除"
+            "value": "重設身分並抹除資料"
           }
         }
       }
@@ -18148,181 +18184,181 @@
         "ar": {
           "stringUnit": {
             "state": "translated",
-            "value": "مسح كل شيء"
+            "value": "إعادة التعيين والمسح"
           }
         },
         "bn": {
           "stringUnit": {
             "state": "translated",
-            "value": "সব মুছে ফেলুন"
+            "value": "রিসেট করে মুছুন"
           }
         },
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "alles löschen"
+            "value": "Identität zurücksetzen und löschen"
           }
         },
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Wipe Everything"
+            "value": "Reset Identity and Wipe"
           }
         },
         "es": {
           "stringUnit": {
             "state": "translated",
-            "value": "borrar todo"
+            "value": "Restablecer y borrar"
           }
         },
         "fa": {
           "stringUnit": {
             "state": "translated",
-            "value": "پاک کردن همه‌چیز"
+            "value": "بازنشانی و پاک کردن"
           }
         },
         "fil": {
           "stringUnit": {
             "state": "translated",
-            "value": "burahin lahat"
+            "value": "I-reset at Burahin"
           }
         },
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "tout effacer"
+            "value": "Réinitialiser et effacer"
           }
         },
         "he": {
           "stringUnit": {
             "state": "translated",
-            "value": "מחק הכול"
+            "value": "איפוס ומחיקה"
           }
         },
         "hi": {
           "stringUnit": {
             "state": "translated",
-            "value": "सब कुछ मिटाएँ"
+            "value": "पहचान रीसेट करके मिटाएँ"
           }
         },
         "id": {
           "stringUnit": {
             "state": "translated",
-            "value": "hapus semuanya"
+            "value": "Atur Ulang dan Hapus"
           }
         },
         "it": {
           "stringUnit": {
             "state": "translated",
-            "value": "cancella tutto"
+            "value": "Reimposta e cancella"
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "すべて消去"
+            "value": "リセットして消去"
           }
         },
         "ko": {
           "stringUnit": {
             "state": "translated",
-            "value": "모두 지우기"
+            "value": "재설정 및 삭제"
           }
         },
         "ms": {
           "stringUnit": {
             "state": "translated",
-            "value": "hapus semuanya"
+            "value": "Tetapkan Semula dan Padam"
           }
         },
         "ne": {
           "stringUnit": {
             "state": "translated",
-            "value": "सबै मेट"
+            "value": "रिसेट गरी मेटाउनुहोस्"
           }
         },
         "nl": {
           "stringUnit": {
             "state": "translated",
-            "value": "alles wissen"
+            "value": "Resetten en wissen"
           }
         },
         "pl": {
           "stringUnit": {
             "state": "translated",
-            "value": "wymaż wszystko"
+            "value": "Zresetuj i wymaż"
           }
         },
         "pt": {
           "stringUnit": {
             "state": "translated",
-            "value": "limpar tudo"
+            "value": "Repor e apagar"
           }
         },
         "pt-BR": {
           "stringUnit": {
             "state": "translated",
-            "value": "apagar tudo"
+            "value": "Redefinir e apagar"
           }
         },
         "ru": {
           "stringUnit": {
             "state": "translated",
-            "value": "стереть всё"
+            "value": "Сбросить и стереть"
           }
         },
         "sv": {
           "stringUnit": {
             "state": "translated",
-            "value": "radera allt"
+            "value": "Återställ och radera"
           }
         },
         "ta": {
           "stringUnit": {
             "state": "translated",
-            "value": "அனைத்தையும் அழி"
+            "value": "மீட்டமைத்து அழி"
           }
         },
         "th": {
           "stringUnit": {
             "state": "translated",
-            "value": "ล้างทั้งหมด"
+            "value": "รีเซ็ตและล้าง"
           }
         },
         "tr": {
           "stringUnit": {
             "state": "translated",
-            "value": "her şeyi sil"
+            "value": "Sıfırla ve Sil"
           }
         },
         "uk": {
           "stringUnit": {
             "state": "translated",
-            "value": "стерти все"
+            "value": "Скинути і стерти"
           }
         },
         "ur": {
           "stringUnit": {
             "state": "translated",
-            "value": "سب کچھ مٹا دیں"
+            "value": "ری سیٹ کریں اور مٹائیں"
           }
         },
         "vi": {
           "stringUnit": {
             "state": "translated",
-            "value": "xóa tất cả"
+            "value": "Đặt lại và xóa"
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "抹除全部"
+            "value": "重置身份并抹除"
           }
         },
         "zh-Hant": {
           "stringUnit": {
             "state": "translated",
-            "value": "抹除全部"
+            "value": "重設身分並抹除"
           }
         }
       }
@@ -18333,181 +18369,181 @@
         "ar": {
           "stringUnit": {
             "state": "translated",
-            "value": "مسح كل البيانات؟"
+            "value": "إعادة تعيين الهوية ومسح كل البيانات؟"
           }
         },
         "bn": {
           "stringUnit": {
             "state": "translated",
-            "value": "সব ডেটা মুছবেন?"
+            "value": "পরিচয় রিসেট করে সব ডেটা মুছবেন?"
           }
         },
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "alle daten löschen?"
+            "value": "Identität zurücksetzen und alle Daten löschen?"
           }
         },
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Wipe All Data?"
+            "value": "Reset Identity and Wipe All Data?"
           }
         },
         "es": {
           "stringUnit": {
             "state": "translated",
-            "value": "¿borrar todos los datos?"
+            "value": "¿Restablecer la identidad y borrar todos los datos?"
           }
         },
         "fa": {
           "stringUnit": {
             "state": "translated",
-            "value": "همهٔ داده‌ها پاک شود؟"
+            "value": "هویت بازنشانی و همهٔ داده‌ها پاک شود؟"
           }
         },
         "fil": {
           "stringUnit": {
             "state": "translated",
-            "value": "burahin ang lahat ng data?"
+            "value": "I-reset ang identity at burahin ang lahat ng data?"
           }
         },
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "effacer toutes les données ?"
+            "value": "Réinitialiser l’identité et effacer toutes les données ?"
           }
         },
         "he": {
           "stringUnit": {
             "state": "translated",
-            "value": "למחוק את כל הנתונים?"
+            "value": "לאפס את הזהות ולמחוק את כל הנתונים?"
           }
         },
         "hi": {
           "stringUnit": {
             "state": "translated",
-            "value": "सारा डेटा मिटाएँ?"
+            "value": "पहचान रीसेट करके सारा डेटा मिटाएँ?"
           }
         },
         "id": {
           "stringUnit": {
             "state": "translated",
-            "value": "hapus semua data?"
+            "value": "Atur ulang identitas dan hapus semua data?"
           }
         },
         "it": {
           "stringUnit": {
             "state": "translated",
-            "value": "cancellare tutti i dati?"
+            "value": "Reimpostare l’identità e cancellare tutti i dati?"
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "全データを消去しますか？"
+            "value": "IDをリセットして全データを消去しますか？"
           }
         },
         "ko": {
           "stringUnit": {
             "state": "translated",
-            "value": "모든 데이터를 지울까요?"
+            "value": "신원을 재설정하고 모든 데이터를 지울까요?"
           }
         },
         "ms": {
           "stringUnit": {
             "state": "translated",
-            "value": "hapus semua data?"
+            "value": "Tetapkan semula identiti dan padam semua data?"
           }
         },
         "ne": {
           "stringUnit": {
             "state": "translated",
-            "value": "सबै डाटा मेट्ने हो?"
+            "value": "पहिचान रिसेट गरी सबै डाटा मेटाउने हो?"
           }
         },
         "nl": {
           "stringUnit": {
             "state": "translated",
-            "value": "alle data wissen?"
+            "value": "Identiteit resetten en alle gegevens wissen?"
           }
         },
         "pl": {
           "stringUnit": {
             "state": "translated",
-            "value": "wymazać wszystkie dane?"
+            "value": "Zresetować tożsamość i wymazać wszystkie dane?"
           }
         },
         "pt": {
           "stringUnit": {
             "state": "translated",
-            "value": "limpar todos os dados?"
+            "value": "Repor a identidade e apagar todos os dados?"
           }
         },
         "pt-BR": {
           "stringUnit": {
             "state": "translated",
-            "value": "apagar todos os dados?"
+            "value": "Redefinir a identidade e apagar todos os dados?"
           }
         },
         "ru": {
           "stringUnit": {
             "state": "translated",
-            "value": "стереть все данные?"
+            "value": "Сбросить личность и стереть все данные?"
           }
         },
         "sv": {
           "stringUnit": {
             "state": "translated",
-            "value": "radera all data?"
+            "value": "Återställa identiteten och radera all data?"
           }
         },
         "ta": {
           "stringUnit": {
             "state": "translated",
-            "value": "எல்லா தரவையும் அழிக்கவா?"
+            "value": "அடையாளத்தை மீட்டமைத்து எல்லா தரவையும் அழிக்கவா?"
           }
         },
         "th": {
           "stringUnit": {
             "state": "translated",
-            "value": "ล้างข้อมูลทั้งหมด?"
+            "value": "รีเซ็ตตัวตนและล้างข้อมูลทั้งหมด?"
           }
         },
         "tr": {
           "stringUnit": {
             "state": "translated",
-            "value": "tüm veriler silinsin mi?"
+            "value": "Kimlik sıfırlanıp tüm veriler silinsin mi?"
           }
         },
         "uk": {
           "stringUnit": {
             "state": "translated",
-            "value": "стерти всі дані?"
+            "value": "Скинути ідентичність і стерти всі дані?"
           }
         },
         "ur": {
           "stringUnit": {
             "state": "translated",
-            "value": "تمام ڈیٹا مٹا دیں؟"
+            "value": "شناخت ری سیٹ کر کے تمام ڈیٹا مٹا دیں؟"
           }
         },
         "vi": {
           "stringUnit": {
             "state": "translated",
-            "value": "xóa toàn bộ dữ liệu?"
+            "value": "Đặt lại danh tính và xóa toàn bộ dữ liệu?"
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "抹除全部数据？"
+            "value": "重置身份并抹除全部数据？"
           }
         },
         "zh-Hant": {
           "stringUnit": {
             "state": "translated",
-            "value": "抹除全部資料？"
+            "value": "重設身分並抹除全部資料？"
           }
         }
       }
@@ -18518,181 +18554,181 @@
         "ar": {
           "stringUnit": {
             "state": "translated",
-            "value": "يمسح كل الرسائل والمفاتيح والهوية. النقر ثلاث مرات على شعار MeshChat يفعل الشيء نفسه فورًا."
+            "value": "ينشئ مفاتيح Noise وتوقيع محلية جديدة عبر حذف جميع بيانات MeshChat من هذا الجهاز، بما فيها الدردشات وجهات الاتصال والأسماء المستعارة وسجلات التحقق والحظر والمجموعات والوسائط. تحتفظ الأجهزة الأخرى برسائلك القديمة وبصمتك؛ وسترى الهوية الجديدة على أنها غير موثقة. لا يمكن التراجع عن ذلك. يؤدي النقر ثلاث مرات على شعار MeshChat إلى المسح نفسه فورًا."
           }
         },
         "bn": {
           "stringUnit": {
             "state": "translated",
-            "value": "সব বার্তা, কী ও পরিচয় মুছে দেয়। MeshChat লোগোতে তিনবার ট্যাপ করলেও সঙ্গে সঙ্গে একই কাজ হয়।"
+            "value": "এই ডিভাইসের চ্যাট, পরিচিতি, ডাকনাম, যাচাই ও ব্লক রেকর্ড, গ্রুপ এবং মিডিয়াসহ সব MeshChat ডেটা মুছে নতুন স্থানীয় Noise ও স্বাক্ষর কী তৈরি করে। অন্য ডিভাইসে আপনার পুরোনো বার্তা ও ফিঙ্গারপ্রিন্ট থেকে যায়; তারা নতুন পরিচয়কে যাচাই না-করা হিসেবে দেখবে। এটি পূর্বাবস্থায় ফেরানো যাবে না। MeshChat লোগোতে তিনবার ট্যাপ করলেও একই মুছন সঙ্গে সঙ্গে হয়।"
           }
         },
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "löscht alle nachrichten, schlüssel und identität. dreimaliges tippen auf das MeshChat-logo macht dasselbe, sofort."
+            "value": "Erstellt neue lokale Noise- und Signaturschlüssel, indem alle MeshChat-Daten auf diesem Gerät gelöscht werden, einschließlich Chats, Kontakte, Spitznamen, Verifizierungs- und Sperreinträge, Gruppen und Medien. Andere Geräte behalten deine alten Nachrichten und deinen Fingerabdruck; sie sehen die neue Identität als nicht verifiziert. Dies kann nicht rückgängig gemacht werden. Dreimaliges Tippen auf das MeshChat-Logo führt sofort dieselbe Löschung aus."
           }
         },
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Erases all messages, keys, and identity. Triple-tapping the MeshChat logo does the same, instantly."
+            "value": "Creates new local Noise and signing keys by deleting all MeshChat data on this device, including chats, contacts, nicknames, verification and block records, groups, and media. Other devices keep your old messages and fingerprint; they will see the new identity as unverified. This cannot be undone. Triple-tapping the MeshChat logo performs the same wipe immediately."
           }
         },
         "es": {
           "stringUnit": {
             "state": "translated",
-            "value": "borra todos los mensajes, claves e identidad. tocar tres veces el logotipo de MeshChat hace lo mismo, al instante."
+            "value": "Crea nuevas claves locales de Noise y firma borrando todos los datos de MeshChat de este dispositivo, incluidos chats, contactos, apodos, registros de verificación y bloqueo, grupos y archivos multimedia. Los demás dispositivos conservan tus mensajes y huella anteriores; verán la nueva identidad como no verificada. No se puede deshacer. Tocar tres veces el logotipo de MeshChat realiza el mismo borrado de inmediato."
           }
         },
         "fa": {
           "stringUnit": {
             "state": "translated",
-            "value": "همهٔ پیام‌ها، کلیدها و هویت را پاک می‌کند. سه بار زدن روی لوگوی MeshChat هم همین کار را فوری انجام می‌دهد."
+            "value": "با حذف همهٔ داده‌های MeshChat در این دستگاه، از جمله گفتگوها، مخاطبان، نام‌های محلی، سوابق تأیید و مسدودسازی، گروه‌ها و رسانه‌ها، کلیدهای محلی Noise و امضای تازه می‌سازد. دستگاه‌های دیگر پیام‌ها و اثرانگشت قدیمی شما را نگه می‌دارند و هویت جدید را تأییدنشده می‌بینند. این کار برگشت‌پذیر نیست. سه بار زدن روی نشان MeshChat همین پاک‌سازی را فوراً انجام می‌دهد."
           }
         },
         "fil": {
           "stringUnit": {
             "state": "translated",
-            "value": "binubura ang lahat ng mensahe, key, at pagkakakilanlan. ang pag-tap nang tatlong beses sa logo ng MeshChat ay pareho ang ginagawa, agad-agad."
+            "value": "Gumagawa ng mga bagong lokal na Noise at signing key sa pamamagitan ng pagbura sa lahat ng data ng MeshChat sa device na ito, kabilang ang mga chat, contact, palayaw, verification at block record, grupo, at media. Mananatili sa ibang device ang mga lumang mensahe at fingerprint mo; makikita nila ang bagong identity bilang hindi verified. Hindi ito maa-undo. Ang tatlong pag-tap sa logo ng MeshChat ay agad ding nagsasagawa ng parehong pagbura."
           }
         },
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "efface tous les messages, les clés et l'identité. taper trois fois sur le logo MeshChat fait la même chose, instantanément."
+            "value": "Crée de nouvelles clés Noise et de signature locales en supprimant toutes les données MeshChat de cet appareil, notamment les discussions, contacts, surnoms, vérifications, blocages, groupes et médias. Les autres appareils conservent vos anciens messages et votre ancienne empreinte ; ils verront la nouvelle identité comme non vérifiée. Cette action est irréversible. Toucher trois fois le logo MeshChat effectue immédiatement le même effacement."
           }
         },
         "he": {
           "stringUnit": {
             "state": "translated",
-            "value": "מוחק את כל ההודעות, המפתחות והזהות. הקשה משולשת על הלוגו של MeshChat עושה את אותו הדבר, מייד."
+            "value": "יוצר מפתחות Noise וחתימה מקומיים חדשים באמצעות מחיקת כל נתוני MeshChat מהמכשיר, כולל שיחות, אנשי קשר, כינויים, רשומות אימות וחסימה, קבוצות ומדיה. מכשירים אחרים ישמרו את ההודעות וטביעת האצבע הישנות שלך ויראו את הזהות החדשה כלא מאומתת. אי אפשר לבטל פעולה זו. הקשה משולשת על הלוגו של MeshChat מבצעת מיד את אותה מחיקה."
           }
         },
         "hi": {
           "stringUnit": {
             "state": "translated",
-            "value": "सभी संदेश, कुंजियाँ और पहचान मिटा देता है। MeshChat लोगो पर तीन बार टैप करने से भी तुरंत यही होता है।"
+            "value": "इस डिवाइस से चैट, संपर्क, उपनाम, सत्यापन और ब्लॉक रिकॉर्ड, समूह और मीडिया सहित सारा MeshChat डेटा मिटाकर नई स्थानीय Noise और साइनिंग कुंजियाँ बनाता है। दूसरे डिवाइस आपके पुराने संदेश और फ़िंगरप्रिंट रखते हैं; वे नई पहचान को असत्यापित देखेंगे। इसे वापस नहीं किया जा सकता। MeshChat लोगो पर तीन बार टैप करने से भी यही वाइप तुरंत होता है।"
           }
         },
         "id": {
           "stringUnit": {
             "state": "translated",
-            "value": "menghapus semua pesan, kunci, dan identitas. mengetuk logo MeshChat tiga kali melakukan hal yang sama, seketika."
+            "value": "Membuat kunci Noise dan tanda tangan lokal baru dengan menghapus semua data MeshChat di perangkat ini, termasuk chat, kontak, nama panggilan, catatan verifikasi dan blokir, grup, serta media. Perangkat lain tetap menyimpan pesan dan sidik jari lama Anda; mereka akan melihat identitas baru sebagai belum terverifikasi. Tindakan ini tidak dapat dibatalkan. Mengetuk logo MeshChat tiga kali segera melakukan penghapusan yang sama."
           }
         },
         "it": {
           "stringUnit": {
             "state": "translated",
-            "value": "cancella tutti i messaggi, le chiavi e l'identità. toccare tre volte il logo MeshChat fa lo stesso, all'istante."
+            "value": "Crea nuove chiavi Noise e di firma locali eliminando tutti i dati MeshChat da questo dispositivo, incluse chat, contatti, soprannomi, verifiche, blocchi, gruppi e contenuti multimediali. Gli altri dispositivi conservano i tuoi vecchi messaggi e la vecchia impronta; vedranno la nuova identità come non verificata. L’operazione è irreversibile. Toccando tre volte il logo MeshChat viene eseguita subito la stessa cancellazione."
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "すべてのメッセージ、鍵、アイデンティティを消去します。MeshChat ロゴを3回タップしても同じことが即座に行われます。"
+            "value": "この端末上のチャット、連絡先、ニックネーム、検証・ブロック記録、グループ、メディアを含むすべてのMeshChatデータを削除し、新しいローカルNoise鍵と署名鍵を作成します。他の端末には古いメッセージとフィンガープリントが残り、新しいIDは未検証として表示されます。この操作は元に戻せません。MeshChatロゴを3回タップしても同じ消去が直ちに実行されます。"
           }
         },
         "ko": {
           "stringUnit": {
             "state": "translated",
-            "value": "모든 메시지, 키, 신원을 지웁니다. MeshChat 로고를 세 번 탭해도 즉시 같은 동작이 실행됩니다."
+            "value": "이 기기의 채팅, 연락처, 별명, 인증 및 차단 기록, 그룹, 미디어를 포함한 모든 MeshChat 데이터를 삭제하고 새 로컬 Noise 및 서명 키를 만듭니다. 다른 기기에는 이전 메시지와 지문이 남으며 새 신원은 미인증으로 표시됩니다. 되돌릴 수 없습니다. MeshChat 로고를 세 번 탭해도 같은 삭제가 즉시 실행됩니다."
           }
         },
         "ms": {
           "stringUnit": {
             "state": "translated",
-            "value": "menghapus semua pesan, kunci, dan identiti. mengetuk logo MeshChat tiga kali melakukan perkara yang sama, serta-merta."
+            "value": "Mencipta kunci Noise dan tandatangan setempat baharu dengan memadam semua data MeshChat pada peranti ini, termasuk sembang, kenalan, nama panggilan, rekod pengesahan dan sekatan, kumpulan serta media. Peranti lain mengekalkan mesej dan cap jari lama anda; mereka akan melihat identiti baharu sebagai belum disahkan. Tindakan ini tidak boleh dibuat asal. Mengetik logo MeshChat tiga kali melakukan pemadaman yang sama serta-merta."
           }
         },
         "ne": {
           "stringUnit": {
             "state": "translated",
-            "value": "सबै सन्देश, कुञ्जी र पहिचान मेटाउँछ। MeshChat लोगोमा तीन पटक ट्याप गर्दा पनि तुरुन्तै त्यही हुन्छ।"
+            "value": "यस यन्त्रका च्याट, सम्पर्क, उपनाम, प्रमाणीकरण र रोक सूची, समूह तथा मिडियासहित सबै MeshChat डाटा मेटाएर नयाँ स्थानीय Noise र हस्ताक्षर कुञ्जी बनाउँछ। अन्य यन्त्रमा तपाईंका पुराना सन्देश र फिङ्गरप्रिन्ट रहन्छन्; तिनले नयाँ पहिचानलाई अप्रमाणित देख्नेछन्। यसलाई उल्ट्याउन सकिँदैन। MeshChat लोगोमा तीन पटक ट्याप गर्दा पनि यही मेटाइ तुरुन्त हुन्छ।"
           }
         },
         "nl": {
           "stringUnit": {
             "state": "translated",
-            "value": "wist alle berichten, sleutels en identiteit. drie keer tikken op het MeshChat-logo doet hetzelfde, direct."
+            "value": "Maakt nieuwe lokale Noise- en ondertekeningssleutels door alle MeshChat-gegevens op dit apparaat te wissen, waaronder chats, contacten, bijnamen, verificatie- en blokkeerrecords, groepen en media. Andere apparaten bewaren je oude berichten en vingerafdruk; zij zien de nieuwe identiteit als niet geverifieerd. Dit kan niet ongedaan worden gemaakt. Drie keer tikken op het MeshChat-logo voert onmiddellijk dezelfde wisactie uit."
           }
         },
         "pl": {
           "stringUnit": {
             "state": "translated",
-            "value": "usuwa wszystkie wiadomości, klucze i tożsamość. trzykrotne stuknięcie logo MeshChat robi to samo, natychmiast."
+            "value": "Tworzy nowe lokalne klucze Noise i podpisu, usuwając z tego urządzenia wszystkie dane MeshChat, w tym czaty, kontakty, pseudonimy, wpisy weryfikacji i blokad, grupy oraz multimedia. Inne urządzenia zachowają stare wiadomości i odcisk; nowa tożsamość będzie dla nich niezweryfikowana. Tej operacji nie można cofnąć. Trzykrotne stuknięcie logo MeshChat natychmiast wykonuje to samo wymazanie."
           }
         },
         "pt": {
           "stringUnit": {
             "state": "translated",
-            "value": "apaga todas as mensagens, chaves e identidade. tocar três vezes no logótipo MeshChat faz o mesmo, de imediato."
+            "value": "Cria novas chaves Noise e de assinatura locais ao apagar todos os dados MeshChat deste dispositivo, incluindo conversas, contactos, alcunhas, registos de verificação e bloqueio, grupos e multimédia. Os outros dispositivos mantêm as mensagens e a impressão digital antigas; verão a nova identidade como não verificada. Esta ação não pode ser anulada. Tocar três vezes no logótipo MeshChat executa imediatamente a mesma limpeza."
           }
         },
         "pt-BR": {
           "stringUnit": {
             "state": "translated",
-            "value": "apaga todas as mensagens, chaves e identidade. tocar três vezes no logo MeshChat faz o mesmo, instantaneamente."
+            "value": "Cria novas chaves locais de Noise e assinatura apagando todos os dados do MeshChat neste dispositivo, incluindo conversas, contatos, apelidos, registros de verificação e bloqueio, grupos e mídia. Outros dispositivos mantêm suas mensagens e impressão digital antigas; eles verão a nova identidade como não verificada. Não é possível desfazer. Tocar três vezes no logo do MeshChat executa a mesma limpeza imediatamente."
           }
         },
         "ru": {
           "stringUnit": {
             "state": "translated",
-            "value": "стирает все сообщения, ключи и личность. тройной тап по логотипу MeshChat делает то же самое, мгновенно."
+            "value": "Создаёт новые локальные ключи Noise и подписи, удаляя с этого устройства все данные MeshChat, включая чаты, контакты, псевдонимы, записи проверки и блокировки, группы и медиа. На других устройствах останутся ваши старые сообщения и отпечаток; новая личность будет показана как непроверенная. Это действие нельзя отменить. Тройное нажатие на логотип MeshChat немедленно выполняет такое же стирание."
           }
         },
         "sv": {
           "stringUnit": {
             "state": "translated",
-            "value": "raderar alla meddelanden, nycklar och identitet. att trycka tre gånger på MeshChat-logotypen gör detsamma, direkt."
+            "value": "Skapar nya lokala Noise- och signeringsnycklar genom att radera all MeshChat-data på den här enheten, inklusive chattar, kontakter, smeknamn, verifierings- och blockeringsposter, grupper och media. Andra enheter behåller dina gamla meddelanden och ditt gamla fingeravtryck; de ser den nya identiteten som overifierad. Detta går inte att ångra. Tre tryck på MeshChat-logotypen utför samma radering omedelbart."
           }
         },
         "ta": {
           "stringUnit": {
             "state": "translated",
-            "value": "எல்லா செய்திகள், சாவிகள், அடையாளத்தையும் அழிக்கிறது. MeshChat லோகோவை மூன்று முறைத் தட்டினாலும் உடனடியாக அதுவே நடக்கும்."
+            "value": "இந்தச் சாதனத்தில் உள்ள அரட்டைகள், தொடர்புகள், புனைப்பெயர்கள், சரிபார்ப்பு மற்றும் தடுப்பு பதிவுகள், குழுக்கள், ஊடகம் உட்பட எல்லா MeshChat தரவையும் அழித்து புதிய உள்ளூர் Noise மற்றும் கையொப்பச் சாவிகளை உருவாக்கும். பிற சாதனங்களில் உங்கள் பழைய செய்திகள் மற்றும் கைரேகை இருக்கும்; புதிய அடையாளம் சரிபார்க்கப்படாததாகத் தெரியும். இதை மீளப் பெற முடியாது. MeshChat சின்னத்தை மூன்று முறைத் தட்டினாலும் இதே அழிப்பு உடனே நடக்கும்."
           }
         },
         "th": {
           "stringUnit": {
             "state": "translated",
-            "value": "ลบข้อความ กุญแจ และตัวตนทั้งหมด การแตะโลโก้ MeshChat สามครั้งก็ทำแบบเดียวกันทันที"
+            "value": "สร้างคีย์ Noise และคีย์ลงนามในเครื่องชุดใหม่โดยลบข้อมูล MeshChat ทั้งหมดบนอุปกรณ์นี้ รวมถึงแชต รายชื่อ ชื่อเล่น บันทึกการยืนยันและการบล็อก กลุ่ม และสื่อ อุปกรณ์อื่นจะยังเก็บข้อความและลายนิ้วมือเดิมของคุณไว้ และจะเห็นตัวตนใหม่ว่ายังไม่ยืนยัน ย้อนกลับไม่ได้ การแตะโลโก้ MeshChat สามครั้งจะล้างข้อมูลแบบเดียวกันทันที"
           }
         },
         "tr": {
           "stringUnit": {
             "state": "translated",
-            "value": "tüm mesajları, anahtarları ve kimliği siler. MeshChat logosuna üç kez dokunmak da aynısını anında yapar."
+            "value": "Bu cihazdaki sohbetler, kişiler, takma adlar, doğrulama ve engelleme kayıtları, gruplar ve medya dâhil tüm MeshChat verilerini silerek yeni yerel Noise ve imzalama anahtarları oluşturur. Diğer cihazlar eski mesajlarınızı ve parmak izinizi tutar; yeni kimliği doğrulanmamış olarak görürler. Bu işlem geri alınamaz. MeshChat logosuna üç kez dokunmak aynı silme işlemini hemen gerçekleştirir."
           }
         },
         "uk": {
           "stringUnit": {
             "state": "translated",
-            "value": "стирає всі повідомлення, ключі та особистість. потрійний дотик до логотипа MeshChat робить те саме, миттєво."
+            "value": "Створює нові локальні ключі Noise і підпису, видаляючи з цього пристрою всі дані MeshChat, зокрема чати, контакти, псевдоніми, записи перевірки й блокування, групи та медіа. На інших пристроях залишаться ваші старі повідомлення й відбиток; нову ідентичність вони бачитимуть як неперевірену. Цю дію неможливо скасувати. Потрійний дотик до логотипа MeshChat негайно виконує таке саме стирання."
           }
         },
         "ur": {
           "stringUnit": {
             "state": "translated",
-            "value": "تمام پیغامات، کلیدیں اور شناخت مٹا دیتا ہے۔ MeshChat لوگو پر تین بار ٹیپ کرنے سے بھی فوراً یہی ہوتا ہے۔"
+            "value": "اس آلے سے چیٹس، رابطے، عرفی نام، تصدیق اور بلاک ریکارڈ، گروپس اور میڈیا سمیت تمام MeshChat ڈیٹا مٹا کر نئی مقامی Noise اور دستخطی کلیدیں بناتا ہے۔ دوسرے آلات آپ کے پرانے پیغامات اور فنگرپرنٹ رکھتے ہیں؛ وہ نئی شناخت کو غیر تصدیق شدہ دیکھیں گے۔ اسے واپس نہیں کیا جا سکتا۔ MeshChat لوگو پر تین بار ٹیپ کرنے سے بھی یہی صفائی فوراً ہوتی ہے۔"
           }
         },
         "vi": {
           "stringUnit": {
             "state": "translated",
-            "value": "xóa toàn bộ tin nhắn, khóa và danh tính. chạm ba lần vào logo MeshChat cũng làm điều tương tự, ngay lập tức."
+            "value": "Tạo khóa Noise và khóa ký cục bộ mới bằng cách xóa toàn bộ dữ liệu MeshChat trên thiết bị này, gồm cuộc trò chuyện, liên hệ, biệt danh, bản ghi xác minh và chặn, nhóm cùng nội dung đa phương tiện. Thiết bị khác vẫn giữ tin nhắn và dấu vân tay cũ của bạn; họ sẽ thấy danh tính mới là chưa xác minh. Không thể hoàn tác. Chạm ba lần vào logo MeshChat sẽ lập tức thực hiện cùng thao tác xóa."
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "抹除所有消息、密钥和身份。三击 MeshChat 标志也会立即执行相同操作。"
+            "value": "通过删除此设备上的所有 MeshChat 数据来生成新的本地 Noise 密钥和签名密钥，包括聊天、联系人、昵称、验证与拉黑记录、群组及媒体。其他设备仍会保留你的旧消息和旧指纹，并把新身份视为未验证。此操作无法撤销。三击 MeshChat 标志也会立即执行相同的抹除。"
           }
         },
         "zh-Hant": {
           "stringUnit": {
             "state": "translated",
-            "value": "抹除所有訊息、金鑰和身分。三擊 MeshChat 標誌也會立即執行相同操作。"
+            "value": "透過刪除此裝置上的所有 MeshChat 資料來產生新的本機 Noise 金鑰和簽署金鑰，包括聊天、聯絡人、暱稱、驗證與封鎖記錄、群組及媒體。其他裝置仍會保留你的舊訊息和舊指紋，並將新身分視為未驗證。此操作無法復原。三擊 MeshChat 標誌也會立即執行相同的抹除。"
           }
         }
       }
@@ -52382,181 +52418,181 @@
         "ar": {
           "stringUnit": {
             "state": "translated",
-            "value": "⚠️ غير مُتحقق"
+            "value": "غير مُتحقق"
           }
         },
         "bn": {
           "stringUnit": {
             "state": "translated",
-            "value": "⚠️ যাচাইকৃত নয়"
+            "value": "যাচাইকৃত নয়"
           }
         },
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "⚠️ NICHT VERIFIZIERT"
+            "value": "Nicht verifiziert"
           }
         },
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "⚠️ NOT VERIFIED"
+            "value": "Not verified"
           }
         },
         "es": {
           "stringUnit": {
             "state": "translated",
-            "value": "⚠️ NO VERIFICADO"
+            "value": "No verificado"
           }
         },
         "fa": {
           "stringUnit": {
             "state": "translated",
-            "value": "⚠️ تأییدنشده"
+            "value": "تأییدنشده"
           }
         },
         "fil": {
           "stringUnit": {
             "state": "translated",
-            "value": "⚠️ HINDI BERIPIKADO"
+            "value": "Hindi beripikado"
           }
         },
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "⚠️ NON VÉRIFIÉ"
+            "value": "Non vérifié"
           }
         },
         "he": {
           "stringUnit": {
             "state": "translated",
-            "value": "⚠️ לא מאומת"
+            "value": "לא מאומת"
           }
         },
         "hi": {
           "stringUnit": {
             "state": "translated",
-            "value": "⚠️ सत्यापित नहीं"
+            "value": "सत्यापित नहीं"
           }
         },
         "id": {
           "stringUnit": {
             "state": "translated",
-            "value": "⚠️ BELUM TERVERIFIKASI"
+            "value": "Belum terverifikasi"
           }
         },
         "it": {
           "stringUnit": {
             "state": "translated",
-            "value": "⚠️ NON VERIFICATO"
+            "value": "Non verificato"
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "⚠️ 未検証"
+            "value": "未検証"
           }
         },
         "ko": {
           "stringUnit": {
             "state": "translated",
-            "value": "⚠️ 인증되지 않음"
+            "value": "인증되지 않음"
           }
         },
         "ms": {
           "stringUnit": {
             "state": "translated",
-            "value": "⚠️ BELUM TERVERIFIKASI"
+            "value": "Belum terverifikasi"
           }
         },
         "ne": {
           "stringUnit": {
             "state": "translated",
-            "value": "⚠️ प्रमाणित छैन"
+            "value": "प्रमाणित छैन"
           }
         },
         "nl": {
           "stringUnit": {
             "state": "translated",
-            "value": "⚠️ NIET GEVERIFICEERD"
+            "value": "Niet geverifieerd"
           }
         },
         "pl": {
           "stringUnit": {
             "state": "translated",
-            "value": "⚠️ NIEZWERYFIKOWANE"
+            "value": "Niezweryfikowane"
           }
         },
         "pt": {
           "stringUnit": {
             "state": "translated",
-            "value": "⚠️ NÃO VERIFICADO"
+            "value": "Não verificado"
           }
         },
         "pt-BR": {
           "stringUnit": {
             "state": "translated",
-            "value": "⚠️ NÃO VERIFICADO"
+            "value": "Não verificado"
           }
         },
         "ru": {
           "stringUnit": {
             "state": "translated",
-            "value": "⚠️ НЕ ПРОВЕРЕНО"
+            "value": "Не проверено"
           }
         },
         "sv": {
           "stringUnit": {
             "state": "translated",
-            "value": "⚠️ INTE VERIFIERAD"
+            "value": "Inte verifierad"
           }
         },
         "ta": {
           "stringUnit": {
             "state": "translated",
-            "value": "⚠️ சரிபார்க்கப்படவில்லை"
+            "value": "சரிபார்க்கப்படவில்லை"
           }
         },
         "th": {
           "stringUnit": {
             "state": "translated",
-            "value": "⚠️ ยังไม่ยืนยัน"
+            "value": "ยังไม่ยืนยัน"
           }
         },
         "tr": {
           "stringUnit": {
             "state": "translated",
-            "value": "⚠️ DOĞRULANMADI"
+            "value": "Doğrulanmadı"
           }
         },
         "uk": {
           "stringUnit": {
             "state": "translated",
-            "value": "⚠️ НЕ ПЕРЕВІРЕНО"
+            "value": "Не перевірено"
           }
         },
         "ur": {
           "stringUnit": {
             "state": "translated",
-            "value": "⚠️ تصدیق نہیں ہوئی"
+            "value": "تصدیق نہیں ہوئی"
           }
         },
         "vi": {
           "stringUnit": {
             "state": "translated",
-            "value": "⚠️ CHƯA XÁC THỰC"
+            "value": "Chưa xác thực"
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "⚠️ 未验证"
+            "value": "未验证"
           }
         },
         "zh-Hant": {
           "stringUnit": {
             "state": "translated",
-            "value": "⚠️ 未驗證"
+            "value": "未驗證"
           }
         }
       }
@@ -52567,181 +52603,181 @@
         "ar": {
           "stringUnit": {
             "state": "translated",
-            "value": "✓ مُتحقق"
+            "value": "مُتحقق"
           }
         },
         "bn": {
           "stringUnit": {
             "state": "translated",
-            "value": "✓ যাচাইকৃত"
+            "value": "যাচাইকৃত"
           }
         },
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "✓ VERIFIZIERT"
+            "value": "Verifiziert"
           }
         },
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "✓ VERIFIED"
+            "value": "Verified"
           }
         },
         "es": {
           "stringUnit": {
             "state": "translated",
-            "value": "✓ VERIFICADO"
+            "value": "Verificado"
           }
         },
         "fa": {
           "stringUnit": {
             "state": "translated",
-            "value": "✓ تأییدشده"
+            "value": "تأییدشده"
           }
         },
         "fil": {
           "stringUnit": {
             "state": "translated",
-            "value": "✓ BERIPIKADO"
+            "value": "Beripikado"
           }
         },
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "✓ VÉRIFIÉ"
+            "value": "Vérifié"
           }
         },
         "he": {
           "stringUnit": {
             "state": "translated",
-            "value": "✓ מאומת"
+            "value": "מאומת"
           }
         },
         "hi": {
           "stringUnit": {
             "state": "translated",
-            "value": "✓ सत्यापित"
+            "value": "सत्यापित"
           }
         },
         "id": {
           "stringUnit": {
             "state": "translated",
-            "value": "✓ TERVERIFIKASI"
+            "value": "Terverifikasi"
           }
         },
         "it": {
           "stringUnit": {
             "state": "translated",
-            "value": "✓ VERIFICATO"
+            "value": "Verificato"
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "✓ 検証済み"
+            "value": "検証済み"
           }
         },
         "ko": {
           "stringUnit": {
             "state": "translated",
-            "value": "✓ 인증됨"
+            "value": "인증됨"
           }
         },
         "ms": {
           "stringUnit": {
             "state": "translated",
-            "value": "✓ TERVERIFIKASI"
+            "value": "Terverifikasi"
           }
         },
         "ne": {
           "stringUnit": {
             "state": "translated",
-            "value": "✓ प्रमाणित"
+            "value": "प्रमाणित"
           }
         },
         "nl": {
           "stringUnit": {
             "state": "translated",
-            "value": "✓ GEVERIFICEERD"
+            "value": "Geverifieerd"
           }
         },
         "pl": {
           "stringUnit": {
             "state": "translated",
-            "value": "✓ ZWERYFIKOWANE"
+            "value": "Zweryfikowane"
           }
         },
         "pt": {
           "stringUnit": {
             "state": "translated",
-            "value": "✓ VERIFICADO"
+            "value": "Verificado"
           }
         },
         "pt-BR": {
           "stringUnit": {
             "state": "translated",
-            "value": "✓ VERIFICADO"
+            "value": "Verificado"
           }
         },
         "ru": {
           "stringUnit": {
             "state": "translated",
-            "value": "✓ ПРОВЕРЕНО"
+            "value": "Проверено"
           }
         },
         "sv": {
           "stringUnit": {
             "state": "translated",
-            "value": "✓ VERIFIERAD"
+            "value": "Verifierad"
           }
         },
         "ta": {
           "stringUnit": {
             "state": "translated",
-            "value": "✓ சரிபார்க்கப்பட்டது"
+            "value": "சரிபார்க்கப்பட்டது"
           }
         },
         "th": {
           "stringUnit": {
             "state": "translated",
-            "value": "✓ ยืนยันแล้ว"
+            "value": "ยืนยันแล้ว"
           }
         },
         "tr": {
           "stringUnit": {
             "state": "translated",
-            "value": "✓ DOĞRULANDI"
+            "value": "Doğrulandı"
           }
         },
         "uk": {
           "stringUnit": {
             "state": "translated",
-            "value": "✓ ПЕРЕВІРЕНО"
+            "value": "Перевірено"
           }
         },
         "ur": {
           "stringUnit": {
             "state": "translated",
-            "value": "✓ تصدیق شدہ"
+            "value": "تصدیق شدہ"
           }
         },
         "vi": {
           "stringUnit": {
             "state": "translated",
-            "value": "✓ ĐÃ XÁC THỰC"
+            "value": "Đã xác thực"
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "✓ 已验证"
+            "value": "已验证"
           }
         },
         "zh-Hant": {
           "stringUnit": {
             "state": "translated",
-            "value": "✓ 已驗證"
+            "value": "已驗證"
           }
         }
       }

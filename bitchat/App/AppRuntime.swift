@@ -70,7 +70,7 @@ final class AppRuntime: ObservableObject {
     ) {
         self.idBridge = idBridge
         let conversations = ConversationStore()
-        let peerIdentityStore = PeerIdentityStore()
+        let peerIdentityStore = PeerIdentityStore(keychain: keychain)
         let locationPresenceStore = LocationPresenceStore()
         let locationManager = LocationChannelManager.shared
         self.conversations = conversations

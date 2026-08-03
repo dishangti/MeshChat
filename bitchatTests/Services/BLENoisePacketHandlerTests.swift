@@ -17,6 +17,7 @@ struct BLENoisePacketHandlerTests {
         var currentDate = Date(timeIntervalSince1970: 1_000)
         var transportGenerationReady = false
         var forcedServiceDecryptError: Error?
+        var canAttributeAuthenticatedData = true
 
         var processedHandshakes: [(peerID: PeerID, message: Data)] = []
         var hasSessionQueries: [PeerID] = []
@@ -25,8 +26,23 @@ struct BLENoisePacketHandlerTests {
         var lastSeenUpdates: [PeerID] = []
         var decryptCalls: [(payload: Data, peerID: PeerID)] = []
         var clearedSessions: [PeerID] = []
+        var identityConflicts: [(
+            peerID: PeerID,
+            reason: PeerIdentityConflictReason
+        )] = []
+        var authenticatedDataConflicts: [(
+            peerID: PeerID,
+            generation: UUID,
+            reason: PeerIdentityConflictReason
+        )] = []
         var authenticatedPeerStates: [(peerID: PeerID, payload: Data, generation: UUID)] = []
-        var deliveries: [(peerID: PeerID, type: NoisePayloadType, payload: Data, timestamp: Date)] = []
+        var deliveries: [(
+            peerID: PeerID,
+            type: NoisePayloadType,
+            payload: Data,
+            timestamp: Date,
+            generation: UUID
+        )] = []
         /// Ordered side-effect log to assert recovery sequencing.
         var events: [String] = []
     }
@@ -81,11 +97,21 @@ struct BLENoisePacketHandlerTests {
                 recorder.clearedSessions.append(peerID)
                 recorder.events.append("clearSession")
             },
+            reportAuthenticatedDataConflict: {
+                peerID, generation, reason in
+                guard recorder.canAttributeAuthenticatedData else { return }
+                recorder.authenticatedDataConflicts.append(
+                    (peerID, generation, reason)
+                )
+            },
             handleAuthenticatedPeerState: { peerID, payload, generation in
                 recorder.authenticatedPeerStates.append((peerID, payload, generation))
             },
-            deliverNoisePayload: { peerID, type, payload, timestamp in
-                recorder.deliveries.append((peerID, type, payload, timestamp))
+            deliverNoisePayload: {
+                peerID, type, payload, timestamp, generation in
+                recorder.deliveries.append(
+                    (peerID, type, payload, timestamp, generation)
+                )
             }
         )
         return BLENoisePacketHandler(environment: environment)
@@ -150,6 +176,15 @@ struct BLENoisePacketHandlerTests {
                     recorder.clearedSessions.append(peerID)
                     service.clearSession(for: peerID)
                 },
+                reportAuthenticatedDataConflict: {
+                    peerID, generation, reason in
+                    guard recorder.canAttributeAuthenticatedData else {
+                        return
+                    }
+                    recorder.authenticatedDataConflicts.append(
+                        (peerID, generation, reason)
+                    )
+                },
                 handleAuthenticatedPeerState: {
                     peerID, payload, generation in
                     recorder.authenticatedPeerStates.append(
@@ -157,9 +192,9 @@ struct BLENoisePacketHandlerTests {
                     )
                 },
                 deliverNoisePayload: {
-                    peerID, type, payload, timestamp in
+                    peerID, type, payload, timestamp, generation in
                     recorder.deliveries.append(
-                        (peerID, type, payload, timestamp)
+                        (peerID, type, payload, timestamp, generation)
                     )
                 }
             )
@@ -290,6 +325,7 @@ struct BLENoisePacketHandlerTests {
         #expect(recorder.hasSessionQueries == [remotePeerID])
         #expect(recorder.initiatedHandshakes == [remotePeerID])
         #expect(recorder.broadcastPackets.isEmpty)
+        #expect(recorder.identityConflicts.isEmpty)
     }
 
     @Test
@@ -304,10 +340,11 @@ struct BLENoisePacketHandlerTests {
 
         #expect(recorder.hasSessionQueries == [remotePeerID])
         #expect(recorder.initiatedHandshakes.isEmpty)
+        #expect(recorder.identityConflicts.isEmpty)
     }
 
     @Test
-    func peerIdentityMismatchDoesNotRecreateHandshakeState() {
+    func peerIdentityMismatchCannotLatchClaimedContact() {
         let recorder = Recorder()
         recorder.handshakeResult = .failure(NoiseSessionError.peerIdentityMismatch)
         recorder.hasSession = false
@@ -319,6 +356,7 @@ struct BLENoisePacketHandlerTests {
         #expect(recorder.hasSessionQueries.isEmpty)
         #expect(recorder.initiatedHandshakes.isEmpty)
         #expect(recorder.broadcastPackets.isEmpty)
+        #expect(recorder.identityConflicts.isEmpty)
     }
 
     @Test
@@ -337,6 +375,7 @@ struct BLENoisePacketHandlerTests {
         #expect(recorder.hasSessionQueries.isEmpty)
         #expect(recorder.initiatedHandshakes.isEmpty)
         #expect(recorder.broadcastPackets.isEmpty)
+        #expect(recorder.identityConflicts.isEmpty)
     }
 
     // MARK: Encrypted
@@ -389,6 +428,7 @@ struct BLENoisePacketHandlerTests {
         #expect(recorder.deliveries.first?.type == .privateMessage)
         #expect(recorder.deliveries.first?.payload == Data([0x01, 0x02, 0x03]))
         #expect(recorder.deliveries.first?.timestamp == sentAt)
+        #expect(recorder.deliveries.first?.generation == recorder.sessionGeneration)
         #expect(recorder.clearedSessions.isEmpty)
         #expect(recorder.initiatedHandshakes.isEmpty)
     }
@@ -424,6 +464,11 @@ struct BLENoisePacketHandlerTests {
         #expect(recorder.decryptCalls.count == 1)
         #expect(recorder.deliveries.isEmpty)
         #expect(recorder.clearedSessions.isEmpty)
+        #expect(recorder.authenticatedDataConflicts.count == 1)
+        #expect(
+            recorder.authenticatedDataConflicts.first?.reason
+                == .malformedAuthenticatedData
+        )
     }
 
     @Test
@@ -437,6 +482,25 @@ struct BLENoisePacketHandlerTests {
 
         #expect(recorder.decryptCalls.count == 1)
         #expect(recorder.deliveries.isEmpty)
+        #expect(recorder.authenticatedDataConflicts.isEmpty)
+        #expect(recorder.authenticatedPeerStates.isEmpty)
+    }
+
+    @Test
+    func malformedAuthenticatedDataWithoutContinuityCannotLatchContact() {
+        let recorder = Recorder()
+        recorder.canAttributeAuthenticatedData = false
+        recorder.decryptResult = .success(Data())
+        let handler = makeHandler(recorder: recorder)
+
+        handler.handleEncrypted(
+            makeEncryptedPacket(
+                recipientID: Data(hexString: localPeerID.id)
+            ),
+            from: remotePeerID
+        )
+
+        #expect(recorder.authenticatedDataConflicts.isEmpty)
     }
 
     @Test
@@ -485,6 +549,7 @@ struct BLENoisePacketHandlerTests {
         // Session-recovery order must stay clear → re-initiate.
         #expect(recorder.events == ["clearSession", "initiateHandshake"])
         #expect(recorder.deliveries.isEmpty)
+        #expect(recorder.identityConflicts.isEmpty)
     }
 
     @Test
@@ -1280,7 +1345,10 @@ struct BLENoisePacketHandlerTests {
         #expect(recorder.initiatedHandshakes.isEmpty)
     }
 
-    private func makeHandshakePacket(recipientID: Data?) -> BitchatPacket {
+    private func makeHandshakePacket(
+        recipientID: Data?,
+        ttl: UInt8 = TransportConfig.messageTTLDefault
+    ) -> BitchatPacket {
         BitchatPacket(
             type: MessageType.noiseHandshake.rawValue,
             senderID: Data(hexString: remotePeerID.id) ?? Data(),
@@ -1288,7 +1356,7 @@ struct BLENoisePacketHandlerTests {
             timestamp: 900_000,
             payload: Data([0x01, 0x02, 0x03]),
             signature: nil,
-            ttl: TransportConfig.messageTTLDefault
+            ttl: ttl
         )
     }
 

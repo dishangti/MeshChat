@@ -46,6 +46,14 @@ struct BLENoisePacketHandlerEnvironment {
     let decrypt: (_ payload: Data, _ peerID: PeerID) throws -> BLENoiseDecryptionResult
     /// Clears the peer's Noise session after an unrecoverable decrypt failure (crypto).
     let clearSession: (PeerID) -> Void
+    /// Reports malformed plaintext that was authenticated by an exact current
+    /// Noise generation. The service still requires its full remote static
+    /// key to match a durable identity before attributing the incident.
+    let reportAuthenticatedDataConflict: (
+        _ peerID: PeerID,
+        _ sessionGeneration: UUID,
+        _ reason: PeerIdentityConflictReason
+    ) -> Void
     /// Consumes session-authenticated protocol state inside the transport. It
     /// must never escape to UI or Nostr payload dispatch.
     let handleAuthenticatedPeerState: (
@@ -58,7 +66,8 @@ struct BLENoisePacketHandlerEnvironment {
         _ peerID: PeerID,
         _ type: NoisePayloadType,
         _ payload: Data,
-        _ timestamp: Date
+        _ timestamp: Date,
+        _ sessionGeneration: UUID
     ) -> Void
 }
 
@@ -152,6 +161,9 @@ final class BLENoisePacketHandler {
                     "Rejected Noise handshake whose static key does not match \(peerID.id.prefix(8))…",
                     category: .security
                 )
+                // The handshake itself is relayable and did not authenticate
+                // the rejected static key. Logging and rejection are safe;
+                // assigning the failure to a contact is not.
                 return BLENoiseHandshakeHandlingResult(
                     processed: false,
                     didEstablishAuthenticatedSession: false
@@ -216,7 +228,14 @@ final class BLENoisePacketHandler {
         do {
             let decryption = try env.decrypt(packet.payload, peerID)
             let decrypted = decryption.plaintext
-            guard decrypted.count > 0 else { return }
+            guard decrypted.count > 0 else {
+                env.reportAuthenticatedDataConflict(
+                    peerID,
+                    decryption.sessionGeneration,
+                    .malformedAuthenticatedData
+                )
+                return
+            }
 
             // First byte indicates the payload type
             let payloadType = decrypted[0]
@@ -239,7 +258,13 @@ final class BLENoisePacketHandler {
             }
 
             let ts = Date(timeIntervalSince1970: Double(packet.timestamp) / 1000)
-            env.deliverNoisePayload(peerID, noisePayloadType, Data(payloadData), ts)
+            env.deliverNoisePayload(
+                peerID,
+                noisePayloadType,
+                Data(payloadData),
+                ts,
+                decryption.sessionGeneration
+            )
         } catch NoiseEncryptionError.transportGenerationNotReady {
             if isDeferredRetry {
                 SecureLogger.warning(

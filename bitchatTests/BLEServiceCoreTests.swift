@@ -127,6 +127,99 @@ struct BLEServiceCoreTests {
         #expect(delegate.publicMessagesSnapshot().isEmpty)
     }
 
+    @Test @MainActor
+    func signedPublicSemanticFailureReportsExactFingerprintAndForgeryDoesNot()
+        async throws {
+        let identityManager = SecureIdentityStateManager(MockKeychain())
+        let ble = makeService(identityManager: identityManager)
+        let remote = NoiseEncryptionService(keychain: MockKeychain())
+        let attacker = NoiseEncryptionService(keychain: MockKeychain())
+        let remoteKey = remote.getStaticPublicKeyData()
+        let remotePeerID = PeerID(publicKey: remoteKey)
+        let fingerprint = remoteKey.sha256Fingerprint()
+        let signingKey = remote.getSigningPublicKeyData()
+        identityManager.upsertCryptographicIdentity(
+            fingerprint: fingerprint,
+            noisePublicKey: remoteKey,
+            signingPublicKey: signingKey,
+            claimedNickname: "Remote"
+        )
+        let capture = TransportEventCaptureDelegate()
+        ble.eventDelegate = capture
+        let nowMs = UInt64(Date().timeIntervalSince1970 * 1_000)
+
+        let malformed = BitchatPacket(
+            type: MessageType.message.rawValue,
+            senderID: Data(hexString: remotePeerID.id) ?? Data(),
+            recipientID: nil,
+            timestamp: nowMs,
+            payload: Data([0xFF, 0xFE]),
+            signature: nil,
+            ttl: TransportConfig.messageTTLDefault
+        )
+        let signedMalformed = try #require(remote.signPacket(malformed))
+        ble._test_handlePacket(
+            signedMalformed,
+            fromPeerID: remotePeerID,
+            signingPublicKey: signingKey
+        )
+        await ble._test_drainNoiseMessagePipeline()
+        await Task.yield()
+        #expect(capture.events.contains { event in
+            guard case let .peerIdentityConflictDetected(
+                reportedFingerprint,
+                reason,
+                _
+            ) = event else {
+                return false
+            }
+            return reportedFingerprint == fingerprint
+                && reason == .malformedAuthenticatedData
+        })
+
+        let normal = makePublicPacket(
+            content: "normal",
+            sender: remotePeerID,
+            timestamp: nowMs + 1
+        )
+        let signedNormal = try #require(remote.signPacket(normal))
+        ble._test_handlePacket(
+            signedNormal,
+            fromPeerID: remotePeerID,
+            signingPublicKey: signingKey
+        )
+        await ble._test_drainNoiseMessagePipeline()
+        await Task.yield()
+        let conflictCount = capture.events.filter { event in
+            if case .peerIdentityConflictDetected = event { return true }
+            return false
+        }.count
+        let forgedMalformed = try #require(
+            attacker.signPacket(
+                BitchatPacket(
+                    type: MessageType.message.rawValue,
+                    senderID: Data(hexString: remotePeerID.id) ?? Data(),
+                    recipientID: nil,
+                    timestamp: nowMs + 2,
+                    payload: Data([0xFF, 0xFD]),
+                    signature: nil,
+                    ttl: TransportConfig.messageTTLDefault
+                )
+            )
+        )
+        ble._test_handlePacket(
+            forgedMalformed,
+            fromPeerID: remotePeerID,
+            signingPublicKey: signingKey
+        )
+        await ble._test_drainNoiseMessagePipeline()
+        await Task.yield()
+        #expect(capture.events.filter { event in
+            if case .peerIdentityConflictDetected = event { return true }
+            return false
+        }.count == conflictCount)
+    }
+
     @Test
     func announceSenderMismatch_isRejected() async throws {
         let ble = makeService()
@@ -1139,6 +1232,259 @@ struct BLEServiceCoreTests {
     }
 
     @Test
+    func generationBoundVerificationSendRejectsOldGenerationAfterRekey()
+        async throws {
+        let ble = makeService()
+        let remote = NoiseEncryptionService(keychain: MockKeychain())
+        let remoteKey = remote.getStaticPublicKeyData()
+        let remotePeerID = PeerID(publicKey: remoteKey)
+
+        // Establish the first session with BLE as responder.
+        let firstMessage1 = try remote.initiateHandshake(with: ble.myPeerID)
+        let firstMessage2 = try #require(
+            try ble._test_noiseProcessHandshakeMessage(
+                from: remotePeerID,
+                message: firstMessage1
+            )
+        )
+        let firstMessage3 = try #require(
+            try remote.processHandshakeMessage(
+                from: ble.myPeerID,
+                message: firstMessage2
+            )
+        )
+        _ = try ble._test_noiseProcessHandshakeMessage(
+            from: remotePeerID,
+            message: firstMessage3
+        )
+        await ble._test_drainNoiseMessagePipeline()
+
+        let oldBinding = try #require(
+            ble.verificationSessionBinding(for: remotePeerID)
+        )
+        #expect(oldBinding.remoteStaticPublicKey == remoteKey)
+
+        // The same remote identity reconnects with fresh transport keys.
+        remote.clearSession(for: ble.myPeerID)
+        let nextMessage1 = try remote.initiateHandshake(with: ble.myPeerID)
+        let nextMessage2 = try #require(
+            try ble._test_noiseProcessHandshakeMessage(
+                from: remotePeerID,
+                message: nextMessage1
+            )
+        )
+        let nextMessage3 = try #require(
+            try remote.processHandshakeMessage(
+                from: ble.myPeerID,
+                message: nextMessage2
+            )
+        )
+        _ = try ble._test_noiseProcessHandshakeMessage(
+            from: remotePeerID,
+            message: nextMessage3
+        )
+        await ble._test_drainNoiseMessagePipeline()
+
+        let currentBinding = try #require(
+            ble.verificationSessionBinding(for: remotePeerID)
+        )
+        #expect(currentBinding.remoteStaticPublicKey == remoteKey)
+        #expect(currentBinding.sessionGeneration != oldBinding.sessionGeneration)
+
+        let outbound = OutboundPacketTap()
+        ble._test_onOutboundPacket = outbound.record
+        let remoteKeyHex = remoteKey.hexEncodedString().lowercased()
+        let nonce = Data(repeating: 0xA5, count: 16)
+
+        ble.sendVerifyChallenge(
+            to: remotePeerID,
+            noiseKeyHex: remoteKeyHex,
+            nonceA: nonce,
+            sessionGeneration: oldBinding.sessionGeneration
+        )
+        await ble._test_drainNoiseMessagePipeline()
+        #expect(outbound.count(ofType: .noiseEncrypted) == 0)
+
+        ble.sendVerifyChallenge(
+            to: remotePeerID,
+            noiseKeyHex: remoteKeyHex,
+            nonceA: nonce,
+            sessionGeneration: currentBinding.sessionGeneration
+        )
+        await ble._test_drainNoiseMessagePipeline()
+
+        let encryptedPackets = outbound.snapshot()
+        #expect(encryptedPackets.count == 1)
+        let encryptedPacket = try #require(encryptedPackets.first)
+        #expect(encryptedPacket.type == MessageType.noiseEncrypted.rawValue)
+        let plaintext = try remote.decrypt(
+            encryptedPacket.payload,
+            from: ble.myPeerID
+        )
+        #expect(
+            plaintext == VerificationService.shared.buildVerifyChallenge(
+                noiseKeyHex: remoteKeyHex,
+                nonceA: nonce
+            )
+        )
+    }
+
+    @Test @MainActor
+    func mismatchedPeerStateDoesNotReplacePinAndEmitsConflict() async throws {
+        let identityManager = MockIdentityManager(MockKeychain())
+        let ble = makeService(identityManager: identityManager)
+        let remote = NoiseEncryptionService(keychain: MockKeychain())
+        let remoteKey = remote.getStaticPublicKeyData()
+        let remotePeerID = PeerID(publicKey: remoteKey)
+        let fingerprint = remoteKey.sha256Fingerprint()
+        let pinnedSigningKey = Data(repeating: 0xA7, count: 32)
+        let conflictingSigningKey = Data(repeating: 0xB8, count: 32)
+        identityManager.bindAuthenticatedSigningPublicKey(
+            pinnedSigningKey,
+            fingerprint: fingerprint
+        )
+        let delegate = TransportEventCaptureDelegate()
+        ble.eventDelegate = delegate
+
+        let message1 = try ble._test_noiseInitiateHandshake(with: remotePeerID)
+        let message2 = try #require(
+            try remote.processHandshakeMessage(from: ble.myPeerID, message: message1)
+        )
+        let message3 = try #require(
+            try ble._test_noiseProcessHandshakeMessage(
+                from: remotePeerID,
+                message: message2
+            )
+        )
+        _ = try remote.processHandshakeMessage(
+            from: ble.myPeerID,
+            message: message3
+        )
+        await ble._test_drainNoiseMessagePipeline()
+
+        ble._test_applyAuthenticatedPeerState(
+            AuthenticatedPeerStatePacket(
+                capabilities: [],
+                signingPublicKey: conflictingSigningKey
+            ),
+            from: remotePeerID
+        )
+        await ble._test_drainNoiseMessagePipeline()
+        await Task.yield()
+
+        #expect(
+            identityManager.authenticatedSigningPublicKey(
+                forFingerprint: fingerprint
+            ) == pinnedSigningKey
+        )
+        #expect(delegate.events.contains { event in
+            guard case let .peerIdentityConflictDetected(
+                reportedFingerprint,
+                reason,
+                _
+            ) = event else {
+                return false
+            }
+            return reportedFingerprint == fingerprint
+                && reason == .authenticatedSigningKeyMismatch
+        })
+    }
+
+    @Test @MainActor
+    func authenticatedPeerStateDistinguishesMalformedAndFutureVersions()
+        async throws {
+        let identityManager = SecureIdentityStateManager(MockKeychain())
+        let ble = makeService(identityManager: identityManager)
+        let remote = NoiseEncryptionService(keychain: MockKeychain())
+        let remoteKey = remote.getStaticPublicKeyData()
+        let remotePeerID = PeerID(publicKey: remoteKey)
+        let fingerprint = remoteKey.sha256Fingerprint()
+        let signingKey = remote.getSigningPublicKeyData()
+        identityManager.upsertCryptographicIdentity(
+            fingerprint: fingerprint,
+            noisePublicKey: remoteKey,
+            signingPublicKey: signingKey,
+            claimedNickname: "Remote"
+        )
+        identityManager.bindAuthenticatedSigningPublicKey(
+            signingKey,
+            fingerprint: fingerprint
+        )
+
+        let message1 = try ble._test_noiseInitiateHandshake(with: remotePeerID)
+        let message2 = try #require(
+            try remote.processHandshakeMessage(
+                from: ble.myPeerID,
+                message: message1
+            )
+        )
+        let message3 = try #require(
+            try ble._test_noiseProcessHandshakeMessage(
+                from: remotePeerID,
+                message: message2
+            )
+        )
+        _ = try remote.processHandshakeMessage(
+            from: ble.myPeerID,
+            message: message3
+        )
+        await ble._test_drainNoiseMessagePipeline()
+
+        let emptyCapture = TransportEventCaptureDelegate()
+        ble.eventDelegate = emptyCapture
+        ble._test_applyAuthenticatedPeerStatePayload(
+            Data(),
+            from: remotePeerID
+        )
+        await ble._test_drainNoiseMessagePipeline()
+        await Task.yield()
+        #expect(emptyCapture.events.contains { event in
+            guard case let .peerIdentityConflictDetected(
+                reportedFingerprint,
+                reason,
+                _
+            ) = event else {
+                return false
+            }
+            return reportedFingerprint == fingerprint
+                && reason == .malformedAuthenticatedPeerState
+        })
+
+        let futureCapture = TransportEventCaptureDelegate()
+        ble.eventDelegate = futureCapture
+        ble._test_applyAuthenticatedPeerStatePayload(
+            Data([AuthenticatedPeerStatePacket.currentVersion + 1, 0xFF]),
+            from: remotePeerID
+        )
+        await ble._test_drainNoiseMessagePipeline()
+        await Task.yield()
+        #expect(!futureCapture.events.contains { event in
+            if case .peerIdentityConflictDetected = event { return true }
+            return false
+        })
+
+        let malformedV1Capture = TransportEventCaptureDelegate()
+        ble.eventDelegate = malformedV1Capture
+        ble._test_applyAuthenticatedPeerStatePayload(
+            Data([AuthenticatedPeerStatePacket.currentVersion, 0x01]),
+            from: remotePeerID
+        )
+        await ble._test_drainNoiseMessagePipeline()
+        await Task.yield()
+        #expect(malformedV1Capture.events.contains { event in
+            guard case let .peerIdentityConflictDetected(
+                reportedFingerprint,
+                reason,
+                _
+            ) = event else {
+                return false
+            }
+            return reportedFingerprint == fingerprint
+                && reason == .malformedAuthenticatedPeerState
+        })
+    }
+
+    @Test
     func ingressRejectsSelfLoopbackBeforeSpoofChecks() async throws {
         let ble = makeService()
         let packet = makePublicPacket(
@@ -1537,10 +1883,11 @@ private final class PanicIngressObserver: @unchecked Sendable {
 private func makeService(
     noiseResponderHandshakeTimeout: TimeInterval =
         NoiseSecurityConstants.ordinaryResponderHandshakeTimeout,
-    engineScheduler: BLEEngineScheduling = BLEEngineDispatchScheduler()
+    engineScheduler: BLEEngineScheduling = BLEEngineDispatchScheduler(),
+    identityManager suppliedIdentityManager: SecureIdentityStateManagerProtocol? = nil
 ) -> BLEService {
     let keychain = MockKeychain()
-    let identityManager = MockIdentityManager(keychain)
+    let identityManager = suppliedIdentityManager ?? MockIdentityManager(keychain)
     let idBridge = NostrIdentityBridge(keychain: MockKeychainHelper())
     return BLEService(
         keychain: keychain,
@@ -1615,8 +1962,10 @@ private final class PublicCaptureDelegate: BitchatDelegate {
 @MainActor
 private final class TransportEventCaptureDelegate: TransportEventDelegate {
     private(set) var messageIDs: [String] = []
+    private(set) var events: [TransportEvent] = []
 
     func didReceiveTransportEvent(_ event: TransportEvent) {
+        events.append(event)
         guard case .messageReceived(let message) = event else { return }
         messageIDs.append(message.id)
     }

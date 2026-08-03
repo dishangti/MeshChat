@@ -2,6 +2,11 @@ import BitFoundation
 import BitLogger
 import Foundation
 
+struct BLEPersistedIdentityBinding: Equatable {
+    let fingerprint: String
+    let signingPublicKey: Data
+}
+
 /// Narrow environment for `BLEAnnounceHandler`.
 ///
 /// All queue hops (collections barrier, BLE-queue link-state reads, main-actor
@@ -17,16 +22,20 @@ struct BLEAnnounceHandlerEnvironment {
     /// Noise and signing public keys already recorded for the peer, if any
     /// (single registry read so both come from one consistent snapshot).
     let existingPeerKeys: (PeerID) -> (noisePublicKey: Data?, signingPublicKey: Data?)
-    /// Signing key from the persisted cryptographic identity for the peer, if
-    /// any. Registry pins do not survive app restarts or offline-peer
-    /// eviction; this fallback keeps the TOFU signing-key pin effective for
-    /// returning peers.
-    let persistedSigningPublicKey: (PeerID) -> Data?
+    /// Unique full identity and signing key persisted for this short routing
+    /// ID. Returning nil for ambiguous prefixes prevents misattribution.
+    let persistedIdentityBinding: (PeerID) -> BLEPersistedIdentityBinding?
     /// Ed25519 key previously bound to this Noise identity by an authenticated
     /// peer-state payload, if any (persistent identity-state read).
     let authenticatedSigningPublicKey: (_ noisePublicKey: Data) -> Data?
     /// Verifies the packet signature against the announced signing key.
     let verifySignature: (_ packet: BitchatPacket, _ signingPublicKey: Data) -> Bool
+    /// Reports only a precise cryptographic identity conflict. The service
+    /// owns the UI hop used to deliver the corresponding transport event.
+    let reportIdentityConflict: (
+        _ fingerprint: String,
+        _ reason: PeerIdentityConflictReason
+    ) -> Void
     /// Direct link state for the peer (BLE-queue read).
     let linkState: (PeerID) -> (hasPeripheral: Bool, hasCentral: Bool)
     /// Whether the link this packet arrived on is already bound to a
@@ -112,9 +121,15 @@ final class BLEAnnounceHandler {
             announcement = acceptance.announcement
         case .reject(.malformed):
             SecureLogger.error("❌ Failed to decode announce packet from \(peerID.id.prefix(8))…", category: .session)
+            reportAuthenticatedMalformedAnnounce(packet, peerID: peerID)
             return nil
         case .reject(.senderMismatch(let derivedFromKey)):
             SecureLogger.warning("⚠️ Announce sender mismatch: derived \(derivedFromKey.id.prefix(8))… vs packet \(peerID.id.prefix(8))…", category: .security)
+            reportIdentityConflict(
+                for: packet,
+                peerID: peerID,
+                reason: .claimedPeerIDMismatch
+            )
             return nil
         case .reject(.selfAnnounce):
             return nil
@@ -127,6 +142,9 @@ final class BLEAnnounceHandler {
 
         // Precompute signature verification outside barrier to reduce contention
         var existingPeerKeys = env.existingPeerKeys(peerID)
+        let persistedIdentityBinding = existingPeerKeys.signingPublicKey == nil
+            ? env.persistedIdentityBinding(peerID)
+            : nil
         if existingPeerKeys.signingPublicKey == nil {
             // The registry entry (and its signing-key pin) is dropped on app
             // restart and offline-peer eviction, but the persisted
@@ -134,8 +152,11 @@ final class BLEAnnounceHandler {
             // returning peer is not treated as first contact — otherwise an
             // attacker could replay the peer's noiseKey/peerID with their own
             // signing key and re-pin the identity (TOFU downgrade).
-            existingPeerKeys.signingPublicKey = env.persistedSigningPublicKey(peerID)
+            existingPeerKeys.signingPublicKey = persistedIdentityBinding?.signingPublicKey
         }
+        let authenticatedSigningPublicKey = env.authenticatedSigningPublicKey(
+            announcement.noisePublicKey
+        )
         let hasSignature = packet.signature != nil
         let signatureValid: Bool
         if hasSignature {
@@ -152,21 +173,34 @@ final class BLEAnnounceHandler {
             existingNoisePublicKey: existingPeerKeys.noisePublicKey,
             announcedNoisePublicKey: announcement.noisePublicKey,
             existingSigningPublicKey: existingPeerKeys.signingPublicKey,
-            authenticatedSigningPublicKey: env.authenticatedSigningPublicKey(
-                announcement.noisePublicKey
-            ),
+            authenticatedSigningPublicKey: authenticatedSigningPublicKey,
             announcedSigningPublicKey: announcement.signingPublicKey
         )
         if case .reject(.keyMismatch) = trustDecision {
             SecureLogger.warning("⚠️ Announce key mismatch for \(peerID.id.prefix(8))… — keeping unverified", category: .security)
+            reportIdentityConflict(
+                for: packet,
+                peerID: peerID,
+                reason: .noiseStaticKeyMismatch
+            )
         }
         if case .reject(.signingKeyMismatch) = trustDecision {
             SecureLogger.warning("🚨 Announce signing-key mismatch for \(peerID.id.prefix(8))… — refusing to replace pinned signing key (possible impersonation attempt)", category: .security)
+            reportIdentityConflict(
+                for: packet,
+                peerID: peerID,
+                reason: .signingKeyMismatch
+            )
         }
         if case .reject(.authenticatedSigningKeyMismatch) = trustDecision {
             SecureLogger.warning(
                 "⚠️ Announce signing-key replacement rejected for Noise-authenticated peer \(peerID.id.prefix(8))…",
                 category: .security
+            )
+            reportIdentityConflict(
+                for: packet,
+                peerID: peerID,
+                reason: .authenticatedSigningKeyMismatch
             )
         }
         var verifiedAnnounce = trustDecision.isVerified
@@ -217,6 +251,11 @@ final class BLEAnnounceHandler {
                 now
             ) else {
                 SecureLogger.warning("🚨 Registry refused announce for \(peerID.id.prefix(8))… — signing key differs from pinned key", category: .security)
+                reportIdentityConflict(
+                    for: packet,
+                    peerID: peerID,
+                    reason: .signingKeyMismatch
+                )
                 verifiedAnnounce = false
                 isNewPeer = false
                 isReconnectedPeer = false
@@ -293,6 +332,44 @@ final class BLEAnnounceHandler {
             announcement: announcement,
             isDirectAnnounce: isDirectAnnounce,
             isVerified: verifiedAnnounce
+        )
+    }
+
+    /// Attributes an announce conflict only when the complete packet verifies
+    /// against the signing key already persisted for the claimed peer. Noise
+    /// handshakes and BLE links are relayable, so physical ingress ownership
+    /// is not an identity proof.
+    private func reportIdentityConflict(
+        for packet: BitchatPacket,
+        peerID: PeerID,
+        reason: PeerIdentityConflictReason
+    ) {
+        guard let binding = environment.persistedIdentityBinding(
+            peerID
+        ),
+        packet.signature != nil,
+        environment.verifySignature(packet, binding.signingPublicKey) else {
+            SecureLogger.debug(
+                "Rejected announce conflict without a valid persisted identity signature for \(peerID.id.prefix(8))…",
+                category: .security
+            )
+            return
+        }
+        environment.reportIdentityConflict(binding.fingerprint, reason)
+    }
+
+    /// A malformed payload cannot supply its own signing key. Attribute it
+    /// only when the complete packet verifies against the key already pinned
+    /// for this claimed peer. The signature remains valid across relays, so no
+    /// spoofable physical-link or TTL inference is involved.
+    private func reportAuthenticatedMalformedAnnounce(
+        _ packet: BitchatPacket,
+        peerID: PeerID
+    ) {
+        reportIdentityConflict(
+            for: packet,
+            peerID: peerID,
+            reason: .malformedAuthenticatedData
         )
     }
 }

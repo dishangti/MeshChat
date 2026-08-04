@@ -110,10 +110,10 @@ struct ContentHeaderView: View {
                 if case .location = locationChannelsModel.selectedChannel {
                     return peerListModel.visibleGeohashPeerCount
                 }
-                // One number for the whole room: radio-reachable peers plus
-                // people across the bridge (visible via carriers even while
-                // this device's own bridge is off). The sheet breaks it down.
-                return countAndColor.0 + bridgeService.bridgedPeerCount
+                // Keep this number transport-local and consistent with the
+                // channel picker. Across-the-bridge participants are announced
+                // separately below; summing them can duplicate radio peers.
+                return countAndColor.0
             }()
 
             HStack(spacing: 2) {

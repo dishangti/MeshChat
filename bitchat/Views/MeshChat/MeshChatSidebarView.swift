@@ -608,8 +608,11 @@ private extension MeshChatSidebarView {
                     title: Strings.mesh,
                     subtitle: nil,
                     icon: "antenna.radiowaves.left.and.right",
-                    peopleCount: peerListModel.reachableMeshPeerCount
-                        + bridgeService.bridgedPeerCount,
+                    // Keep the channel metric scoped to the local mesh, just
+                    // like the iPhone channel picker. Bridge participants have
+                    // their own section below and may also be visible over
+                    // radio, so adding both counts can count one person twice.
+                    peopleCount: peerListModel.reachableMeshPeerCount,
                     messageCount: publicChatModel.unreadMessageCount(for: .mesh),
                     isSelected: showsPublicChannelSelection
                         && locationChannelsModel.selectedChannel.isMesh

@@ -11,7 +11,6 @@ struct MeshChatConversationHeader: View {
     @EnvironmentObject private var privateConversationModel: PrivateConversationModel
     @EnvironmentObject private var locationChannelsModel: LocationChannelsModel
     @EnvironmentObject private var peerListModel: PeerListModel
-    @ObservedObject private var bridgeService = BridgeService.shared
     @ThemedPalette private var palette
 
     @State private var carriedMailCount = 0
@@ -562,7 +561,7 @@ private extension MeshChatConversationHeader {
         let count: Int
         switch locationChannelsModel.selectedChannel {
         case .mesh:
-            count = peerListModel.reachableMeshPeerCount + bridgeService.bridgedPeerCount
+            count = peerListModel.reachableMeshPeerCount
         case .location:
             count = peerListModel.visibleGeohashPeerCount
         }

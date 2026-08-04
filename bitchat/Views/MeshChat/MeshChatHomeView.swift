@@ -8,7 +8,6 @@ import SwiftUI
 struct MeshChatHomeView: View {
     @EnvironmentObject private var peerListModel: PeerListModel
     @EnvironmentObject private var publicChatModel: PublicChatModel
-    @ObservedObject private var bridgeService = BridgeService.shared
     @ThemedPalette private var palette
 
     let onOpenMesh: () -> Void
@@ -20,8 +19,11 @@ struct MeshChatHomeView: View {
              "content.accessibility.people_count",
             comment: "Number of reachable people shown on the MeshChat home screen"
         )
-        let count = peerListModel.reachableMeshPeerCount + bridgeService.bridgedPeerCount
-        return String(format: format, locale: .current, count)
+        return String(
+            format: format,
+            locale: .current,
+            peerListModel.reachableMeshPeerCount
+        )
     }
 
     var body: some View {
